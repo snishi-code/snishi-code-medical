@@ -12,11 +12,11 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; media-src 'self' blob:; worker-src 'self'; manifest-src 'self'; frame-src 'self'; child-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'" />
   <title>回診</title>
   <script>
-    // 本番ホスト: snishi-code.com（/hospital-rounds/ 配下）。それ以外（test サブドメイン、localhost 等）は test。
+    // 本番/テスト判定はホスト名の規約ベース（特定ドメインを直書きしない / site-links.js の prod/dev 命名に対応）。構成が変わってもここは不変。
     (function () {
       var host = location.hostname;
-      var isProd = (host === 'snishi-code.com' || host === 'www.snishi-code.com');
-      document.documentElement.dataset.env = isProd ? 'prod' : 'test';
+      var isTest = /(^|[.-])dev\./.test(host) || /\.pages\.dev$/.test(host) || host === 'localhost' || host === '127.0.0.1' || /\.local$/.test(host);  // test 扱い: -dev サブドメイン / *.pages.dev / localhost
+      document.documentElement.dataset.env = isTest ? 'test' : 'prod';
     })();
   </script>
   <link rel="manifest" href="./manifest.json" id="appManifest" />
