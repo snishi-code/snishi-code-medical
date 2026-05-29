@@ -1,0 +1,357 @@
+/* settings.css — 設定画面 + 共通フォーム要素 + クリアターゲット
+ * .settingsInp (設定画面の汎用 input)
+ * .passStrength* (admin 撤去で未使用だが、将来の管理機能用に保持)
+ * .card / .cardHead / .cardBody / .formGrid / label / textarea (共通フォーム要素)
+ * .segBtn (セグメントボタン: 設定画面で使用)
+ * .iconBtn.dangerIcon (赤色アイコン)
+ * .clearTargetBtn (クリア対象 chip)
+ * .oInput / .toggleLine (汎用 input / toggle)
+ * .qrWrap / canvas / .mono / .qrHint / .dangerText (汎用)
+ * #tagsCard.disabled (グルーピング有効時のタグカード)
+ */
+
+    .settingsInp {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 10px;
+      font-size: 14px;
+      outline: none;
+      background: #fff;
+    }
+
+    .settingsInp:focus {
+      border-color: rgba(37, 99, 235, 0.6);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+    }
+
+    .passStrengthRow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+      min-height: 18px;
+    }
+
+    .passStrengthBars {
+      display: flex;
+      gap: 4px;
+      flex: 1;
+    }
+
+    .passStrengthBar {
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      background: #e5e7eb;
+    }
+
+    .passStrengthLabel {
+      font-size: 11px;
+      color: #6b7280;
+      min-width: 4em;
+      text-align: right;
+    }
+
+    /* 段階別の色 (D/P 型でも識別可能なペール+濃色の3層構造を踏襲) */
+    .passStrengthRow[data-level="tooShort"] .passStrengthBar.filled,
+    .passStrengthRow[data-level="weak"] .passStrengthBar.filled {
+      background: #d97706; /* amber-600 */
+    }
+    .passStrengthRow[data-level="tooShort"] .passStrengthLabel,
+    .passStrengthRow[data-level="weak"] .passStrengthLabel {
+      color: #92400e;
+    }
+    .passStrengthRow[data-level="ok"] .passStrengthBar.filled {
+      background: var(--blue);
+    }
+    .passStrengthRow[data-level="ok"] .passStrengthLabel {
+      color: var(--status-blue-text);
+    }
+    .passStrengthRow[data-level="good"] .passStrengthBar.filled,
+    .passStrengthRow[data-level="strong"] .passStrengthBar.filled {
+      background: #16a34a; /* green-600 */
+    }
+    .passStrengthRow[data-level="good"] .passStrengthLabel,
+    .passStrengthRow[data-level="strong"] .passStrengthLabel {
+      color: #166534;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      margin-top: 12px;
+      overflow: hidden;
+    }
+
+    .cardHead {
+      padding: 10px 12px;
+      background: #fafafa;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .cardHead .label {
+      font-weight: 900
+    }
+
+    .cardBody {
+      padding: 12px
+    }
+
+    .formGrid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    @media (min-width: 820px) {
+      .formGrid.two {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 800;
+      letter-spacing: 0.01em
+    }
+
+    textarea {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      padding: 10px 10px;
+      font-size: 14px;
+      min-height: 110px;
+      resize: vertical;
+      outline: none;
+    }
+
+    textarea:focus {
+      border-color: rgba(37, 99, 235, 0.6);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14)
+    }
+
+    .segRow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .segBtn {
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 8px 10px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-weight: 900;
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .segBtn.selected {
+      border-color: #111827;
+      background: #111827;
+      color: #fff;
+    }
+
+    /* O-normal button: green check (matches detail status button palette) */
+    .segBtn.normalCheck {
+      background: #fff;
+      border-color: var(--status-green-bd);
+      color: var(--status-green-bd);
+      padding: 7px 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .segBtn.normalCheck.selected {
+      background: var(--status-green-bg);
+      border-color: var(--status-green-bd);
+      color: var(--status-green-fg);
+    }
+
+    /* 全消去アイコン: 普段は赤色だけ。囲みはホバー時のみ。 */
+    .iconBtn.dangerIcon {
+      color: #b91c1c;
+    }
+    .iconBtn.dangerIcon:hover {
+      border-color: #b91c1c;
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    /* Clear target chips: white pill normally, red pill with × when selected */
+    .clearTargetBtn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      cursor: pointer;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 13px;
+      line-height: 1.2;
+    }
+    .clearTargetBtn .clearTargetX {
+      display: none;
+      color: inherit;
+      line-height: 0;
+    }
+    .clearTargetBtn.selected {
+      border-color: #b91c1c;
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+    .clearTargetBtn.selected .clearTargetX {
+      display: inline-flex;
+    }
+
+    .oInput {
+      flex: 1 1 220px;
+      min-width: 180px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 10px;
+      font-size: 13px;
+      outline: none;
+      background: #fff;
+    }
+
+    .oInput:focus {
+      border-color: rgba(37, 99, 235, 0.6);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14)
+    }
+
+    .toggleLine {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 10px;
+      background: #fff;
+    }
+
+    .toggleLine .tLabel {
+      font-weight: 900
+    }
+
+    .toggleLine input {
+      width: 20px;
+      height: 20px
+    }
+
+    .qrWrap {
+      display: none;
+    }
+
+    .qrWrap.active {
+      display: block
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #fff;
+      border-top: 1px solid var(--line);
+      image-rendering: pixelated;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    .qrHint {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35
+    }
+
+    .dangerText {
+      color: #b91c1c;
+      font-weight: 900
+    }
+
+    /* Tags card disabled state */
+    #tagsCard.disabled #tagsBody {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    /* QR セキュリティ設定テーブル */
+    .qrSecurityHint {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+    .qrSecurityTable {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .qrSecurityTable th,
+    .qrSecurityTable td {
+      padding: 6px 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+    }
+    .qrSecurityTable th {
+      font-weight: 700;
+      color: var(--muted);
+      background: #fafafa;
+    }
+    .qrSecurityCheck {
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+    }
+    .qrSecurityCheck input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* 全データ消去 (設定画面最下部)。card は overflow:hidden + 角丸なので、中身が
+       縁に接すると角が削れる。内側 padding でインセットする */
+    .settingsDangerCard {
+      border: 1px solid #fecaca;
+      background: #fef2f2;
+      padding: 14px 16px;
+    }
+    .settingsFullResetBtn {
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .settingsDangerHint {
+      margin: 8px 0 0;
+      font-size: 12px;
+      color: #b91c1c;
+      line-height: 1.4;
+    }
+
+    /* クリア対象セクションの説明文 (見出し下)。card 直下なので cardBody と同じ
+       水平 padding(12px) を付けて端に寄らないようにする */
+    .clearSectionHint {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      padding: 10px 12px 0;
+      margin: 0;
+    }

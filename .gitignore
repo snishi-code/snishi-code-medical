@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Build output (Cloudflare Pages が生成するのでコミット不要)
+dist/
+
+# npm
+node_modules/
+
+# 環境変数 (現状不使用だが念のため)
+.env
+.env.local
+.env.*.local
+
+# エディタ
+.vscode/
+.idea/
+.obsidian/
+
+# ログ
+*.log
+npm-debug.log*
+
+# 説明書 Obsidian vault (docs/<app>/)
+#   - *.md は git 管理（下書き〜清書をバージョン管理する）
+#   - images/ は gitignore：配信用コピーが各アプリの public/docs-images/ に
+#     git 管理されているため、スクショを git に二重保存しない
+#   - .obsidian/ は上の「エディタ」セクションで既に除外済み
+docs/*/images/
+
+# 患者データエクスポートJSON（タイトル_YYYY_MMDD_HHMM.json 形式）
+# 日本語タイトルも含めてタイムスタンプパターンで除外
+*_[0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9].json
+
+# Claude Code session data
+.claude/

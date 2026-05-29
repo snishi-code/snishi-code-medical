@@ -1,0 +1,11 @@
+{
+  "format": "hospital-rounds-bundle",
+  "schema": 1,
+  "appVersion": "1.0.0",
+  "exportedAt": "2026-05-20T10:00:00.000Z",
+  "owner": { "deviceId": "", "label": "" },
+  "rosterId": "",
+  "sections": {
+    "meta": { "title": "回診" }
+  }
+}

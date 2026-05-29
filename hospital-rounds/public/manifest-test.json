@@ -1,0 +1,25 @@
+{
+  "name": "回診管理（TEST）",
+  "short_name": "回診TEST",
+  "description": "病棟回診管理システム（テスト環境）",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#475569",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "./icons/icon-192-test.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon-512-test.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

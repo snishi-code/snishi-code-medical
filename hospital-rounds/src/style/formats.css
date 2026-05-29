@@ -1,0 +1,693 @@
+/* formats.css — フォーマット関連すべて
+ * .formatStrip / .formatStripBtn / .formatStripPinned (詳細画面の pin chip 列)
+ * .formatInput* (フォーマット入力モーダル: number/fraction/text/date 共通レイアウト)
+ * .formatEdit* (フォーマット編集モーダル)
+ * .formatListRow / .formatListName / .formatListMeta / .formatListActions
+ *   (設定画面のフォーマット一覧。pinned/isDefault の左ストライプ表示)
+ * .formatGroupToggleBtn (患者画面ヘッダーのグループトグル)
+ * .formatGroupPickerRow (グループピッカー)
+ * .formatGroupEdit* (グループ編集モーダル)
+ * .formatStripChips.inGroup (アクティブグループ時のチップ装飾)
+ */
+
+    /* ============================
+       フォーマット strip (各パネル右肩の [pinned chips] [≡ picker])
+       chips 部はみ出しは横スクロール、picker は右端に固定
+       ============================ */
+    .formatStrip {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .formatStripChips {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      white-space: nowrap;
+      scrollbar-width: none;
+    }
+    .formatStripChips::-webkit-scrollbar { display: none; }
+
+    .formatStripBtn {
+      width: auto;
+      min-height: 32px;
+      padding: 4px 10px;
+      margin: 0;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .formatStripBtn:hover {
+      background: #f3f4f6;
+    }
+
+    .formatStripPinned {
+      border-color: var(--status-blue-bd);
+      background: var(--status-blue-bg);
+      color: var(--status-blue-text);
+    }
+
+    .formatStripPinned:hover {
+      background: #93c5fd;
+    }
+
+    /* strip 内ピッカーは右端固定、popup は右寄せ (画面端からはみ出さない) */
+    .formatStrip > .tagPicker { flex: 0 0 auto; }
+    .formatStrip .tagPickerPopup { left: auto; right: 0; }
+
+    /* ============================
+       インライン展開フォーマット (実効グループのフォーマットを本文上に展開)
+       ============================ */
+    .formatExpandedHost {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .formatExpandedHost:not(:empty) {
+      margin-bottom: 8px;
+    }
+    .formatExpanded {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: var(--blue-light, #eff6ff);
+    }
+    .formatExpandedName {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--blue, #2563eb);
+      margin-bottom: 6px;
+    }
+
+    /* ============================
+       フォーマット入力モーダル
+       ============================ */
+    .popupMenu.formatInputMenu {
+      width: min(92vw, 520px);
+      min-width: 0;
+      max-width: 520px;
+      padding: 14px 16px;
+      box-sizing: border-box;
+    }
+
+    .formatInputBody {
+      max-height: 60vh;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 4px 0;
+    }
+
+    /* mixed (= 異なる kind が混在 / または全 number/fraction/date): 4 列 grid で
+       行間を縦揃え (label / value / unit / memo)。number / fraction は memo セルを
+       空のままにする (v6.10+ で備考欄を撤去)。date のみ memo を出す (Labo/CT prefill)。
+       fraction は value セルの中で numer/slash/denom を flex で並べる。 */
+    .formatInputBody.mixed {
+      display: grid;
+      grid-template-columns: max-content minmax(100px, 140px) max-content minmax(0, 1fr);
+      column-gap: 8px;
+      row-gap: 8px;
+      align-items: center;
+    }
+    .formatInputBody.mixed .formatInputRow {
+      display: contents;
+    }
+
+    /* fraction: value セル内で [numer] / [denom] を等幅に並べる */
+    .formatInputFracGroup {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+    .formatInputFracGroup .formatInputValue {
+      flex: 1 1 0;
+      width: auto;
+      min-width: 0;
+    }
+    .formatInputFracSlash {
+      flex: 0 0 auto;
+      font-weight: 700;
+      color: var(--muted, #6b7280);
+    }
+
+    /* 狭幅 (~480px 未満) では value 列を縮めて触りやすく */
+    @media (max-width: 480px) {
+      .formatInputBody.mixed {
+        grid-template-columns: max-content minmax(72px, 1fr) max-content minmax(80px, 1.2fr);
+        column-gap: 6px;
+      }
+    }
+
+    /* text 型: label + textarea + 小さなチェックアイコン (右端固定) */
+    .formatInputBody.text .formatInputRow {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+      min-width: 0;
+    }
+    .formatInputBody.text .formatInputText {
+      flex: 1 1 0;
+      width: auto;
+      min-width: 0;
+      flex-basis: auto;  /* mixed に持っていかれた 100% を解除 */
+    }
+
+    .formatInputLabel {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text);
+      min-width: 0;
+    }
+    .formatInputBody.text .formatInputLabel {
+      flex: 0 0 64px;
+    }
+
+    .formatInputValue {
+      min-width: 0;
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    .formatInputBody.text .formatInputValue {
+      flex: 1 1 80px;
+      width: auto;
+    }
+
+    .formatInputText {
+      resize: vertical;
+      min-height: 32px;
+    }
+
+    .formatInputUnit {
+      font-size: 12px;
+      color: var(--muted, #6b7280);
+      min-width: 0;
+    }
+
+    .formatInputMemo {
+      min-width: 0;
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+
+    /* 規定文ボタン: 小さなチェックアイコンに変更 (旧 v6.0.0 同様、行内右端) */
+    .formatInputNormalBtn {
+      flex: 0 0 auto;
+      width: 32px !important;
+      height: 32px;
+      padding: 0 !important;
+      margin: 0 !important;
+      border: 1px solid var(--status-green-bd, #16a34a);
+      background: var(--status-green-bg, #dcfce7);
+      color: var(--status-green-text, #166534);
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .formatInputNormalBtn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .formatInputActions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    .popupMenu.formatInputMenu .formatInputActions button {
+      width: auto;
+      min-width: 88px;
+      margin: 0;
+    }
+
+    /* ============================
+       フォーマット編集モーダル (レスポンシブ。ビューポートに収まる)
+       ============================ */
+    .popupMenu.formatEditMenu {
+      width: min(92vw, 480px);
+      min-width: 0;
+      max-width: 480px;
+      padding: 14px 16px;
+      box-sizing: border-box;
+    }
+
+    .formatEditBody {
+      max-height: 65vh;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .formatEditField {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .formatEditField > span {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .formatEditField input,
+    .formatEditField select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      box-sizing: border-box;
+    }
+
+    .formatEditFieldRow {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .formatEditFieldRow .formatEditField {
+      flex: 1 1 120px;
+      min-width: 0;
+    }
+
+    /* 名前欄の右側にタグピッカーを置く 1 行レイアウト
+       名前: 残り幅を占有 / タグピッカー: アイコン分だけ */
+    .formatEditNameRow {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .formatEditNameRow .formatEditNameField {
+      flex: 1 1 auto;
+      min-width: 0;
+      margin-bottom: 0;
+    }
+
+    .formatEditNameRow .formatEditTagsField {
+      flex: 0 0 auto;
+      margin-bottom: 0;
+    }
+
+    .formatEditTagsField > #formatEditTagsHost {
+      padding-top: 2px; /* 名前 input と縦位置を揃える微調整 */
+    }
+
+    /* タグピッカーの popup が右に飛び出さないように左寄せ */
+    .formatEditTagsField .tagPickerPopup {
+      left: auto;
+      right: 0;
+    }
+
+    .formatEditCheckRow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 10px 0;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .formatEditCheckRow input {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+    }
+
+    .formatEditItemsHead {
+      font-size: 13px;
+      font-weight: 700;
+      margin: 8px 0 6px;
+      color: var(--text);
+    }
+
+    /* 全行で列を揃えるため grid。列: ラベル | 様式 | 補助欄(単位/正常文) | 削除。
+       kind 以外は fr でレスポンシブ。kind は「分数 (a/b)」が入る固定幅。 */
+    .formatEditItemRow {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1.3fr) 32px;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .formatEditItemLabel,
+    .formatEditItemUnit,
+    .formatEditItemNormal {
+      padding: 6px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 13px;
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* 様式 (kind) セレクタ。ラベルと補助欄の間 (固定幅列) */
+    .formatEditItemKind {
+      width: 100%;
+      padding: 6px 4px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 12px;
+      background: #fff;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+
+    .formatEditItemDel {
+      width: 32px;
+      height: 32px;
+      margin: 0;
+      padding: 0;
+      border: 1px solid var(--line);
+      background: #fef2f2;
+      color: #b91c1c;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex: 0 0 32px;
+    }
+
+    .formatEditActions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    .popupMenu.formatEditMenu .formatEditActions button {
+      width: auto;
+      min-width: 88px;
+      margin: 0;
+    }
+
+    /* ============================
+       設定画面: フォーマット一覧
+       色: お気に入り=緑 / 規定文=青。チップを使わず行背景 + 左ストライプで表現
+       ============================ */
+    .formatListRow {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 8px 10px 14px;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+    }
+
+    .formatListRow:last-child {
+      border-bottom: 0;
+    }
+
+    /* デフォルトフォーマットグループ行: 青系で「これがデフォルト」と一目で分かるように */
+    .formatListRow.formatGroupDefaultRow {
+      background: var(--blue-light);
+    }
+
+    .formatGroupDefaultBadge {
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--status-blue-bg, #bfdbfe);
+      border: 1px solid var(--status-blue-bd, #2563eb);
+      color: var(--status-blue-text, #1e3a8a);
+      white-space: nowrap;
+    }
+
+    .formatListName {
+      flex: 1 1 auto;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .formatListMeta {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      flex: 0 0 auto;
+      font-size: 12px;
+      color: var(--muted, #6b7280);
+    }
+
+    .formatListActions {
+      display: inline-flex;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+
+    /* フォーマットグループ ピッカー (患者画面で active group を選ぶ単選択) */
+    .popupMenu.formatGroupPickerMenu {
+      width: min(92vw, 360px);
+      max-width: 360px;
+      box-sizing: border-box;
+    }
+    .formatGroupPickerRow {
+      width: 100% !important;
+      margin: 4px 0 !important;
+      padding: 10px 12px !important;
+      text-align: left;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .formatGroupPickerRow:hover {
+      background: #f3f4f6;
+    }
+    .formatGroupPickerRow.selected {
+      border-color: var(--status-blue-bd);
+      background: var(--status-blue-bg);
+    }
+    .formatGroupPickerHead {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .formatGroupPickerName {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text);
+    }
+    .formatGroupPickerSub {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .formatGroupPickerEmpty {
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+      padding: 12px 0;
+    }
+
+    /* グループ編集モーダル */
+    .popupMenu.formatGroupEditMenu {
+      width: min(92vw, 480px);
+      max-width: 480px;
+      padding: 14px 16px;
+      box-sizing: border-box;
+    }
+    .formatGroupEditSection {
+      margin: 8px 0;
+      border-top: 1px solid var(--line);
+      padding-top: 6px;
+    }
+    .formatGroupEditSectionHead {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .formatGroupEditOpt {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      font-size: 14px;
+    }
+    .formatGroupEditOptMain {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1 1 auto;
+      cursor: pointer;
+      min-width: 0;
+    }
+    .formatGroupEditOpt input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+    }
+    /* 展開(A) / クイック(B) 二択セグメント。included フォーマットの表示方法を選ぶ */
+    /* 展開/クイック/規定文 の 3 択。等幅セルで正中分割 (歪み防止) */
+    .formatGroupModeSeg {
+      flex: 0 0 auto;
+      display: flex;
+      width: 180px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .formatGroupModeBtn {
+      flex: 1 1 0;
+      width: auto !important;
+      min-width: 0;
+      min-height: 0;
+      margin-bottom: 0 !important;
+      border: 0;
+      border-radius: 0;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 4px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .formatGroupModeBtn + .formatGroupModeBtn {
+      border-left: 1px solid var(--line);
+    }
+    .formatGroupModeBtn.active {
+      background: var(--blue, #2563eb);
+      color: #fff;
+    }
+    /* デフォルト切替チェックの下に出す補足説明 */
+    .formatGroupEditHint {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 2px 0 6px;
+    }
+
+    /* 患者画面の strip: active group モードの時はチップを薄青系にして区別 */
+    .formatStripChips.inGroup .formatStripGroupChip {
+      background: var(--status-blue-bg, #bfdbfe);
+      border-color: var(--status-blue-bd, #2563eb);
+      color: var(--status-blue-text, #1e3a8a);
+    }
+
+    /* 患者ヘッダーのフォーマットグループ トグル: 「通常」/ グループ名を表示。
+       active 時 (= 何か選ばれている) は青ハイライトでパッと見えるように */
+    .formatGroupToggleBtn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 44px;          /* タッチターゲット 44 確保 */
+      padding: 6px 10px;
+      margin: 0;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      max-width: 160px;
+    }
+    .formatGroupToggleBtn:hover {
+      background: rgba(0, 0, 0, 0.04);
+      color: var(--text);
+    }
+    .formatGroupToggleBtn.active {
+      background: var(--blue-light);
+      border-color: var(--blue-border);
+      color: var(--blue);
+    }
+    .formatGroupToggleBtn.active:hover {
+      background: var(--blue-border);
+    }
+    .formatGroupToggleLabel {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+      max-width: 90px;
+    }
+    .formatGroupToggleChevron {
+      flex-shrink: 0;
+      opacity: 0.6;
+    }
+
+    /* フォーマット QR 共有モーダル: QR を大きめに表示できる幅 */
+    .popupMenu.qrFormatMenu {
+      width: min(94vw, 480px);
+      max-width: 480px;
+      box-sizing: border-box;
+    }
+    .popupMenu.qrFormatMenu .qrWrap {
+      margin: 8px 0;
+    }
+    /* qrWrap は通常 display:none + .active で表示。overlay 内では常時表示でいい */
+    .popupMenu.qrFormatMenu .qrWrap {
+      display: block !important;
+    }
+
+    /* フォーマット編集モーダルの QR 共有ボタン (action 行の左端) */
+    .formatEditActions {
+      align-items: center;
+    }
+    .formatEditQrBtn {
+      flex: 0 0 auto;
+      width: 36px !important;
+      height: 36px;
+      min-width: 0 !important;
+      min-height: 0;
+      padding: 6px !important;
+      margin: 0 !important;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .formatEditQrBtn:hover {
+      background: #f3f4f6;
+      color: var(--text);
+    }

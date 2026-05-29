@@ -1,0 +1,320 @@
+/* memo-shared.css — メモ画面・共有画面のリスト + print スタイル + drag
+ * .viewScroll / .memoScroll / .memoRow (リスト表示)
+ * .roomInput / .detailRoomInput / .nameDoctorRow (患者編集行)
+ * .detailMemoWrap (詳細画面のメモプレビュー)
+ * .memoNoBtn (メモ行の患者番号ボタン)
+ * .dragGhost / .dragOver (ドラッグ並べ替え)
+ * @media print (印刷スタイル: 旧 print 機能撤去後も memoRow の print 装飾は残す)
+ * .clearTargets (クリア対象 chip コンテナ — settings 共通)
+ */
+
+    /* ホーム/詳細/設定 のスクロールラッパ。
+       上部ボタン群と QR カードは外側、本体だけがスクロールする。
+       memoScroll と違って枠線・影は付けない（中身が既にカード化されているため）。 */
+    .viewScroll {
+      max-height: calc(100vh - 148px);
+      overflow: auto;
+      margin-top: 4px;
+    }
+
+    /* Memo list */
+    .memoScroll {
+      max-height: calc(100vh - 148px);
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      margin-top: 12px;
+    }
+
+    .memoRow {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      min-height: 48px;
+      background: #fff;
+    }
+
+    .memoRow:last-child {
+      border-bottom: none
+    }
+
+    .memoRow input.memoNoInp {
+      flex: 0 0 auto;
+      width: 120px;
+      max-width: 33%;
+      margin: 0;
+      padding: 8px 8px;
+      font-weight: 700;
+      font-size: 13px;
+      text-align: left;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      outline: none;
+      background: #fafafa;
+    }
+
+    .memoRow input.memoNoInp:focus {
+      border-color: rgba(37, 99, 235, 0.6);
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+    }
+
+    .memoRow input,
+    .memoRow textarea {
+      flex: 1;
+      margin: 0;
+      font-weight: 500;
+      font-size: 13px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      outline: none;
+      background: #fff;
+    }
+
+    .memoRow textarea {
+      resize: vertical;
+      /* 共有ページの textarea を メモページの input (border-box 33.5px) と同じ
+         初期高さに揃える (#9)。必要ならユーザーが縦ドラッグで伸ばせる。 */
+      min-height: 34px;
+      font-family: inherit;
+    }
+
+    .detailMemoWrap {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fafafa;
+      font-size: 13px;
+      line-height: 1.35;
+      color: var(--text);
+    }
+
+    @media print {
+      header {
+        display: none !important
+      }
+
+      body {
+        background: #fff;
+        color: #111
+      }
+
+      .noprint {
+        display: none !important
+      }
+
+      .container {
+        max-width: none;
+        padding: 0
+      }
+
+      main.container {
+        padding-bottom: 12px !important
+      }
+
+      .view {
+        display: none !important
+      }
+
+      #memoView.view.active {
+        display: block !important
+      }
+
+      #sharedView.view.active {
+        display: block !important
+      }
+
+      #detailView.view.active {
+        display: block !important
+      }
+
+      #settingsView.view.active {
+        display: block !important
+      }
+
+      #memoView .memoScroll,
+      #sharedView .memoScroll,
+      .viewScroll {
+        max-height: none !important;
+        overflow: visible !important;
+        border: none !important;
+        box-shadow: none !important
+      }
+
+      #memoView .memoRow,
+      #sharedView .memoRow {
+        break-inside: avoid
+      }
+    }
+
+    /* Clear targets chip-style layout */
+    .clearTargets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      align-items: center;
+    }
+
+    .clearTargets > div {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .roomInput {
+      width: 64px;
+      flex-shrink: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 4px 6px;
+      background: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      outline: none;
+      text-align: center;
+    }
+
+    .roomInput:focus {
+      border-color: rgba(37, 99, 235, 0.6);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+    }
+
+    .detailRoomInput {
+      width: 70px;
+      margin-right: 2px;
+    }
+
+    /* Memo/Shared edit-mode row: fixed columns to vertically align across rows */
+    .memoRow .nameDoctorRow {
+      flex: 0 0 auto;
+      width: auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .memoRow .nameDoctorRow > input.roomInput {
+      flex: 0 0 60px;
+      width: 60px;
+    }
+
+    .memoRow .nameDoctorRow > input.memoNoInp {
+      flex: 0 0 120px;
+      width: 120px;
+      max-width: none;
+    }
+
+    .memoRow .nameDoctorRow > .tagPicker {
+      flex: 0 0 auto;
+      width: 200px;
+    }
+
+    .memoRow .nameDoctorRow > .tagPicker .tagPickerTrigger {
+      width: 100%;
+      max-width: none;
+      justify-content: flex-start;
+      min-height: 32px;
+    }
+
+    @media (max-width: 640px) {
+      .memoRow .nameDoctorRow > input.roomInput {
+        flex: 0 0 48px;
+        width: 48px;
+      }
+      .memoRow .nameDoctorRow > input.memoNoInp {
+        flex: 0 0 88px;
+        width: 88px;
+      }
+      .memoRow .nameDoctorRow > .tagPicker {
+        width: 140px;
+      }
+    }
+
+    /* Patient name + tag picker row */
+    .nameDoctorRow {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .memoRow .memoNoBtn {
+      flex: 0 0 auto;
+      width: 120px;
+      max-width: 33%;
+      margin: 0;
+      padding: 8px 8px;
+      font-weight: 700;
+      font-size: 13px;
+      text-align: left;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--btn2);
+      cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      /* Allow vertical scrolling on the row even when the finger starts on the
+         button. Long-press still fires after 400ms of holding still; if the user
+         scrolls (moves >8px before that), the long-press is cancelled and
+         native scroll proceeds. */
+      touch-action: pan-y;
+      user-select: none;
+    }
+
+    .memoRow .memoNoBtn:hover {
+      background: #e0f2fe;
+      border-color: var(--blue-border);
+      color: #1e40af;
+    }
+
+    .memoRow .memoNoBtn:active {
+      transform: scale(0.97);
+    }
+
+    .memoRow .memoNoBtn.status-yellow {
+      background: var(--status-yellow-bg);
+      border-color: var(--status-yellow-bd);
+    }
+    .memoRow .memoNoBtn.status-green {
+      background: var(--status-green-bg);
+      border-color: var(--status-green-bd);
+    }
+    .memoRow .memoNoBtn.status-gray {
+      background: var(--status-gray-bg);
+      border-color: var(--status-gray-bd);
+      color: var(--status-gray-text);
+    }
+    .memoRow .memoNoBtn.status-blue {
+      background: var(--status-blue-bg);
+      border-color: var(--status-blue-bd);
+      color: var(--status-blue-text);
+    }
+
+    @media print {
+      .memoRow .memoNoBtn {
+        background: transparent !important;
+        border-color: var(--line) !important;
+        color: var(--text) !important;
+        box-shadow: none !important;
+      }
+    }
+
+    .dragGhost {
+      opacity: 0.5;
+      background: var(--btn2);
+      border: 2px dashed var(--focus);
+    }
+
+    .dragOver {
+      border: 2px dashed var(--focus) !important;
+      transform: scale(1.02);
+    }

@@ -1,0 +1,281 @@
+/* header.css — ヘッダー領域全般
+ * webWarningBanner, header common, qrScan overlay (header からスキャンを
+ * 起動するので近接配置), headerInner, appTitle*, appWsLabelInput, chipRow,
+ * chip。動的 selectors (data-view="memo" 等での active highlight) も含む。
+ */
+
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 14px 14px 26px;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: #ffffff;
+      border-bottom: 1px solid var(--line);
+    }
+
+    /* Web 版警告バー: PWA (standalone) でない時だけ表示。
+       目立つ橙系の薄色背景 + 細字。実データを Web 版に入れて困らないよう注意喚起。
+       sticky で上部固定、header の上にスタック。 */
+    .webWarningBanner {
+      position: sticky;
+      top: 0;
+      z-index: 11;
+      padding: 6px 12px;
+      background: #fef3c7;
+      color: #92400e;
+      border-bottom: 1px solid #d97706;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      line-height: 1.3;
+    }
+    /* バナーが表示されている時は header の sticky top をずらす必要がある。
+       実測ベースで JS が --headerH を管理しているので、ここは padding を持つだけ。 */
+
+    /* ── ヘッダー共通 (本番/テストともに白) ──
+       環境色はロゴバッジ (左上の丸) にだけ残す。
+       PWA テーマカラーも合わせて白に変更し、ステータスバーとの段差を消す。 */
+    /* ホームボタン (家)。旧ブランドロゴ枠を転用。button だが円形バッジ見た目を維持 */
+    .appLogo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: 0;
+      background: var(--blue);
+      color: #ffffff;
+      border-radius: 50%;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .appLogo:hover { filter: brightness(1.08); }
+
+    /* テスト版はグレー (本番=青)。取り違え防止の本命は黄色バナー、これは二次的目印 */
+    html[data-env="test"] .appLogo {
+      background: #475569;
+    }
+
+    /* WS 名の「切替可」を示す chevron */
+    .appWsChevron {
+      flex-shrink: 0;
+      color: var(--muted);
+      cursor: pointer;
+      margin-left: -2px;
+    }
+
+    header .appTitleInput,
+    header button.secondary {
+      color: var(--text);
+    }
+
+    header .appTitleInput:hover:not(:focus) {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    header .appTitleInput:not([readonly]):focus {
+      background: #fff;
+      color: var(--text);
+      border-color: rgba(37, 99, 235, 0.6);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+    }
+
+    /* ヘッダー右側のアイコンボタンは普段は囲み無し。
+       ホバー / 現在ビューのハイライトでだけ枠と背景を見せる。 */
+    header button.secondary {
+      background: transparent;
+      border-color: transparent;
+    }
+
+    header button.secondary:hover {
+      background: rgba(0, 0, 0, 0.06);
+      border-color: var(--line);
+      color: var(--text);
+    }
+
+    /* 現在ビューに対応するヘッダーボタンを淡い青でハイライト。
+       iconBtn.editActive と同じトーンに揃える。 */
+    html[data-view="memo"]     #headerMemoBtn,
+    html[data-view="shared"]   #headerSharedBtn,
+    html[data-view="settings"] #headerSettingsBtn {
+      background: var(--blue-light);
+      border-color: var(--blue-border);
+      color: var(--blue);
+    }
+
+    /* ── QR スキャナ・オーバーレイ ── */
+    .qrScanOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .qrScanPanel {
+      background: #111827;
+      color: #f9fafb;
+      border-radius: 12px;
+      max-width: 480px;
+      width: 100%;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .qrScanHead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      font-weight: 700;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .qrScanHead .iconBtn {
+      background: rgba(255, 255, 255, 0.12);
+      color: #f9fafb;
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .qrScanVideoWrap {
+      position: relative;
+      background: #000;
+      aspect-ratio: 1 / 1;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    .qrScanVideoWrap video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .qrScanReticle {
+      position: absolute;
+      inset: 12%;
+      border: 2px solid rgba(255, 255, 255, 0.9);
+      border-radius: 12px;
+      box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35);
+      pointer-events: none;
+    }
+
+    .qrScanStatus {
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #d1d5db;
+      text-align: center;
+    }
+
+    .qrScanStatus.scanErr {
+      color: #fca5a5;
+    }
+
+    .headerInner {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .appTitle {
+      display: flex;
+      flex-direction: column;
+      gap: 2px
+    }
+
+    .appTitleRow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .appTitleInput {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: 0.01em;
+      border: 1px solid transparent;
+      background: transparent;
+      padding: 2px 4px;
+      border-radius: 6px;
+      outline: none;
+      color: var(--text);
+      /* タイトル文字数に応じて自動幅。Chrome 123+/Safari 17.4+ 対応。
+         JS で size 属性も併用しているので古いブラウザでも幅は追従する。 */
+      field-sizing: content;
+      min-width: 3em;
+      max-width: 240px;
+    }
+
+    /* フォーカスの装飾は編集モード時だけ。readonly でフォーカスが残った場合に
+       白背景が居残るのを防ぐ。 */
+    .appTitleInput:not([readonly]):focus {
+      border-color: rgba(37, 99, 235, 0.6);
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+    }
+
+    .appTitleInput:hover:not(:focus) {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    /* 普段は readonly でホームボタン代替。クリック可能であることを示す。 */
+    .appTitleInput[readonly] {
+      cursor: pointer;
+    }
+
+    /* ワークスペース名は title より一段控えめ (medium weight + muted) */
+    .appWsLabelInput {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--muted, #475569);
+      max-width: 160px;
+    }
+    .appWsLabelInput[readonly] {
+      cursor: default;
+    }
+
+    /* title / ws name 間の "/" セパレータ */
+    .appTitleWsSeparator {
+      color: var(--muted, #94a3b8);
+      font-weight: 400;
+      font-size: 14px;
+      user-select: none;
+    }
+
+    .appTitle .sub {
+      font-size: 12px;
+      color: var(--muted)
+    }
+
+    .chipRow {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      background: #fafafa;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--muted);
+    }

@@ -1,0 +1,284 @@
+/* tags.css — タグ関連 UI 一式
+ * .tagPicker / .tagPickerTrigger / .tagPickerPopup / .tagPickerOpt
+ *   (汎用タグピッカー: 患者画面・メモ・共有・フォーマット編集で再利用)
+ * .tagChip (タグの読み取り専用 chip)
+ * .tagSettingChip / .tagSettingInput / .tagSettingAdd (設定画面のタグ chip)
+ * .tagPickerModeRow / .tagPickerModeBtn / .tagPickerClearBtn (AND/OR モード切替)
+ */
+
+    /* Tag picker */
+    .tagPicker {
+      position: relative;
+      flex: 0 1 auto;
+      min-width: 0;
+    }
+
+    .tagPickerFill {
+      flex: 1 1 auto;
+      width: 100%;
+    }
+
+    .tagPickerTrigger {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+      min-height: 32px;
+      max-width: 240px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 4px 6px;
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .tagPickerFill .tagPickerTrigger {
+      max-width: none;
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .tagPickerTrigger:hover {
+      border-color: rgba(37, 99, 235, 0.6);
+    }
+
+    /* ホーム・メモ・共有のフィルタ用タグピッカーは囲み無し。
+       タグ未選択時は単独の .iconBtn と同じ見た目になる。
+       詳細画面の患者タグピッカーはここでは触らない。 */
+    #homeTagFilterSlot .tagPickerTrigger,
+    #memoTagFilterSlot .tagPickerTrigger,
+    #sharedTagFilterSlot .tagPickerTrigger {
+      border-color: transparent;
+      background: transparent;
+    }
+    #homeTagFilterSlot .tagPickerTrigger:hover,
+    #memoTagFilterSlot .tagPickerTrigger:hover,
+    #sharedTagFilterSlot .tagPickerTrigger:hover {
+      background: rgba(0, 0, 0, 0.06);
+      border-color: var(--line);
+    }
+
+    .tagPickerIcon {
+      display: inline-flex;
+      align-items: center;
+      color: var(--muted);
+      line-height: 0;
+    }
+
+    .tagChip {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: var(--blue-light);
+      border: 1px solid var(--blue-border);
+      color: #1e40af;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    /* ステータスチップ: 文字でなく形マーク。色 + 形で示すため小さな正方形に近い形に */
+    .tagChip.statusChip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 4px;
+      border-radius: 5px;
+      line-height: 1;
+    }
+
+    .tagPickerPopup {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      min-width: 160px;
+      max-width: 240px;
+      max-height: 260px;
+      overflow-y: auto;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      z-index: 50;
+      padding: 4px;
+    }
+
+    .tagPickerOpt {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      cursor: pointer;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .tagPickerOpt:hover {
+      background: #f3f4f6;
+    }
+
+    .tagPickerOpt input {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    /* onItemClick あり picker (= format picker): 名前は独立クリック領域。
+       checkbox = お気に入りトグル / 名前タップ = 呼び出し と役割を分離する。
+       hover でクリック可能であることを示す。 */
+    .tagPickerOptName {
+      flex: 1 1 auto;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+    .tagPickerOptName:hover {
+      background: var(--status-blue-bg);
+      color: var(--status-blue-text);
+    }
+
+    /* launcher モード行 (= format ランチャー ☰): checkbox 無し。<button> の既定装飾を
+       打ち消して通常行と同じ見た目にする。行全体タップで onItemClick。 */
+    .tagPickerLauncherOpt {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 0;
+      font: inherit;
+      min-height: 0;
+    }
+
+    .tagPickerEmpty {
+      padding: 8px 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    /* makeAddTagWidget の wrapper。popup 内では上に余白を入れる。 */
+    .tagPickerPopup .tagAddWidget {
+      display: inline-flex;
+      margin-top: 6px;
+    }
+
+    /* AND/OR mode toggle inside filter popup */
+    .tagPickerModeRow {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 4px;
+      background: #fafafa;
+      border-radius: 6px 6px 0 0;
+    }
+    .tagPickerModeBtn {
+      flex: 1;
+      padding: 6px 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+    }
+    .tagPickerModeBtn.selected {
+      border-color: var(--focus);
+      background: var(--blue-light);
+      color: var(--focus);
+    }
+    .tagPickerClearBtn {
+      flex: 1;
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: #b91c1c;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .tagPickerClearBtn:hover {
+      border-color: #b91c1c;
+      background: #fef2f2;
+    }
+
+    /* Settings tag chip list */
+    .tagSettingList {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .tagSettingChip {
+      display: inline-flex;
+      align-items: stretch;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--blue-light);
+      overflow: hidden;
+      transition: border-color .15s;
+    }
+    .tagSettingChip.editing {
+      padding: 2px 4px;
+      border-color: rgba(37,99,235,0.6);
+      background: #fff;
+    }
+    .tagSettingChipLabel {
+      border: none;
+      background: transparent;
+      color: #1e40af;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 6px 10px;
+      cursor: pointer;
+      touch-action: none;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .tagSettingInput {
+      border: none;
+      outline: none;
+      background: transparent;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 4px 8px;
+      width: 120px;
+    }
+    .tagSettingAdd {
+      border: 1px dashed var(--line);
+      background: #fff;
+      color: var(--muted);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+    }
+    .tagSettingAdd:hover {
+      border-color: var(--focus);
+      color: var(--focus);
+    }
+
+    /* v7.7+: タグ・カテゴリ機能 (.tagPickerSection* / .tagGroupCard* /
+       .tagGroupHead / .tagGroupName / .tagGroupBody / .tagGroupAdd) は撤去。
+       再実装するなら git tag hospital-rounds-v7.6.1 を参照 */
+    .tagPickerTrigger.hasSelected {
+      border-color: rgba(37, 99, 235, 0.6);
+      background: var(--blue-light);
+    }

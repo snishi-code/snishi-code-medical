@@ -1,0 +1,88 @@
+{
+  "format": "hospital-rounds-bundle",
+  "schema": 1,
+  "appVersion": "1.0.0",
+  "exportedAt": "2026-05-20T10:00:00.000Z",
+  "owner": { "deviceId": "test-device", "label": "" },
+  "rosterId": "",
+  "sections": {
+    "meta": { "title": "回診テスト" },
+    "settings": {
+      "v": 1,
+      "defaults": { "s": "", "a": "著変なし", "p": "現行加療継続" },
+      "tags": ["A", "B"],
+      "deviceId": "test-device"
+    },
+    "patients": [
+      {
+        "pid": "test-pid-1",
+        "status": "yellow",
+        "name": "テスト1",
+        "room": "101",
+        "tags": ["A"],
+        "s": "発言テスト一",
+        "memo": "メモあ",
+        "shared": "共有あ",
+        "vitals": { "spo2": "98", "spo2_memo": "", "rr": "", "bp_sys": "", "bp_dia": "", "pr": "", "bt": "" },
+        "o": {
+          "general": { "normal": true, "note": "" },
+          "lung": { "normal": false, "note": "テストノート" },
+          "bowel": { "normal": false, "note": "" },
+          "abdomen": { "normal": false, "note": "" },
+          "meal": { "normal": false, "note": "" },
+          "elimination": { "normal": false, "note": "" }
+        },
+        "oFree": "",
+        "a": { "text": "評価テスト" },
+        "p": { "text": "計画テスト" },
+        "updatedAt": 1779200000000
+      },
+      {
+        "pid": "test-pid-2",
+        "status": "green",
+        "name": "テスト2",
+        "room": "102",
+        "tags": ["A", "B"],
+        "s": "",
+        "memo": "メモい",
+        "shared": "",
+        "vitals": { "spo2": "", "spo2_memo": "", "rr": "", "bp_sys": "", "bp_dia": "", "pr": "", "bt": "" },
+        "o": {
+          "general": { "normal": false, "note": "" },
+          "lung": { "normal": false, "note": "" },
+          "bowel": { "normal": false, "note": "" },
+          "abdomen": { "normal": false, "note": "" },
+          "meal": { "normal": false, "note": "" },
+          "elimination": { "normal": false, "note": "" }
+        },
+        "oFree": "",
+        "a": { "text": "" },
+        "p": { "text": "" },
+        "updatedAt": 1779200100000
+      },
+      {
+        "pid": "test-pid-3",
+        "status": "none",
+        "name": "テスト3",
+        "room": "203",
+        "tags": ["B"],
+        "s": "",
+        "memo": "",
+        "shared": "共有う",
+        "vitals": { "spo2": "", "spo2_memo": "", "rr": "", "bp_sys": "", "bp_dia": "", "pr": "", "bt": "" },
+        "o": {
+          "general": { "normal": false, "note": "" },
+          "lung": { "normal": false, "note": "" },
+          "bowel": { "normal": false, "note": "" },
+          "abdomen": { "normal": false, "note": "" },
+          "meal": { "normal": false, "note": "" },
+          "elimination": { "normal": false, "note": "" }
+        },
+        "oFree": "",
+        "a": { "text": "" },
+        "p": { "text": "" },
+        "updatedAt": 0
+      }
+    ]
+  }
+}

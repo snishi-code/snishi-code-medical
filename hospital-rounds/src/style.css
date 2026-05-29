@@ -1,0 +1,31 @@
+/* ============================================================================
+ * style.css — manifest only
+ *
+ * v7.5.0 で 1 つだった巨大 CSS を 9 ファイルに分割。各 *.css は単一トピックに
+ * 集中。順序は specificity の上書き関係を保つため:
+ *   1. base   — :root variables, body, button base, iconBtn
+ *   2. header — webWarningBanner, header common, qrScan overlay, headerInner
+ *   3. views  — .view, docsView, grid, patientBtn, detailHeaderRow
+ *   4. detail — detailTop / statusPick / statusBtn / detailTransferredBanner
+ *   5. formats — formatStrip / formatInput / formatEdit / formatListRow /
+ *                formatGroupToggle / qrFormatMenu
+ *   6. memo-shared — memoScroll / memoRow / roomInput / dragGhost / print
+ *   7. tags    — tagPicker / tagChip / tagSettingChip / tagGroupCard
+ *   8. settings — settingsInp / card / cardHead / clearTargetBtn / qrSecurity
+ *   9. popups   — popupMenuOverlay / popupMenu / popupCloseX / ioChooser /
+ *                 movePatient / actionMenu / menuIcons / ioDb*
+ *
+ * vite-plugin-singlefile が build 時に全 css を 1 つの <style> として
+ * index.html に inline 化するので、本番出力は分割前と同じ。
+ * 分割の目的は開発体験 (DX) の改善のみ。
+ * ============================================================================ */
+
+@import "./style/base.css";
+@import "./style/header.css";
+@import "./style/views.css";
+@import "./style/detail.css";
+@import "./style/formats.css";
+@import "./style/memo-shared.css";
+@import "./style/tags.css";
+@import "./style/settings.css";
+@import "./style/popups.css";

@@ -1,0 +1,69 @@
+{
+  "_comment": "アプリの初期値。ユーザーが何も触らずに保存ボタンを押した状態 = この JSON。プログラム内にベタ打ちせずここに集約してメンテナンスしやすくする。",
+
+  "formats": [
+    {
+      "name": "バイタル",
+      "panel": "O",
+      "joiner": ", ",
+      "labelSep": " ",
+      "titleWrap": "（）",
+      "tags": [],
+      "items": [
+        { "label": "BP",   "kind": "fraction", "unit": "mmHg" },
+        { "label": "P",    "kind": "number",   "unit": "bpm"  },
+        { "label": "SpO2", "kind": "number",   "unit": "%"    },
+        { "label": "RR",   "kind": "number",   "unit": ""     },
+        { "label": "T",    "kind": "number",   "unit": "℃"   }
+      ]
+    },
+    {
+      "name": "身体所見",
+      "panel": "O",
+      "joiner": "\n",
+      "labelSep": "：",
+      "titleWrap": "（）",
+      "tags": [],
+      "items": [
+        { "label": "General",  "kind": "text", "normal": "良好" },
+        { "label": "肺音",     "kind": "text", "normal": "明らかなラ音なし" },
+        { "label": "腸音",     "kind": "text", "normal": "正常" },
+        { "label": "腹部",     "kind": "text", "normal": "平坦軟、圧痛なし" },
+        { "label": "食事",     "kind": "text", "normal": "摂取良好" },
+        { "label": "排泄",     "kind": "text", "normal": "尿・便ともに特記なし" }
+      ]
+    }
+  ],
+
+  "_formatGroups_comment": "起動時に必ず 1 つ存在するデフォルトグループ。formatIndexes は上の formats 配列への index 参照 (ID は実行時生成のため index で束ねる)。defaultFormatIndexes は空欄補完に使う規定文 (パネル毎 最大 1)。expandFormatIndexes は本文上に展開(A)するフォーマット (残りはチップ=B)。",
+  "formatGroups": [
+    {
+      "name": "標準",
+      "isDefault": true,
+      "formatIndexes": [0, 1],
+      "defaultFormatIndexes": [],
+      "expandFormatIndexes": [0]
+    }
+  ],
+
+  "clearTargets": {
+    "memo": false,
+    "s": true,
+    "o": true,
+    "a": false,
+    "p": false,
+    "shared": false,
+    "statusYellow": true,
+    "statusGreen": true,
+    "statusGray": true,
+    "statusBlue": false
+  },
+
+  "tags": [],
+
+  "deviceId": "",
+
+  "_app": {
+    "patientCount": 50
+  }
+}

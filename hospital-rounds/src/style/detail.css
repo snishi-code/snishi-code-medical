@@ -1,0 +1,136 @@
+/* detail.css — 患者詳細画面の sticky ヘッダーとステータス選択
+ * .detailTop / .detailTitle / .statusPick / .statusBtn (色別) / .detailTopActions
+ * .detailTransferredBanner (転棟済バナー)
+ */
+
+    /* Detail */
+    .detailTop {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+      padding: 2px 8px;
+      background: #f8fafc;
+      border-radius: 10px;
+      /* ヘッダー (sticky top:0) の直下に貼り付く。--headerH は main.js が
+         実測してセット (モバイルでは内容 wrap で 68px+ になることがあるため)。 */
+      position: sticky;
+      top: var(--headerH, 56px);
+      z-index: 9;
+    }
+
+    .detailTitle {
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: 0.01em;
+    }
+
+    .statusPick {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .statusBtn {
+      border: 2px solid transparent;
+      padding: 0;
+      width: 44px;
+      height: 44px;
+      min-width: 44px;
+      min-height: 44px;
+      border-radius: 50%;
+      cursor: pointer;
+      flex-shrink: 0;
+      box-shadow: 0 1px 3px rgba(17, 24, 39, 0.12);
+      /* Center the inner shape glyph */
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 0;
+    }
+    .statusBtn > svg { display: block; }
+
+    .statusBtn.yellow {
+      background: var(--status-yellow-bg);
+      border-color: var(--status-yellow-bd);
+      color: var(--status-yellow-fg);
+    }
+
+    .statusBtn.green {
+      background: var(--status-green-bg);
+      border-color: var(--status-green-bd);
+      color: var(--status-green-fg);
+    }
+
+    .statusBtn.gray {
+      background: var(--status-gray-bg);
+      border-color: var(--status-gray-bd);
+      color: var(--status-gray-text);
+    }
+
+    .statusBtn.blue {
+      background: var(--status-blue-bg);
+      border-color: var(--status-blue-bd);
+      color: var(--status-blue-text);
+    }
+
+    .statusBtn.selected {
+      outline: 3px solid var(--focus);
+      outline-offset: 3px;
+    }
+
+    /* ステータススウォッチ (患者名の隣)。色+記号でステータスを示し、タップで選択 */
+    .detailStatusBtn {
+      flex: 0 0 auto;
+      width: 40px;
+      height: 40px;
+      min-width: 40px;
+      padding: 0;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .detailTopActions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      align-items: center;
+      min-width: 100px;
+    }
+
+    /* 文字ボタン (診察開始 / 編集): タッチしやすい幅・高さを確保 */
+    .homeStartBtn,
+    .editTextBtn {
+      min-height: 40px;
+      padding: 8px 16px;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    .homeStartBtn {
+      /* 診察開始は主要操作。少し強調 (青系) */
+      border-color: var(--blue-border);
+      background: var(--blue-light);
+      color: var(--blue);
+    }
+
+    /* 患者画面の「(移)転棟済」表示バナー (患者ヘッダ直下) */
+    .detailTransferredBanner {
+      margin: 6px 0 10px;
+      padding: 6px 10px;
+      background: #f3f4f6;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--muted, #6b7280);
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--text);
+    }

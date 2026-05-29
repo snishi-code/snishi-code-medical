@@ -1,0 +1,101 @@
+{
+  "format": "hospital-rounds-bundle",
+  "schema": 1,
+  "appVersion": "1.0.0",
+  "exportedAt": "2026-05-20T10:00:00.000Z",
+  "owner": { "deviceId": "test-admin-device", "label": "" },
+  "rosterId": "test-roster-001",
+  "sections": {
+    "meta": { "title": "回診テスト（管理）" },
+    "settings": {
+      "v": 1,
+      "defaults": { "s": "", "a": "著変なし", "p": "現行加療継続" },
+      "tags": ["A", "B"],
+      "adminEnabled": true,
+      "adminTerminal": true,
+      "deviceId": "test-admin-device"
+    },
+    "patients": [
+      {
+        "pid": "test-pid-1",
+        "status": "none",
+        "name": "テスト1",
+        "room": "101",
+        "tags": ["A"],
+        "s": "",
+        "memo": "",
+        "shared": "",
+        "vitals": { "spo2": "", "spo2_memo": "", "rr": "", "bp_sys": "", "bp_dia": "", "pr": "", "bt": "" },
+        "o": {
+          "general": { "normal": false, "note": "" },
+          "lung": { "normal": false, "note": "" },
+          "bowel": { "normal": false, "note": "" },
+          "abdomen": { "normal": false, "note": "" },
+          "meal": { "normal": false, "note": "" },
+          "elimination": { "normal": false, "note": "" }
+        },
+        "oFree": "",
+        "a": { "text": "" },
+        "p": { "text": "" },
+        "updatedAt": 1779200000000
+      },
+      {
+        "pid": "test-pid-2",
+        "status": "none",
+        "name": "テスト2",
+        "room": "102",
+        "tags": ["B"],
+        "s": "",
+        "memo": "",
+        "shared": "",
+        "vitals": { "spo2": "", "spo2_memo": "", "rr": "", "bp_sys": "", "bp_dia": "", "pr": "", "bt": "" },
+        "o": {
+          "general": { "normal": false, "note": "" },
+          "lung": { "normal": false, "note": "" },
+          "bowel": { "normal": false, "note": "" },
+          "abdomen": { "normal": false, "note": "" },
+          "meal": { "normal": false, "note": "" },
+          "elimination": { "normal": false, "note": "" }
+        },
+        "oFree": "",
+        "a": { "text": "" },
+        "p": { "text": "" },
+        "updatedAt": 0
+      }
+    ],
+    "history": {
+      "baseSnapshot": {
+        "ts": 1779100000000,
+        "patients": [
+          { "pid": "test-pid-1", "name": "", "room": "", "tags": [] },
+          { "pid": "test-pid-2", "name": "", "room": "", "tags": [] }
+        ],
+        "tags": []
+      },
+      "commits": [
+        {
+          "id": "commit-1",
+          "parent": null,
+          "ts": 1779150000000,
+          "deviceId": "test-admin-device",
+          "ops": [
+            { "type": "update", "pid": "test-pid-1", "field": "name", "value": "テスト1" },
+            { "type": "update", "pid": "test-pid-1", "field": "room", "value": "101" }
+          ]
+        },
+        {
+          "id": "commit-2",
+          "parent": "commit-1",
+          "ts": 1779180000000,
+          "deviceId": "test-admin-device",
+          "ops": [
+            { "type": "update", "pid": "test-pid-1", "field": "tags", "value": ["A"] },
+            { "type": "tag.add", "name": "A" },
+            { "type": "tag.add", "name": "B" }
+          ]
+        }
+      ],
+      "head": "commit-2"
+    }
+  }
+}

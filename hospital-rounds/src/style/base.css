@@ -1,0 +1,149 @@
+/* base.css — :root variables, body, container, button base, iconBtn
+ * このファイルは「土台」だけ。色変数 (:root) や global reset、共通の
+ * button/iconBtn base styles を含む。他の style/*.css はすべて base 側の
+ * CSS variables (--blue, --status-*, --line, etc.) を参照する想定。
+ */
+    :root {
+      --bg: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --shadow: 0 8px 22px rgba(17, 24, 39, 0.08);
+
+      --status-none-bg: #ffffff;
+      --status-none-bd: #e5e7eb;
+
+      --status-yellow-bg: #fef3c7;
+      --status-yellow-bd: #d97706;
+      --status-yellow-fg: #92400e;
+
+      --status-green-bg: #dcfce7;
+      --status-green-bd: #16a34a;
+      --status-green-fg: #166534;
+
+      --status-gray-bg: #9ca3af;
+      --status-gray-bd: #374151;
+      --status-gray-text: #111827;
+
+      --status-blue-bg: #bfdbfe;
+      --status-blue-bd: #2563eb;
+      --status-blue-text: #1e3a8a;
+
+      --btn: #111827;
+      --btnText: #ffffff;
+      --btn2: #f3f4f6;
+      --btn2Text: #111827;
+      --focus: var(--blue);
+
+      /* 医療カテゴリ主色 (CLAUDE.md 規約: hospital-rounds は青系)。
+         shared.css の :root と整合させる。直接 hex で書かず常にこの変数経由で使う */
+      --blue: #2563eb;          /* blue-600 */
+      --blue-light: var(--blue-light);    /* blue-50 */
+      --blue-border: var(--blue-border);   /* blue-200 */
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", "Meiryo", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+
+    /* ── button base styles ── */
+    button {
+      appearance: none;
+      border: 1px solid #111827;
+      background: var(--btn);
+      color: var(--btnText);
+      padding: 9px 12px;
+      border-radius: 10px;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      border-color: var(--line);
+      background: var(--btn2);
+      color: var(--btn2Text);
+      font-weight: 800;
+    }
+
+    button.danger {
+      border-color: #b91c1c;
+      background: #fef2f2;
+      color: #b91c1c;
+      font-weight: 800;
+    }
+
+    button.danger:focus {
+      outline: 2px solid #b91c1c;
+      outline-offset: 2px;
+    }
+
+    button:focus {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px
+    }
+
+    .iconBtn {
+      border: 1px solid transparent;
+      background: transparent;
+      padding: 5px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      cursor: pointer;
+      line-height: 0;
+      font-size: 0;
+      font-weight: normal;
+      flex-shrink: 0;
+      /* タッチ操作の最小ターゲット 44x44 px (Apple HIG / WCAG 2.5.5)。
+         アイコン (16-22 px) は中央にレンダリングされ、見た目は不変。
+         個別に override したい iconBtn は、より具体的なセレクタで上書き */
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    .iconBtn:hover {
+      background: rgba(0, 0, 0, 0.06);
+      border-color: var(--line);
+      color: var(--text);
+    }
+
+    .iconBtn.editActive {
+      color: var(--blue);
+      background: var(--blue-light);
+      border-color: var(--blue-border);
+    }
+
+    /* 控えめなトースト通知 (画面下中央)。保存完了など背景処理の合図。 */
+    .appToast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%) translateY(8px);
+      background: rgba(17, 24, 39, 0.92);
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 9999;
+    }
+
+    .appToast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }

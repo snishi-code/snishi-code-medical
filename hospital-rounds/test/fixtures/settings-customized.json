@@ -1,0 +1,33 @@
+{
+  "format": "hospital-rounds-bundle",
+  "schema": 1,
+  "appVersion": "1.0.0",
+  "exportedAt": "2026-05-20T10:00:00.000Z",
+  "owner": { "deviceId": "test-device", "label": "" },
+  "rosterId": "",
+  "sections": {
+    "meta": { "title": "回診（設定カスタム）" },
+    "settings": {
+      "v": 1,
+      "defaults": { "s": "カスタム既定S", "a": "カスタム既定A", "p": "カスタム既定P" },
+      "oRules": [
+        { "key": "general", "label": "General", "normalText": "良好", "placeholder": "", "fromAdmin": false },
+        { "key": "lung", "label": "肺音", "normalText": "明らかなラ音なし", "placeholder": "", "fromAdmin": false },
+        { "key": "custom1", "label": "カスタム1", "normalText": "正常", "placeholder": "テスト", "fromAdmin": false }
+      ],
+      "clearTargets": {
+        "memo": true, "s": false, "o": true, "a": false, "p": false, "shared": true,
+        "statusYellow": true, "statusGreen": false, "statusGray": false, "statusBlue": false
+      },
+      "tags": ["A", "B", "あ", "い"],
+      "adminEnabled": false,
+      "deviceId": "test-device",
+      "tagGroupingEnabled": true,
+      "tagGroups": [
+        { "id": "grp1", "name": "テスト群一", "mode": "single" },
+        { "id": "grp2", "name": "テスト群二", "mode": "multi" }
+      ],
+      "tagGroupAssign": { "A": "grp1", "B": "grp1", "あ": "grp2" }
+    }
+  }
+}
