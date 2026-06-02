@@ -337,7 +337,7 @@ await test("default formats include バイタル (number/fraction items) and 身
   const phys = fmts.find(f => f.name === "身体所見");
   assert.ok(vital, "バイタル exists");
   assert.equal(vital.panel, "O");
-  assert.equal(vital.pinned, true);
+  // (v8: フォーマットの pinned/isDefault は撤去。展開/規定文はグループ側で管理)
   // バイタル は kind=number / fraction (BP) で構成され、text はゼロのはず
   assert.ok(vital.items.length >= 5, "vital has >=5 items");
   assert.ok(vital.items.some(it => it.kind === "fraction"), "vital has a fraction item (BP)");
@@ -541,8 +541,8 @@ await test("PANEL/KIND/MODE enum tables are stable (bump WIRE_V if you add to th
   // 順序を変えると旧 wire の index が破壊される。本テストは「うっかり順序を
   // 変えないための歩哨」。enum を増やす時は WIRE_V を bump する必要がある。
   assert.deepEqual([...p.PANEL_BY_INDEX], ["S", "O", "A", "P"]);
-  assert.deepEqual([...p.KIND_BY_INDEX], ["text", "number", "fraction", "date"]);
-  // v7.7+: MODE_BY_INDEX (タグ・カテゴリ用) は撤去
+  // v8: "date" kind は撤去 (fraction に統合)。MODE_BY_INDEX (タグ・カテゴリ用) も撤去 (v7.7)
+  assert.deepEqual([...p.KIND_BY_INDEX], ["text", "number", "fraction"]);
 });
 
 await test("formatToWire / formatFromWire round-trip with tag dict", async () => {
@@ -568,8 +568,9 @@ await test("formatToWire / formatFromWire round-trip with tag dict", async () =>
   assert.equal(wire.n, "バイタル");
   assert.equal(wire.p, 1, "panel O = index 1");
   assert.deepEqual(wire.t, [1, 3], "tags use 1-based dict indices");
-  assert.equal(wire.pn, 1);
-  assert.equal(wire.d, undefined, "isDefault=false is omitted");
+  // v8: pn(pinned) / d(isDefault) は wire から撤去 (グループ側で管理)
+  assert.equal(wire.pn, undefined, "pinned is no longer emitted");
+  assert.equal(wire.d, undefined, "isDefault is no longer emitted");
   assert.equal(wire.i[0].k, 2, "kind fraction = index 2");
   assert.equal(wire.i[1].k, 1, "kind number = index 1");
   assert.equal(wire.i[2].k, 0, "kind text = index 0");
@@ -579,8 +580,7 @@ await test("formatToWire / formatFromWire round-trip with tag dict", async () =>
   assert.equal(restored.name, fmt.name);
   assert.equal(restored.panel, "O");
   assert.deepEqual(restored.tags, fmt.tags);
-  assert.equal(restored.pinned, true);
-  assert.equal(restored.isDefault, false);
+  // v8: pinned / isDefault は撤去済みなので復元されない
   assert.equal(restored.items.length, 3);
   assert.equal(restored.items[0].kind, "fraction");
   assert.equal(restored.items[1].kind, "number");
