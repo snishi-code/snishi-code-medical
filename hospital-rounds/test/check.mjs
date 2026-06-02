@@ -669,6 +669,52 @@ await test("qr-patient-list v3 round-trip via encodePatientList + decodePatientL
 });
 
 // ============================
+// 受信ボックス (recvMemo / recvShared) の永続化 — bundle meta 経由
+// v8.10.0 で追加。IDB 非依存の経路だけを検査する (storage は no-op)。
+// ============================
+section("recv box persistence (bundle meta)");
+
+await test("projectBundle carries recvMemo / recvShared in meta; parseBundle preserves", () => {
+  const appState = { title: "x", patients: [], recvMemo: "受信A", recvShared: "受信B" };
+  const projected = projectBundle({ appState, settings: { deviceId: "", tags: [] }, sections: [SECTION.META, SECTION.PATIENTS] });
+  const meta = getSection(parseBundle(projected), SECTION.META) || {};
+  assert.equal(meta.recvMemo, "受信A");
+  assert.equal(meta.recvShared, "受信B");
+});
+
+await test("projectBundle defaults recv fields to empty string when absent", () => {
+  const projected = projectBundle({ appState: { title: "x", patients: [] }, settings: { deviceId: "", tags: [] }, sections: [SECTION.META] });
+  const meta = getSection(parseBundle(projected), SECTION.META) || {};
+  assert.equal(meta.recvMemo, "");
+  assert.equal(meta.recvShared, "");
+});
+
+await test("normalizeLoaded reads recv fields from raw, defaults to empty", async () => {
+  const store = await freshStore();
+  const withVals = store.normalizeLoaded({ title: "t", patients: [], recvMemo: "M", recvShared: "S" });
+  assert.equal(withVals.recvMemo, "M");
+  assert.equal(withVals.recvShared, "S");
+  const without = store.normalizeLoaded({ patients: [] });
+  assert.equal(without.recvMemo, "");
+  assert.equal(without.recvShared, "");
+});
+
+await test("warm boot: recvMemo in seed bundle meta hydrates appState", async () => {
+  const bundle = projectBundle({ appState: { title: "t", patients: [], recvMemo: "持ち越し", recvShared: "" }, settings: { deviceId: "", tags: [] } });
+  const store = await freshStore({ bundle });
+  assert.equal(store.appState.recvMemo, "持ち越し");
+  assert.equal(store.appState.recvShared, "");
+});
+
+await test("setRecvContent updates appState; ignores unknown key", async () => {
+  const store = await freshStore();
+  store.setRecvContent("recvMemo", "hello");
+  assert.equal(store.appState.recvMemo, "hello");
+  store.setRecvContent("bogus", "x");
+  assert.equal(store.appState.bogus, undefined);
+});
+
+// ============================
 // Summary
 // ============================
 console.log("");
