@@ -254,7 +254,9 @@ export async function setUserActiveWorkspaceId(id, wsId) {
 }
 
 // ユーザーを削除し、そのユーザーに属する全病棟レコード + 設定レコードも消す。
-// 戻り値: 残ったユーザー配列。
+// 戻り値: { users: 残ったユーザー配列, workspaceIds: 削除した病棟 ID 配列 }。
+// workspaceIds は呼び出し側がスナップショット DB の purge に使う (PII を別 DB に
+// 残さないため。snapshots.purgeSnapshotsForWorkspaces を参照)。
 export async function deleteUser(id) {
   const db = await openDb();
   if (!db) return [];
@@ -283,7 +285,7 @@ export async function deleteUser(id) {
   // 3) 登録簿から除去
   const users = (await loadUsers()).filter(u => u.id !== id);
   await saveUsers(users);
-  return users;
+  return { users, workspaceIds: victimWsIds };
 }
 
 // ============================

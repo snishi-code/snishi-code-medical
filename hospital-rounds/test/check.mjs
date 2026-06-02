@@ -761,6 +761,98 @@ await test("showToast は DOM 不在環境 (テスト/データ層) でも例外
 });
 
 // ============================
+// snapshots purge & TTL (fake-indexeddb)
+// ============================
+// 既存テストは indexedDB 不在 (db=null 経路) のまま走らせ、ここから先だけ
+// fake-indexeddb を有効化する。グローバルに先付けすると ensureUsersInitialized が
+// 走って cold/warm boot の title 等の既存アサーションが変わってしまうため。
+section("snapshots purge & TTL (fake-indexeddb)");
+
+const { IDBFactory: FakeIDBFactory, IDBKeyRange: FakeIDBKeyRange } = await import("fake-indexeddb");
+globalThis.indexedDB = new FakeIDBFactory();
+globalThis.IDBKeyRange = FakeIDBKeyRange;
+
+const storageMod = await import(pathToFileURL(join(srcDir, "storage.js")).href);
+const snapshotsMod = await import(pathToFileURL(join(srcDir, "features", "snapshots.js")).href);
+const storeForIdb = await import(storeUrl);
+// 既存テストで memoize された db=null promise を破棄し、fake IDB を開かせる。
+storageMod._resetDbForTests();
+snapshotsMod._resetSnapshotsDbForTests();
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// 任意の t を持つスナップショットを DB へ直接投入する (TTL 失効の再現用)。
+function rawAddSnapshot(rec) {
+  return new Promise((res, rej) => {
+    const open = indexedDB.open("hospital-rounds-snapshots", 1);
+    open.onupgradeneeded = () => {
+      const db = open.result;
+      if (!db.objectStoreNames.contains("snapshots")) {
+        const st = db.createObjectStore("snapshots", { keyPath: "id", autoIncrement: true });
+        st.createIndex("wsId", "wsId", { unique: false });
+        st.createIndex("t", "t", { unique: false });
+      }
+    };
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction("snapshots", "readwrite");
+      const r = tx.objectStore("snapshots").add(rec);
+      tx.oncomplete = () => res(r.result);
+      tx.onerror = () => rej(tx.error);
+    };
+    open.onerror = () => rej(open.error);
+  });
+}
+
+await test("deleteUser がそのユーザーの病棟スナップショットを purge できる (PII 残留防止)", async () => {
+  const uid = await storageMod.createUser("PurgeUser");
+  const wsId = storageMod.newWorkspaceId();
+  storageMod.setCurrentUserId(uid);
+  storageMod.setActiveWorkspaceId(wsId);
+  // 本体 DB に病棟レコードを作る (deleteUser が userId で拾えるように)
+  await storageMod.saveBundle(
+    { format: "hospital-rounds-bundle", sections: { meta: { title: "" }, patients: [] } },
+    wsId, "Ward A", uid,
+  );
+  // この病棟のスナップショットを 1 枚撮る (患者 PII を含む)
+  storeForIdb.setAppState({ v: 3, title: "", patients: [{ ...storeForIdb.makeDefaultPatient(), name: "PII太郎", status: "yellow" }] });
+  await snapshotsMod.captureSnapshot(snapshotsMod.REASON.CLEAR);
+  let rp = await snapshotsMod.listRestorePoints(wsId);
+  assert.equal(rp.length, 1, "撮影直後はスナップショットが 1 枚ある");
+
+  // ユーザー削除 → 返ってきた wsId で purge (settings-view と同じ流れ)
+  const res = await storageMod.deleteUser(uid);
+  assert.ok(Array.isArray(res.workspaceIds) && res.workspaceIds.includes(wsId), "deleteUser が削除した病棟 ID を返す");
+  const purged = await snapshotsMod.purgeSnapshotsForWorkspaces(res.workspaceIds);
+  assert.ok(purged >= 1, "purge が 1 件以上削除する");
+  rp = await snapshotsMod.listRestorePoints(wsId);
+  assert.equal(rp.length, 0, "purge 後はスナップショットが残らない");
+});
+
+await test("失効 (TTL 超過) スナップショットは候補に出ず・復元もされない (読み出し時 TTL 防御)", async () => {
+  const wsId = storageMod.newWorkspaceId();
+  storageMod.setActiveWorkspaceId(wsId);
+  // 間引き (pruneWs/initSnapshots) を介さず DB へ直接投入する。captureSnapshot 経由だと
+  // 撮影時の prune が失効分を先に消してしまい「読み出し時防御」単体を検証できないため。
+  const oldId = await rawAddSnapshot({ wsId, t: Date.now() - 15 * DAY_MS, reason: "clear", title: "", patients: [{ name: "古いPII" }], sig: 0 });
+  const freshId = await rawAddSnapshot({ wsId, t: Date.now(), reason: "clear", title: "", patients: [{ name: "新" }], sig: 1 });
+
+  const rps = await snapshotsMod.listRestorePoints(wsId);
+  assert.ok(rps.every(r => r.id !== oldId), "失効スナップショットは一覧に出ない");
+  assert.ok(rps.some(r => r.id === freshId), "新鮮なスナップショットは一覧に出る");
+
+  const restore = await snapshotsMod.restoreSnapshot(oldId);
+  assert.equal(restore.ok, false, "失効スナップショットは復元されない");
+  assert.equal(restore.reason, "expired", "復元拒否の理由は expired");
+});
+
+await test("purgeSnapshotsForWorkspaces は空配列・未知 ID で安全に 0 を返す", async () => {
+  assert.equal(await snapshotsMod.purgeSnapshotsForWorkspaces([]), 0);
+  assert.equal(await snapshotsMod.purgeSnapshotsForWorkspaces(["ws_does_not_exist"]), 0);
+  assert.equal(await snapshotsMod.purgeSnapshotsForWorkspaces(null), 0);
+});
+
+// ============================
 // Summary
 // ============================
 console.log("");
