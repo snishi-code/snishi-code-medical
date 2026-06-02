@@ -471,9 +471,8 @@ function buildTextRow(host, item, opts = {}) {
   setupTextInput(val);
   if (opts.value != null) val.value = String(opts.value);
   if (opts.onInput) val.addEventListener("input", () => opts.onInput(val.value));
-  row.appendChild(val);
 
-  // 正常文がある場合に勧める小さなチェックアイコンボタン (旧 v6.0.0 同様、行内右端)
+  // 正常文ボタン (チェック)。ラベルと入力欄の間に置く (ラベルのすぐ右が自然)。
   const normalBtn = document.createElement("button");
   normalBtn.type = "button";
   normalBtn.className = "formatInputNormalBtn";
@@ -488,6 +487,7 @@ function buildTextRow(host, item, opts = {}) {
     if (opts.onInput) opts.onInput(val.value);
   });
   row.appendChild(normalBtn);
+  row.appendChild(val);
 
   host.appendChild(row);
   return { item, kind: "text", val };
