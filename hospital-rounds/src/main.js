@@ -11,7 +11,7 @@ import {
   normalizeLoaded,
   requestStoragePersistence,
   initStore, flushSavePending, setOnWorkspaceChanged, setOnUserChanged,
-  setMarkUpdatedHandler,
+  setMarkUpdatedHandler, setRecvContent,
 } from "./store.js";
 
 import { renderHome, updateCountChip } from "./views/home.js";
@@ -286,20 +286,55 @@ setOnSettingsApplied(() => refreshPatientUI());
 
 // v8.7+: 部屋番号順は自動 (各 view の描画時に ensureRoomOrder)。手動ソートボタンは撤去。
 
-// 共有画面：×でそのまま閉じる（受信内容を続きでスキャンするケースに備え確認なし）
-document.getElementById("sharedPasteCloseBtn")?.addEventListener("click", () => {
-  document.getElementById("sharedPasteCard")?.classList.remove("active");
-});
-
-// メモ画面：受信メモはスキャン直後のスクラッチ表示で、閉じると内容も破棄する。
-// 誤タップでスキャン結果を失わないよう確認を入れる。
-document.getElementById("memoPasteCloseBtn")?.addEventListener("click", () => {
-  const area = document.getElementById("memoPasteArea");
-  const hasContent = !!(area && String(area.value || "").trim());
-  if (hasContent && !confirm(t("main.recvMemo.close.confirm"))) return;
-  document.getElementById("memoPasteCard")?.classList.remove("active");
-  if (area) area.value = "";
-});
+// 受信ボックス (プロブレムリスト/共有) の共通配線。挙動を両画面で統一する:
+//   閉じる = 隠すだけ (内容は保持。誤タップで受信結果を失わない)
+//   消去   = 確認の上で内容を空に (永続データなので「消去」)
+//   開く   = 再表示 (閉じたあと中身が残っているときだけ「受信ボックスを開く」が出る)
+// 受信ボックスは病棟単位で永続化 (appState.recvMemo / recvShared)。医師が後で
+// 転記する運用に合わせ、消去するまで残す。受信(dump)も input イベント経由で保存される。
+const _recvCards = [];
+function wireRecvCard({ cardId, areaId, closeBtnId, clearBtnId, openBtnId, stateKey }) {
+  const card = document.getElementById(cardId);
+  const area = document.getElementById(areaId);
+  const openBtn = document.getElementById(openBtnId);
+  const syncOpenBtn = () => {
+    if (!openBtn) return;
+    const closed = !card?.classList.contains("active");
+    const hasContent = !!(area && String(area.value || "").trim());
+    openBtn.style.display = (closed && hasContent) ? "" : "none";
+  };
+  // 永続値を textarea へ反映 (起動時・病棟/ユーザー切替時)。カードは自動で開かない。
+  const reload = () => {
+    if (area) area.value = appState[stateKey] || "";
+    card?.classList.remove("active");
+    syncOpenBtn();
+  };
+  document.getElementById(closeBtnId)?.addEventListener("click", () => {
+    card?.classList.remove("active");
+    syncOpenBtn();
+  });
+  document.getElementById(clearBtnId)?.addEventListener("click", () => {
+    if (area && String(area.value || "").trim() && !confirm(t("recv.clear.confirm"))) return;
+    if (area) area.value = "";
+    setRecvContent(stateKey, "");
+    syncOpenBtn();
+  });
+  openBtn?.addEventListener("click", () => {
+    card?.classList.add("active");
+    syncOpenBtn();
+    area?.focus();
+  });
+  // 入力 / 受信(dump) のたびに永続化 + 開くボタン同期
+  area?.addEventListener("input", () => {
+    setRecvContent(stateKey, area.value);
+    syncOpenBtn();
+  });
+  reload();
+  _recvCards.push({ reload });
+}
+function reloadRecvCards() { for (const c of _recvCards) c.reload(); }
+wireRecvCard({ cardId: "memoPasteCard", areaId: "memoPasteArea", closeBtnId: "memoPasteCloseBtn", clearBtnId: "memoPasteClearBtn", openBtnId: "memoRecvOpenBtn", stateKey: "recvMemo" });
+wireRecvCard({ cardId: "sharedPasteCard", areaId: "sharedPasteArea", closeBtnId: "sharedPasteCloseBtn", clearBtnId: "sharedPasteClearBtn", openBtnId: "sharedRecvOpenBtn", stateKey: "recvShared" });
 
 // Paste-card camera handles continuation scans (text accumulates in the area).
 wireScanButton("sharedPasteScanBtn", "sharedPasteArea");
@@ -371,6 +406,7 @@ setOnWorkspaceChanged(() => {
   // タイトル (= 現ユーザー名、ws 切替では不変) の表示同期 + ws label を更新
   refreshAppUserName();
   refreshAppWsLabel();
+  reloadRecvCards(); // 受信ボックスは病棟単位なので切替で再読込
   logEvent(EVENT.WS_SWITCH);
 });
 
@@ -380,6 +416,7 @@ setOnUserChanged(() => {
   refreshPatientUI();
   refreshAppUserName();
   refreshAppWsLabel();
+  reloadRecvCards(); // 受信ボックスはユーザー/病棟単位なので切替で再読込
   logEvent(EVENT.USER_SWITCH);
 });
 

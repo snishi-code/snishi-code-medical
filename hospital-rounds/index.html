@@ -66,7 +66,7 @@
         </div>
       </div>
       <div class="chipRow">
-        <button class="secondary" id="headerMemoBtn" type="button" data-i18n-title="header.memo" data-i18n-aria="header.memo" title="メモ" aria-label="メモ">
+        <button class="secondary" id="headerMemoBtn" type="button" data-i18n-title="header.memo" data-i18n-aria="header.memo" title="プロブレムリスト" aria-label="プロブレムリスト">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         </button>
         <button class="secondary" id="headerSharedBtn" type="button" data-i18n-title="header.shared" data-i18n-aria="header.shared" title="共有" aria-label="共有">
@@ -125,17 +125,18 @@
     </section>
 
     <!-- Memo view -->
-    <section class="view" id="memoView" aria-label="メモ一覧">
+    <section class="view" id="memoView" aria-label="プロブレムリスト一覧">
       <div class="detailTop noprint">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <button class="secondary editTextBtn" id="memoEditBtn" type="button" data-i18n="common.edit" data-i18n-title="memo.edit.tooltip" data-i18n-aria="memo.edit.tooltip" title="編集">編集</button>
+          <button class="secondary" id="memoRecvOpenBtn" type="button" data-i18n="recv.open" style="display:none;">受信ボックスを開く</button>
           <span id="memoTagFilterSlot"></span>
         </div>
         <div class="detailTopActions">
           <button class="iconBtn helpLinkBtn" data-help-page="04_メモ・共有" type="button" title="メモ画面の説明" aria-label="メモ画面の説明">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </button>
-          <button class="iconBtn" id="memoShowQrBtn" type="button" data-i18n-title="memo.qr.show" data-i18n-aria="memo.qr.show" title="メモQR表示" aria-label="メモQR表示">
+          <button class="iconBtn" id="memoShowQrBtn" type="button" data-i18n-title="memo.qr.show" data-i18n-aria="memo.qr.show" title="プロブレムリストQR表示" aria-label="プロブレムリストQR表示">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
           </button>
         </div>
@@ -159,13 +160,15 @@
       </div>
       <div class="card qrWrap" id="memoPasteCard">
         <div class="cardHead">
-          <div class="label" data-i18n="memo.recv.label">受信メモ</div>
-          <button class="iconBtn" id="memoPasteCloseBtn" type="button" data-i18n-title="common.close" data-i18n-aria="common.close" title="閉じる" aria-label="閉じる">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+          <div class="label" data-i18n="recv.label">受信ボックス</div>
         </div>
         <div class="cardBody">
+          <div class="movePatientHint" data-i18n="recv.hint"></div>
           <textarea id="memoPasteArea" style="min-height: 160px;"></textarea>
+          <div class="recvActions" style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">
+            <button class="secondary" id="memoPasteClearBtn" type="button" data-i18n="recv.clear">消去する</button>
+            <button class="secondary" id="memoPasteCloseBtn" type="button" data-i18n="common.close">閉じる</button>
+          </div>
         </div>
       </div>
       <div class="memoScroll" id="memoListHost"></div>
@@ -176,6 +179,7 @@
       <div class="detailTop noprint">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <button class="secondary editTextBtn" id="sharedEditBtn" type="button" data-i18n="common.edit" data-i18n-title="shared.edit.tooltip" data-i18n-aria="shared.edit.tooltip" title="編集">編集</button>
+          <button class="secondary" id="sharedRecvOpenBtn" type="button" data-i18n="recv.open" style="display:none;">受信ボックスを開く</button>
           <span id="sharedTagFilterSlot"></span>
         </div>
         <div class="detailTopActions">
@@ -189,21 +193,20 @@
       </div>
       <div class="card qrWrap" id="sharedPasteCard">
         <div class="cardHead">
-          <div class="label" data-i18n="shared.recv.label">受信メモ</div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <div class="qrHint" data-i18n="shared.paste.hint">他端末で読み取ったテキストをここに貼り付けて確認できます</div>
-            <button class="iconBtn" id="sharedPasteCloseBtn" type="button" data-i18n-title="common.close" data-i18n-aria="common.close" title="閉じる" aria-label="閉じる">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
+          <div class="label" data-i18n="recv.label">受信ボックス</div>
         </div>
         <div class="cardBody">
+          <div class="movePatientHint" data-i18n="recv.hint"></div>
           <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
             <button class="iconBtn" id="sharedPasteScanBtn" type="button" data-i18n-title="qr.scan.tooltip" data-i18n-aria="qr.scan.tooltip" title="カメラで QR を読む" aria-label="カメラで QR を読む">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             </button>
           </div>
           <textarea id="sharedPasteArea" style="min-height: 160px;"></textarea>
+          <div class="recvActions" style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">
+            <button class="secondary" id="sharedPasteClearBtn" type="button" data-i18n="recv.clear">消去する</button>
+            <button class="secondary" id="sharedPasteCloseBtn" type="button" data-i18n="common.close">閉じる</button>
+          </div>
         </div>
       </div>
 
@@ -493,7 +496,7 @@
             <button class="iconBtn" id="qrNextBtn" type="button" data-i18n-title="qr.next.tooltip" data-i18n-aria="qr.next.tooltip" title="次" aria-label="次">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
-            <button class="iconBtn" id="detailScanBtn" type="button" title="カメラでQRを読み取りメモに追記" aria-label="カメラでQRを読み取りメモに追記">
+            <button class="iconBtn" id="detailScanBtn" type="button" data-i18n-title="detail.scan.append" data-i18n-aria="detail.scan.append" title="カメラでQRを読み取りプロブレムリストに追記" aria-label="カメラでQRを読み取りプロブレムリストに追記">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             </button>
           </div>
@@ -508,7 +511,7 @@
       <div class="viewScroll">
       <div class="card" id="detailMemoCard">
         <div class="cardHead">
-          <div class="label" style="display:flex;align-items:center;" title="メモ" aria-label="メモ">
+          <div class="label" style="display:flex;align-items:center;" data-i18n-title="header.memo" data-i18n-aria="header.memo" title="プロブレムリスト" aria-label="プロブレムリスト">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           </div>
         </div>

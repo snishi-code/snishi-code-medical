@@ -353,6 +353,8 @@ export function normalizeLoaded(raw) {
     v: 3,
     title: (raw && typeof raw.title === "string") ? raw.title : t("app.title"),
     patients: normalizePatientArray(arr),
+    recvMemo: (raw && typeof raw.recvMemo === "string") ? raw.recvMemo : "",
+    recvShared: (raw && typeof raw.recvShared === "string") ? raw.recvShared : "",
   };
 }
 
@@ -362,7 +364,7 @@ export function normalizeLoaded(raw) {
 // ============================
 
 export let settings = defaultSettings();
-export let appState = { v: 3, title: t("app.title"), patients: normalizePatientArray(null) };
+export let appState = { v: 3, title: t("app.title"), patients: normalizePatientArray(null), recvMemo: "", recvShared: "" };
 export let selectedNo = 1;
 
 export function setAppState(s) { appState = s; }
@@ -383,12 +385,23 @@ export function getCurrentUserName() { return _currentUserName; }
 // がユーザーストアから読み込む。bundle の settings section は無視。
 function applyBundleToLive(bundle) {
   const sPatients = bundle ? getSection(bundle, SECTION.PATIENTS) : null;
+  const meta = bundle ? getSection(bundle, SECTION.META) : null;
   // title = 現ユーザー名。bundle.sections.meta.title は出力時の体裁のためだけに保持。
   appState = {
     v: 3,
     title: _currentUserName || t("app.title"),
     patients: normalizePatientArray(Array.isArray(sPatients) ? sPatients : null),
+    // 受信ボックス (病棟単位で永続化)
+    recvMemo: (meta && typeof meta.recvMemo === "string") ? meta.recvMemo : "",
+    recvShared: (meta && typeof meta.recvShared === "string") ? meta.recvShared : "",
   };
+}
+
+// 受信ボックスの内容を更新して永続化する (caller は UI 同期の責務)。
+export function setRecvContent(key, value) {
+  if (key !== "recvMemo" && key !== "recvShared") return;
+  appState[key] = String(value || "");
+  scheduleSave();
 }
 
 // 現ユーザー名を IDB / キャッシュから最新化する。
