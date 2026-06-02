@@ -12,7 +12,8 @@
 // 動作:
 //   - PWA (standalone) として今回初めて起動したか判定 (= MARKER が未設定)
 //   - そうであれば overlay を表示し、ユーザに 2 択を提示:
-//       「削除して開始」 → IDB を削除 + 関連 localStorage を削除 → リロード
+//       「削除して開始」 → 全アプリデータ (本体/eventlog/snapshots の 3 IDB +
+//                          全 localStorage) を削除して完全に初期状態へ → リロード
 //       「続きから使う」 → 何もせず MARKER だけ書く
 //   - 2 回目以降の起動では何もしない
 //
@@ -20,9 +21,14 @@
 //   main.js から、await initStore() の "前" に await maybeShowPwaInitDialog()
 //   を呼ぶ。「削除して開始」を選んだ場合は内部でリロードするので、戻ってこない。
 
-import { STORAGE_KEYS } from "../storage.js";
-
 const MARKER = "hospital_rounds_standalone_initialized";
+
+// アプリのデータが使う識別子の prefix。
+//   - localStorage キーは "hospital_rounds_" (アンダースコア) で統一
+//   - IndexedDB 名は "hospital-rounds" (ハイフン) で統一 (本体/eventlog/snapshots)
+// 「完全に初期化」はこの prefix で一掃する (origin 共有なので全消しは他アプリを巻き込む)。
+const LS_PREFIX = "hospital_rounds_";
+const DB_PREFIX = "hospital-rounds";
 
 // PWA standalone モードかを判定。
 //   - 標準的なブラウザ: matchMedia('(display-mode: standalone)')
@@ -51,16 +57,41 @@ function dropIndexedDb(dbName) {
   });
 }
 
-// アプリ関連の localStorage キーをすべて削除 (legacy 含む)。
+// アプリの localStorage キーをすべて削除する。origin 共有のため localStorage.clear()
+// は他アプリを巻き込むので使わず、LS_PREFIX のキーだけを一掃する (将来キーが増えても
+// prefix が揃っていれば自動でカバーされる)。
 function clearAppLocalStorage() {
   if (typeof localStorage === "undefined") return;
-  const keysToRemove = [
-    STORAGE_KEYS.activeKey,
-    MARKER,
-  ];
-  for (const k of keysToRemove) {
+  // 反復中の removeItem で index がずれないよう、対象キーを先に集めてから消す。
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(LS_PREFIX)) keys.push(k);
+  }
+  for (const k of keys) {
     try { localStorage.removeItem(k); } catch (_) { /* ignore */ }
   }
+}
+
+// アプリの全 IndexedDB (本体 + eventlog + snapshots) を削除する。
+// 既知の 3 つを必ず対象にし、databases() が使えれば DB_PREFIX の他 DB も拾う
+// (将来 DB が増えた時の取りこぼし防止)。存在しない DB の削除は無害な no-op。
+async function dropAllAppIndexedDbs() {
+  if (typeof indexedDB === "undefined") return;
+  const names = new Set([
+    DB_PREFIX,                    // "hospital-rounds"        本体 (病棟/ユーザー/設定)
+    `${DB_PREFIX}-eventlog`,      // 無記名 利用ログ
+    `${DB_PREFIX}-snapshots`,     // スナップショット (患者 PII 含む)
+  ]);
+  try {
+    if (typeof indexedDB.databases === "function") {
+      const dbs = await indexedDB.databases();
+      for (const d of (dbs || [])) {
+        if (d && typeof d.name === "string" && d.name.startsWith(DB_PREFIX)) names.add(d.name);
+      }
+    }
+  } catch (_) { /* databases() 非対応環境は既知の 3 つだけで続行 */ }
+  await Promise.all([...names].map(dropIndexedDb));
 }
 
 // 初回起動なら overlay を出してユーザに尋ねる。それ以外なら no-op。
@@ -87,7 +118,7 @@ export async function maybeShowPwaInitDialog() {
     };
     const onClear = async () => {
       cleanup();
-      await dropIndexedDb(STORAGE_KEYS.db);
+      await dropAllAppIndexedDbs();
       clearAppLocalStorage();
       // 削除完了後、まっさらな状態でリロード。MARKER も削除済みなので
       // 次回起動でまた出てしまうが、リロード後は MARKER をすぐ立てる:
