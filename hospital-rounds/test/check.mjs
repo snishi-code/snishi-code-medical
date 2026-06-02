@@ -853,6 +853,138 @@ await test("purgeSnapshotsForWorkspaces は空配列・未知 ID で安全に 0 
 });
 
 // ============================
+// patient move (fake-indexeddb)
+// ============================
+section("patient move (fake-indexeddb)");
+
+const moveMod = await import(pathToFileURL(join(srcDir, "features", "move-patient.js")).href);
+
+// 有効な (parseBundle が通る) 空病棟を作って id を返すヘルパ。
+async function makeEmptyWorkspace(label) {
+  const id = storageMod.newWorkspaceId();
+  const bundle = projectBundle({ appState: { v: 3, title: "", patients: [] }, settings: storeForIdb.settings, sections: [SECTION.META, SECTION.PATIENTS] });
+  await storageMod.saveBundle(bundle, id, label);
+  return id;
+}
+
+await test("movePatient: 元はGRAY+transferredマーカー / 移動先は新pid+BLUEコピー", async () => {
+  const srcWs = storageMod.newWorkspaceId();
+  storageMod.setActiveWorkspaceId(srcWs);
+  const destId = await makeEmptyWorkspace("Dest Ward");
+  storeForIdb.setAppState({ v: 3, title: "Doc", patients: [
+    { ...storeForIdb.makeDefaultPatient(), name: "移動太郎", room: "301", status: "yellow", s: "主訴あり" },
+    { ...storeForIdb.makeDefaultPatient(), name: "残留花子", room: "302" },
+  ] });
+  const srcPidBefore = storeForIdb.appState.patients[0].pid;
+
+  const moved = await moveMod.movePatients([0], destId, "Dest Ward");
+  assert.equal(moved, 1, "1 件移動");
+
+  // 元: マーカー + GRAY、name/room は無傷
+  const src0 = storeForIdb.appState.patients[0];
+  assert.ok(src0.transferredAt > 0, "元患者に transferredAt が立つ");
+  assert.equal(src0.transferredTo, "Dest Ward", "移動先 label を記録");
+  assert.equal(src0.status, "gray", "元患者は GRAY");
+  assert.equal(src0.name, "移動太郎", "元の name は無傷");
+  // 隣の患者は無関係
+  assert.equal(storeForIdb.appState.patients[1].transferredAt, 0, "別患者は触らない");
+
+  // 移動先: 新 pid + BLUE + マーカー無し + 内容コピー
+  const destB = await storageMod.loadBundle(destId);
+  const destPatients = getSection(destB, SECTION.PATIENTS);
+  const copy = destPatients.find(p => p.name === "移動太郎");
+  assert.ok(copy, "移動先に患者がコピーされる");
+  assert.equal(copy.status, "blue", "移動先コピーは BLUE");
+  assert.equal(copy.transferredAt, 0, "移動先コピーにマーカーは無い");
+  assert.notEqual(copy.pid, srcPidBefore, "移動先コピーは新 pid");
+  assert.equal(copy.s, "主訴あり", "臨床内容がコピーされる");
+});
+
+await test("movePatients: 移動済み患者は再移動されない (増殖防止)", async () => {
+  const srcWs = storageMod.newWorkspaceId();
+  storageMod.setActiveWorkspaceId(srcWs);
+  const destId = await makeEmptyWorkspace("Dest2");
+  storeForIdb.setAppState({ v: 3, title: "Doc", patients: [
+    { ...storeForIdb.makeDefaultPatient(), name: "一度だけ", status: "yellow" },
+  ] });
+  assert.equal(await moveMod.movePatients([0], destId, "Dest2"), 1, "初回は移動できる");
+  // 2 回目: 既に transferred なのでスキップ → 0 件
+  assert.equal(await moveMod.movePatients([0], destId, "Dest2"), 0, "移動済みは再移動されない");
+  const destPatients = getSection(await storageMod.loadBundle(destId), SECTION.PATIENTS);
+  assert.equal(destPatients.filter(p => p.name === "一度だけ").length, 1, "移動先で増殖しない");
+});
+
+await test("movePatients: 同一ワークスペースへの移動は拒否", async () => {
+  const srcWs = storageMod.newWorkspaceId();
+  storageMod.setActiveWorkspaceId(srcWs);
+  storeForIdb.setAppState({ v: 3, title: "", patients: [{ ...storeForIdb.makeDefaultPatient(), name: "x", status: "yellow" }] });
+  await assert.rejects(() => moveMod.movePatients([0], srcWs, "self"), /same workspace/);
+});
+
+await test("moveToNewWorkspace: コピーだけの新規病棟を作り元を移動済みにする", async () => {
+  const srcWs = storageMod.newWorkspaceId();
+  storageMod.setActiveWorkspaceId(srcWs);
+  storageMod.setCurrentUserId("usr_move_test");
+  storeForIdb.setAppState({ v: 3, title: "", patients: [{ ...storeForIdb.makeDefaultPatient(), name: "新棟太郎", status: "yellow" }] });
+  const n = await moveMod.moveToNewWorkspace([0], "新病棟");
+  assert.equal(n, 1);
+  assert.ok(storeForIdb.appState.patients[0].transferredAt > 0, "元患者は移動済み");
+  // 作成された新病棟を探す
+  const all = await storageMod.listAllWorkspaces();
+  const created = all.find(w => w.label === "新病棟");
+  assert.ok(created, "新病棟が作成される");
+  const pts = getSection(await storageMod.loadBundle(created.id), SECTION.PATIENTS);
+  assert.equal(pts.length, 1, "新病棟にはコピーのみ (空 50 患者は作らない)");
+  assert.equal(pts[0].name, "新棟太郎");
+  assert.equal(pts[0].status, "blue");
+});
+
+await test("isPatientTransferred / decorateTransferredName (純粋関数)", async () => {
+  assert.equal(moveMod.isPatientTransferred({ transferredAt: 0 }), false);
+  assert.equal(moveMod.isPatientTransferred({ transferredAt: 123 }), true);
+  assert.equal(moveMod.decorateTransferredName("田中", { transferredAt: 0 }), "田中", "未移動は素通し");
+  const decorated = moveMod.decorateTransferredName("田中", { transferredAt: 123 });
+  assert.ok(decorated.includes("田中") && decorated.length > "田中".length, "移動済みは prefix が付く");
+});
+
+// ============================
+// snapshot restore (fake-indexeddb)
+// ============================
+section("snapshot restore (fake-indexeddb)");
+
+await test("restoreSnapshot: 患者を撮影時点へ戻し、取り消し用スナップショットも残す", async () => {
+  const wsR = storageMod.newWorkspaceId();
+  storageMod.setActiveWorkspaceId(wsR);
+  // 状態 A を撮る
+  storeForIdb.setAppState({ v: 3, title: "Doc", patients: [{ ...storeForIdb.makeDefaultPatient(), name: "復元太郎", status: "yellow" }] });
+  await snapshotsMod.captureSnapshot(snapshotsMod.REASON.CLEAR);
+  const points = await snapshotsMod.listRestorePoints(wsR);
+  assert.ok(points.length >= 1, "復元候補がある");
+  const snapId = points[0].id;
+
+  // 状態 B に変更 (クリア相当)
+  storeForIdb.setAppState({ v: 3, title: "Doc", patients: [{ ...storeForIdb.makeDefaultPatient(), name: "", status: "none" }] });
+  assert.equal(storeForIdb.appState.patients[0].name, "", "変更後は空");
+
+  // 復元
+  const res = await snapshotsMod.restoreSnapshot(snapId);
+  assert.equal(res.ok, true, "復元成功");
+  assert.equal(storeForIdb.appState.patients[0].name, "復元太郎", "撮影時点の患者へ戻る");
+  assert.equal(storeForIdb.appState.patients[0].status, "yellow", "ステータスも戻る");
+
+  // 復元の取り消し用スナップショット (restore_undo) が残る = 復元自体も巻き戻せる
+  const after = await snapshotsMod.listRestorePoints(wsR);
+  assert.ok(after.some(p => p.reason === "restore_undo"), "restore_undo スナップショットが作られる");
+});
+
+await test("restoreSnapshot: 存在しない id は notfound", async () => {
+  storageMod.setActiveWorkspaceId(storageMod.newWorkspaceId());
+  const res = await snapshotsMod.restoreSnapshot(99999999);
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, "notfound");
+});
+
+// ============================
 // Summary
 // ============================
 console.log("");
