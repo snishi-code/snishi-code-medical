@@ -16,9 +16,15 @@ import {
   saveBundle as storageSave,
   createWorkspaceRecord,
   listBundles,
-  setActiveWorkspaceId,
-  getDeviceAppTitle, setDeviceAppTitle,
+  listAllWorkspaces,
+  getActiveWorkspaceId, setActiveWorkspaceId,
   loadGlobalSettings, saveGlobalSettings,
+  ensureUsersInitialized,
+  getCurrentUserId, setCurrentUserId,
+  loadUsers, listUsers,
+  createUser,
+  setUserActiveWorkspaceId, getUserActiveWorkspaceId,
+  getDefaultUserName, userNameExists,
 } from "./storage.js";
 
 // ============================
@@ -367,26 +373,32 @@ export function setSelectedNo(n) { selectedNo = n; }
 // Persistence
 // ============================
 
-// v8.2+: settings はグローバル管理 (全 ws 共通) になったため、ここでは patients /
-// title (= ワークスペース固有データ) だけを live state へ反映する。settings は
-// initStore() がグローバルストアから読み込む。bundle の settings section は無視。
+// ヘッダーのタイトル枠は「現ユーザー名」を表示する (ユーザー機能, 案B)。
+// 同期で参照したいので、initStore / switchUser で取得した名前をここにキャッシュする。
+let _currentUserName = "";
+export function getCurrentUserName() { return _currentUserName; }
+
+// settings はユーザーごと管理になったため、ここでは patients / title (= ワークスペース
+// 固有 + 現ユーザー名) だけを live state へ反映する。settings は initStore() / switchUser()
+// がユーザーストアから読み込む。bundle の settings section は無視。
 function applyBundleToLive(bundle) {
   const sPatients = bundle ? getSection(bundle, SECTION.PATIENTS) : null;
-  // title は端末固定 (localStorage)。bundle.sections.meta.title は出力時の
-  // 体裁のためだけに保持される (workspace 切替で title を上書きしない)。
-  const deviceTitle = getDeviceAppTitle();
+  // title = 現ユーザー名。bundle.sections.meta.title は出力時の体裁のためだけに保持。
   appState = {
     v: 3,
-    title: deviceTitle || t("app.title"),
+    title: _currentUserName || t("app.title"),
     patients: normalizePatientArray(Array.isArray(sPatients) ? sPatients : null),
   };
 }
 
-// device-wide title を書き換え & live state へ反映。caller は UI を再描画する責務。
-export function updateDeviceTitle(title) {
-  const next = String(title || "");
-  appState.title = next || t("app.title");
-  setDeviceAppTitle(next);
+// 現ユーザー名を IDB / キャッシュから最新化する。
+async function refreshCurrentUserName() {
+  try {
+    const users = await loadUsers();
+    const me = users.find(u => u.id === getCurrentUserId());
+    _currentUserName = me ? (me.name || "") : "";
+  } catch (_) { _currentUserName = ""; }
+  return _currentUserName;
 }
 
 // Async hydration. main.js must `await initStore()` before rendering anything
@@ -400,6 +412,13 @@ let _initPromise = null;
 export function initStore(opts) {
   if (_initPromise) return _initPromise;
   _initPromise = (async () => {
+    // ユーザー機能 (案B): 既存データを default ユーザー配下へ一度だけ backfill し、
+    // currentUser ポインタを確定させる (冪等)。以降の storageLoad / listBundles /
+    // loadGlobalSettings はすべて現ユーザー解決済みになる。
+    try { await ensureUsersInitialized(); }
+    catch (e) { console.warn("initStore: ensureUsersInitialized failed:", e); }
+    await refreshCurrentUserName();
+
     let bundle = null;
     if (opts && opts.bundle) {
       try { bundle = parseBundle(opts.bundle); }
@@ -408,7 +427,7 @@ export function initStore(opts) {
       try { bundle = await storageLoad(); }
       catch (e) { console.warn("initStore: storage load failed:", e); }
     }
-    // patients / title (ws 固有) を適用
+    // patients / title (ws 固有 + 現ユーザー名) を適用
     applyBundleToLive(bundle);
     // settings はグローバル。未保存なら現バンドルの settings から 1 度だけ seed する
     // (= 既存ユーザーのアクティブ ws 設定をグローバルへ引き継ぐ移行)。
@@ -549,6 +568,81 @@ export async function createWorkspaceWithPatients(label, patients) {
 }
 
 // ============================
+// ユーザー切替・作成 (案B)
+// ============================
+//
+// switchUser(targetUserId):
+//   1) 現状 (現病棟 + 現ユーザー設定) を保存
+//   2) 退出ユーザーの「最後の病棟」を登録簿に記録
+//   3) currentUser ポインタ + 名前キャッシュを切替
+//   4) target の設定をロード (無ければ default を作成)
+//   5) target の最後の病棟を解決 (無ければ先頭 / それも無ければ空病棟を新規作成)
+//   6) その病棟をロードして live state へ
+//   7) _onUserChanged 通知 (main.js が全 view 再描画 + ヘッダー更新を配線)
+export async function switchUser(targetUserId) {
+  if (!targetUserId) throw new Error("switchUser: targetUserId required");
+  const fromUserId = getCurrentUserId();
+  if (targetUserId === fromUserId) return;
+
+  // 1) 現状を保存
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  try { await persistActive(); } catch (e) { console.error("save before user switch failed:", e); }
+  // 2) 退出ユーザーの activeWorkspaceId を記録
+  try { await setUserActiveWorkspaceId(fromUserId, getActiveWorkspaceId()); } catch (_) {}
+
+  // 3) ポインタ切替
+  setCurrentUserId(targetUserId);
+  await refreshCurrentUserName();
+
+  // 4) target の設定をロード (無ければ default を作成して保存)
+  let gs = null;
+  try { gs = await loadGlobalSettings(); } catch (_) {} // current=target に解決済み
+  if (gs) {
+    settings = normalizeSettings(gs);
+  } else {
+    settings = defaultSettings();
+    try { await saveGlobalSettings(settings); } catch (e) { console.warn("switchUser: seed settings failed:", e); }
+  }
+
+  // 5) target の病棟を解決
+  const users = await loadUsers();
+  let wsId = getUserActiveWorkspaceId(users, targetUserId);
+  const owned = (await listAllWorkspaces()).filter(w => w.userId === targetUserId);
+  const valid = wsId && owned.some(w => w.id === wsId);
+  if (!valid) {
+    if (owned.length) {
+      wsId = owned.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0].id;
+    } else {
+      // 病棟が無い (新規ユーザー等) → 空病棟を作成。current=target なので target に属す。
+      const emptyAppState = { v: 3, title: t("app.title"), patients: normalizePatientArray(null) };
+      const emptyBundle = projectBundle({ appState: emptyAppState, settings, sections: [SECTION.META, SECTION.PATIENTS] });
+      wsId = await createWorkspaceRecord(t("ws.default.label"), emptyBundle);
+    }
+  }
+  setActiveWorkspaceId(wsId);
+  try { await setUserActiveWorkspaceId(targetUserId, wsId); } catch (_) {}
+
+  // 6) ロード + 適用
+  let bundle = null;
+  try { bundle = await storageLoad(wsId); } catch (e) { console.warn("load after user switch failed:", e); }
+  applyBundleToLive(bundle);
+
+  // 7) 通知
+  if (_onUserChanged) { try { _onUserChanged(targetUserId); } catch (_) {} }
+}
+
+// 新規ユーザーを作成して切替える。重複名は拒否。
+// 戻り値: { ok:true, id } | { ok:false, reason:"empty"|"duplicate" }
+export async function createUserAndSwitch(name) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return { ok: false, reason: "empty" };
+  if (await userNameExists(trimmed)) return { ok: false, reason: "duplicate" };
+  const newId = await createUser(trimmed);
+  await switchUser(newId); // 空病棟を 1 つ作って切替
+  return { ok: true, id: newId };
+}
+
+// ============================
 // 全ワークスペース JSON 入出力 (v8.2+)
 // ============================
 //
@@ -611,8 +705,98 @@ export async function importArchive(archive, opts) {
   return created;
 }
 
+// ============================
+// 端末まるごと (全ユーザー) JSON 入出力
+// ============================
+//
+// 「端末まるごと」アーカイブ = 全ユーザー × (そのユーザーの設定 + 全病棟の患者)。
+// 研究用に端末交換・バックアップする用途。現ユーザー単位アーカイブ (ARCHIVE_FORMAT)
+// とは別フォーマットで判別する。
+const DEVICE_ARCHIVE_FORMAT = "hospital-rounds-device-archive";
+const DEVICE_ARCHIVE_SCHEMA = 1;
+
+export function isDeviceArchive(obj) {
+  return !!(obj && typeof obj === "object" && obj.format === DEVICE_ARCHIVE_FORMAT && Array.isArray(obj.users));
+}
+
+export async function exportDeviceArchive() {
+  try { await persistActive(); } catch (e) { console.warn("exportDeviceArchive: persist failed:", e); }
+  const users = await listUsers();
+  const allWs = await listAllWorkspaces();
+  const outUsers = [];
+  for (const u of users) {
+    let s = null;
+    try { s = await loadGlobalSettings(u.id); } catch (_) { /* ignore */ }
+    const workspaces = [];
+    for (const w of allWs.filter(x => x.userId === u.id)) {
+      let b = null;
+      try { b = await storageLoad(w.id); } catch (_) { /* skip broken */ }
+      const patients = b ? (getSection(b, SECTION.PATIENTS) || []) : [];
+      const meta = b ? (getSection(b, SECTION.META) || {}) : {};
+      workspaces.push({
+        label: w.label || "",
+        title: (meta && typeof meta.title === "string") ? meta.title : (w.title || ""),
+        patients: Array.isArray(patients) ? patients : [],
+      });
+    }
+    outUsers.push({
+      name: u.name || "",
+      settings: s ? normalizeSettings(s) : defaultSettings(),
+      workspaces,
+    });
+  }
+  return {
+    format: DEVICE_ARCHIVE_FORMAT,
+    schema: DEVICE_ARCHIVE_SCHEMA,
+    exportedAt: new Date().toISOString(),
+    users: outUsers,
+  };
+}
+
+// 端末まるごとアーカイブを取り込む (非破壊)。同名ユーザーは既存に合流、無ければ新規作成。
+// 各ユーザーの病棟・設定をそのユーザー配下へ流し込む。戻り値: { users, workspaces } 作成数。
+export async function importDeviceArchive(archive) {
+  const arr = Array.isArray(archive && archive.users) ? archive.users : [];
+  let createdUsers = 0, createdWs = 0;
+  let registry = await loadUsers();
+  for (const au of arr) {
+    const name = String((au && au.name) || "").trim();
+    const wss = Array.isArray(au && au.workspaces) ? au.workspaces : [];
+    // 名前も病棟も無いユーザーはスキップ
+    if (!name && !wss.length) continue;
+    // 同名ユーザーは合流、無ければ新規作成
+    let target = registry.find(u => (u.name || "").trim() === name && name);
+    let uid;
+    if (target) {
+      uid = target.id;
+    } else {
+      uid = await createUser(name || getDefaultUserName());
+      registry = await loadUsers();
+      createdUsers++;
+    }
+    // 設定をそのユーザーへ
+    if (au && au.settings && typeof au.settings === "object") {
+      try { await saveGlobalSettings(normalizeSettings(au.settings), uid); }
+      catch (e) { console.warn("importDeviceArchive: settings save failed:", e); }
+    }
+    // 病棟をそのユーザーへ (空 ws はスキップ)
+    for (const w of wss) {
+      const patients = Array.isArray(w && w.patients) ? w.patients : [];
+      if (!patients.some(p => !isPatientEmpty(p))) continue;
+      const norm = normalizeLoaded({ title: (w && w.title) || t("app.title"), patients });
+      const bundle = projectBundle({ appState: norm, settings: defaultSettings(), sections: [SECTION.META, SECTION.PATIENTS] });
+      await createWorkspaceRecord(String((w && w.label) || ""), bundle, uid);
+      createdWs++;
+    }
+  }
+  return { users: createdUsers, workspaces: createdWs };
+}
+
 let _onWorkspaceChanged = null;
 export function setOnWorkspaceChanged(fn) { _onWorkspaceChanged = fn; }
+
+let _onUserChanged = null;
+export function setOnUserChanged(fn) { _onUserChanged = fn; }
 
 // Settings is part of the same bundle now, so saving settings rewrites the
 // whole snapshot. The function name is kept so existing call sites don't have

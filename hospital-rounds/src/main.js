@@ -10,7 +10,8 @@ import {
   saveNow, saveSettings,
   normalizeLoaded,
   requestStoragePersistence,
-  initStore, flushSavePending, setOnWorkspaceChanged,
+  initStore, flushSavePending, setOnWorkspaceChanged, setOnUserChanged,
+  setMarkUpdatedHandler,
 } from "./store.js";
 
 import { renderHome, updateCountChip } from "./views/home.js";
@@ -22,8 +23,11 @@ import { renderSettings, initSettingsView } from "./views/settings-view.js";
 import { showView, syncDetailMemoDisplay, createNavigators, createDocsOpener } from "./features/navigation.js";
 import { createRenderers } from "./features/renderers.js";
 // header-menu.js (ハンバーガー) は v8.6 で廃止。import 削除済み。
-import { initAppTitle, refreshAppWsLabel } from "./features/app-title.js";
+import { initAppTitle, refreshAppWsLabel, refreshAppUserName } from "./features/app-title.js";
 import { initWsPicker } from "./features/ws-picker.js";
+import { initUserPicker } from "./features/user-picker.js";
+import { initEventLog, logEvent, EVENT } from "./features/eventlog.js";
+import { initSnapshots, captureSnapshot, REASON } from "./features/snapshots.js";
 import { DOCS_BUNDLE } from "./docs-bundle.js";
 import { setDataChangeHandler, initActionMenu } from "./features/drag.js";
 import { initFormats, setOnTextChanged as setOnFormatTextChanged, setOnExpandedInput, setFormatStoreAdapter } from "./features/formats.js";
@@ -54,6 +58,12 @@ await maybeShowPwaInitDialog();
 // store.js は module-init 時に state を読み込まなくなったので、ここで明示的に
 // 待つ。以降のすべての top-level コードは hydration 完了後に実行される。
 await initStore();
+
+// 研究用テレメトリ + スナップショットの起動処理 (独立モジュール・端末内のみ)。
+// initEventLog: 古いイベント間引き + app_open 記録 + ライフサイクル配線。
+// initSnapshots: 期限切れスナップショット間引き。
+initEventLog();
+initSnapshots();
 
 // ============================
 // Boot 1: Renderers + Navigators (組み立てだけ)
@@ -302,19 +312,25 @@ wireScanButton("adminImportScanBtn", "adminImportArea");
 // ============================
 document.getElementById("resetBtn")?.addEventListener("click", async () => {
   if (!confirm(t("settings.fullReset.confirm"))) return;
-  // 全Origin消去: LocalStorage + IndexedDB を全削除してリロード
+  // 全Origin消去: LocalStorage + IndexedDB を全削除してリロード。
+  // 患者データ本体 + 独立 DB (イベントログ / スナップショット) もまとめて消す。
   try { localStorage.clear(); } catch (_) {}
   if (window.indexedDB) {
-    try {
-      const req = indexedDB.deleteDatabase("hospital-rounds");
-      await new Promise(r => { req.onsuccess = req.onerror = req.onblocked = r; });
-    } catch (_) {}
+    for (const name of ["hospital-rounds", "hospital-rounds-eventlog", "hospital-rounds-snapshots"]) {
+      try {
+        const req = indexedDB.deleteDatabase(name);
+        await new Promise(r => { req.onsuccess = req.onerror = req.onblocked = r; });
+      } catch (_) {}
+    }
   }
   location.reload();
 });
 
-document.getElementById("clearAllBtn")?.addEventListener("click", () => {
+document.getElementById("clearAllBtn")?.addEventListener("click", async () => {
   if (!confirm(t("home.start.confirm"))) return;
+  // 破壊操作の直前: 現状を 1 枚スナップショット (await して clear 前の状態を確実に撮る)
+  await captureSnapshot(REASON.CLEAR);
+  logEvent(EVENT.CLEAR);
   const ct = settings.clearTargets;
   const now = Date.now();
   for (const p of appState.patients) {
@@ -352,11 +368,30 @@ setOnWorkspaceChanged(() => {
   // 患者 index を前 ws から引きずらないように、再描画前に必ずリセット
   setSelectedNo(1);
   refreshPatientUI();
-  // タイトル (端末固定なので変化しない) の表示同期 + ws label を更新
-  const appTitleInput = document.getElementById("appTitleInput");
-  if (appTitleInput) appTitleInput.value = appState.title;
-  document.title = appState.title;
+  // タイトル (= 現ユーザー名、ws 切替では不変) の表示同期 + ws label を更新
+  refreshAppUserName();
   refreshAppWsLabel();
+  logEvent(EVENT.WS_SWITCH);
+});
+
+// ユーザー切替時に画面全体 + ヘッダー (ユーザー名/病棟) を再描画する (案B)。
+setOnUserChanged(() => {
+  setSelectedNo(1);
+  refreshPatientUI();
+  refreshAppUserName();
+  refreshAppWsLabel();
+  logEvent(EVENT.USER_SWITCH);
+});
+
+// 患者編集 (ステータス変更・SOAP 等) の研究ログ。markUpdated は編集サイトから
+// 高頻度に呼ばれるので、5 秒に 1 件へ debounce し「編集していた」だけを無記名で残す
+// (キーごとには取らない)。_onMarkUpdated は他に未配線なので追加配線は安全。
+let _editLogPending = false;
+setMarkUpdatedHandler(() => {
+  if (_editLogPending) return;
+  _editLogPending = true;
+  logEvent(EVENT.PATIENT_EDIT);
+  setTimeout(() => { _editLogPending = false; }, 5000);
 });
 
 // ============================
@@ -366,11 +401,10 @@ setOnWorkspaceChanged(() => {
 // WS 名: readonly でタップ → WS picker (切替/新規作成/リネーム)。
 // タイトル: ただのラベル (編集は設定画面)。
 initAppTitle();
-// v8.9: ヘッダーの鉛筆 (タイトル/WS編集トグル) は撤去。タイトル編集は設定画面、
-// WS リネームは WS ピッカー内に移動。ホームへはヘッダー左の家ボタンで戻る。
+// 案B: ヘッダーのタイトル枠はユーザー名。タップ → ユーザーピッカー (user-picker.js が配線)。
+// WS リネームは WS ピッカー内。ホームへはヘッダー左の家ボタンで戻る。
 document.getElementById("homeNavBtn")?.addEventListener("click", navToHome);
-// タイトルタップもホームへ (家ボタンと同じ。支障ないので導線を増やす)
-document.getElementById("appTitleInput")?.addEventListener("click", navToHome);
+initUserPicker();
 initWsPicker();
 
 // ============================

@@ -55,9 +55,10 @@
           <button class="appLogo" id="homeNavBtn" type="button" data-i18n-aria="header.home" data-i18n-title="header.home" aria-label="ホーム" title="ホーム">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           </button>
-          <!-- 端末固定タイトル (localStorage 保存)。v8.9: ただのラベル化 (編集は設定画面)。
-               タップ→ホームは家ボタンに移譲。 -->
-          <input type="text" id="appTitleInput" class="appTitleInput" value="回診" readonly data-i18n-title="header.title.tooltip" data-i18n-aria="header.title.tooltip" title="ホームに戻る" aria-label="ホームに戻る" style="cursor:pointer;" />
+          <!-- ユーザー名 (案B: タイトル枠をユーザーに転用)。タップ→ユーザーピッカー。
+               ▾ で切替可を明示。リネームはピッカー内/設定画面。ホーム遷移は家ボタン。 -->
+          <input type="text" id="appTitleInput" class="appTitleInput" value="" readonly data-i18n-title="header.user.tooltip" data-i18n-aria="header.user.tooltip" title="ユーザーを切替" aria-label="ユーザーを切替" style="cursor:pointer;" />
+          <svg class="appWsChevron" id="appUserChevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
           <span class="appTitleWsSeparator" aria-hidden="true">/</span>
           <!-- ワークスペース名 (タップ→WSピッカー。リネームはピッカー内)。▾ で切替可を明示 -->
           <input type="text" id="appWsLabelInput" class="appTitleInput appWsLabelInput" value="" readonly data-i18n-title="header.ws.tooltip" data-i18n-aria="header.ws.tooltip" title="ワークスペースを切替" aria-label="ワークスペースを切替" />
@@ -353,14 +354,16 @@
            設定モデル (settings.qrEncryption / qrRedistribution) はそのまま機能する
            ので、デフォルト値で常時 ON で動く。将来 admin 機能で expose する想定。 -->
 
-      <!-- タイトル (端末固定)。ヘッダーから編集を撤去しここに集約。WS 管理の直上 =
-           「アプリ全体の名前」→「その中の WS」という概念順 -->
+      <!-- ユーザー管理 (案B)。切替・新規作成はヘッダーのユーザー名タップで開く
+           ユーザーピッカーが手早い。ここでは rename / delete / 切替ができる。
+           「ユーザー」→「その中の病棟」という概念順で病棟管理の直上に置く。 -->
       <div class="card">
         <div class="cardHead">
-          <div class="label" data-i18n="settings.appTitle.label">タイトル</div>
+          <div class="label" data-i18n="settings.user.section">ユーザー</div>
         </div>
         <div class="cardBody">
-          <input type="text" id="settingsTitleInput" class="settingsInp" data-i18n-placeholder="app.title" placeholder="回診" />
+          <div class="movePatientHint" data-i18n="settings.user.hint"></div>
+          <div class="ioDbList" id="settingsUserList"></div>
         </div>
       </div>
 
@@ -383,10 +386,55 @@
         </div>
       </div>
 
+      <!-- 巻き戻し / スナップショット (現在の病棟)。破壊操作 (クリア/移動/取込) の直前と
+           画面遷移直前の状態を自動保存。14日で自動失効。患者データを含むので短期保持。 -->
+      <div class="card">
+        <div class="cardHead">
+          <div class="label" data-i18n="settings.restore.section">巻き戻し</div>
+        </div>
+        <div class="cardBody">
+          <div class="movePatientHint" data-i18n="settings.restore.hint"></div>
+          <div class="ioDbList" id="settingsRestoreList"></div>
+        </div>
+      </div>
+
+      <!-- 研究用ログ (無記名・端末内のみ・365日保持)。書出/消去。 -->
+      <div class="card">
+        <div class="cardHead">
+          <div class="label" data-i18n="settings.log.section">研究ログ</div>
+        </div>
+        <div class="cardBody">
+          <div class="movePatientHint" data-i18n="settings.log.hint"></div>
+          <div class="ioJsonSection">
+            <div class="ioJsonActions">
+              <button class="secondary ioJsonTextBtn" id="ioLogExportBtn" type="button" data-i18n="io.log.export.label">ログ書出</button>
+              <button class="secondary ioJsonTextBtn" id="ioLogClearBtn" type="button" data-i18n="io.log.clear.label">ログ消去</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 端末まるごと (全ユーザー) バックアップ / 復元。研究用の端末交換・移行向け。
+           通常の JSON 取込/書き出し (病棟カード内) は現ユーザー単位。 -->
+      <div class="card">
+        <div class="cardHead">
+          <div class="label" data-i18n="settings.device.section">端末まるごと</div>
+        </div>
+        <div class="cardBody">
+          <div class="movePatientHint" data-i18n="settings.device.hint"></div>
+          <div class="ioJsonSection">
+            <div class="ioJsonActions">
+              <button class="secondary ioJsonTextBtn" id="ioDeviceImportBtn" type="button" data-i18n="io.device.import.label">端末まるごと取込</button>
+              <button class="secondary ioJsonTextBtn" id="ioDeviceSaveBtn" type="button" data-i18n="io.device.export.label">端末まるごと書出</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 全データ消去 (稀な操作。このOriginのすべてのLocalStorage+IndexedDBを削除) -->
       <div class="card settingsDangerCard">
         <button class="danger settingsFullResetBtn" id="resetBtn" type="button" data-i18n="settings.fullReset.btn">全データを消去する</button>
-        <p class="settingsDangerHint" data-i18n="settings.fullReset.hint">全ワークスペース・設定を完全に削除します。元に戻せません。</p>
+        <p class="settingsDangerHint" data-i18n="settings.fullReset.hint">全ユーザー・全病棟・設定を完全に削除します。元に戻せません。</p>
       </div>
       </div>
     </section>
@@ -724,6 +772,16 @@
       <div class="popupMenu wsPickerMenu">
         <div class="ioDbList" id="wsPickerList"></div>
         <div class="ioWsAddRow" id="wsPickerAdd"></div>
+      </div>
+    </div>
+
+    <!-- ユーザーピッカー (ヘッダーのユーザー名タップで開く軽量 popup)。
+         切替 + 新規作成 + リネーム。削除は設定画面の「ユーザー管理」へ。
+         ws ピッカーと同じ CSS クラス (wsPicker*/ioWs*) を再利用。 -->
+    <div class="popupMenuOverlay" id="userPickerOverlay">
+      <div class="popupMenu wsPickerMenu">
+        <div class="ioDbList" id="userPickerList"></div>
+        <div class="ioWsAddRow" id="userPickerAdd"></div>
       </div>
     </div>
   </main>

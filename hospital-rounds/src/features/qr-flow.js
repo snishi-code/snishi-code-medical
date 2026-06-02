@@ -4,7 +4,17 @@ import { qrcodegen } from "../libs/qrcodegen.js";
 import { scanQRStream, isScannerSupported } from "./qr-scan.js";
 import { encodePages, decodePage, newBatchId } from "./qr-protocol.js";
 import { encryptPayload, decryptPayload, isEncrypted } from "./crypto-payload.js";
+import { logEvent, EVENT } from "./eventlog.js";
 import { t } from "../i18n.js";
+
+// 表示ボタン id → QR 種別ラベル (研究ログ用)。将来「カルテ記載/共有」の区別に使う。
+function qrKindFromBtnId(btnId) {
+  const map = {
+    homeShowQrBtn: "home", sharedShowQrBtn: "shared", memoShowQrBtn: "memo",
+    settingsShowQrBtn: "settings", qrFormatShowBtn: "format",
+  };
+  return map[btnId] || "other";
+}
 
 // ============================
 // QR フロー共通ファクトリ
@@ -207,7 +217,7 @@ export function createQrFlow(cfg) {
     const showBtn = document.getElementById(cfg.ids.showBtnId);
     if (showBtn) showBtn.addEventListener("click", () => {
       if (isActive()) close();
-      else open();
+      else { open(); logEvent(EVENT.QR_SHOW, { kind: qrKindFromBtnId(cfg.ids.showBtnId) }); }
     });
 
     const prevBtn = document.getElementById(cfg.ids.prevBtnId);

@@ -2,10 +2,14 @@
 
 import { appState, selectedNo, saveSettings } from "../store.js";
 import { exitAllEdits } from "./edit-toggle.js";
+import { captureSnapshot, REASON } from "./snapshots.js";
 
 export function showView(which, pushState = true) {
   // ビューを切り替える前に、どこかで開いていた編集モードを必ず閉じる
   exitAllEdits();
+  // 画面遷移直前の浅いアンドゥ用スナップショット (変化が無ければ snapshots 側で
+  // スキップ。直近 2 枚だけ保持)。fire-and-forget。
+  captureSnapshot(REASON.NAV);
   if (pushState) {
     history.pushState({ view: which }, "", "");
   }
