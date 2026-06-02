@@ -9,6 +9,11 @@ dist/
 # npm
 node_modules/
 
+# Playwright (E2E) の出力。テスト実行のたびに生成されるのでコミットしない
+test-results/
+playwright-report/
+.playwright/
+
 # 環境変数 (現状不使用だが念のため)
 .env
 .env.local
