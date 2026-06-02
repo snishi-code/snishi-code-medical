@@ -7,6 +7,9 @@
 let _hideTimer = 0;
 
 export function showToast(message, { ms = 2000, vibrate = true } = {}) {
+  // DOM 不在環境 (単体テスト等) では何もしない。データ層 (store.js) からも
+  // 保存失敗通知のために呼ばれるため、document 非依存で安全に no-op する。
+  if (typeof document === "undefined" || !document.body) return;
   let el = document.getElementById("appToast");
   if (!el) {
     el = document.createElement("div");

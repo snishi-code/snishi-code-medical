@@ -11,6 +11,7 @@ import {
 } from "./constants.js";
 import { projectBundle, parseBundle, getSection, SECTION } from "./bundle.js";
 import { t } from "./i18n.js";
+import { showToast } from "./toast.js";
 import {
   loadBundle as storageLoad,
   saveBundle as storageSave,
@@ -488,6 +489,10 @@ export async function saveNow() {
     await persistActive();
   } catch (e) {
     console.error("save failed:", e);
+    // 保存失敗をユーザーに可視化する。IDB 不可環境 (db=null) は saveBundle が
+    // 例外を投げず no-op するためここには来ない。ここに来るのは容量超過など
+    // 「本当に書けなかった」失敗だけなので、黙って握り潰さず通知する。
+    showToast(t("save.failed"), { ms: 4000 });
   }
 }
 

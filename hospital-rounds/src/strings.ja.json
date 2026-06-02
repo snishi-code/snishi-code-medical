@@ -25,6 +25,7 @@
   "common.type": "種類",
   "common.joiner": "区切り",
   "common.items": "項目",
+  "save.failed": "保存に失敗しました。端末の空き容量をご確認ください",
   "type.numeric": "数値",
   "type.text": "文字",
   "patient.delete.confirm": "この患者には入力データがあります。削除しますか？",
