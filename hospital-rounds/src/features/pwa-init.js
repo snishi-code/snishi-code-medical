@@ -56,9 +56,6 @@ function clearAppLocalStorage() {
   if (typeof localStorage === "undefined") return;
   const keysToRemove = [
     STORAGE_KEYS.activeKey,
-    STORAGE_KEYS.legacyBundle,
-    STORAGE_KEYS.legacyState,
-    STORAGE_KEYS.legacySettings,
     MARKER,
   ];
   for (const k of keysToRemove) {
