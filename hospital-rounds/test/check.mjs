@@ -715,6 +715,28 @@ await test("setRecvContent updates appState; ignores unknown key", async () => {
 });
 
 // ============================
+// サンプルデータ (手動テスト用の網羅的アーカイブ) の妥当性
+// ============================
+section("sample data");
+
+await test("comprehensive.device-archive.json は妥当な端末アーカイブで、患者が正しく正規化される", async () => {
+  const store = await freshStore();
+  const raw = JSON.parse(readFileSync(join(__dirname, "sample-data", "comprehensive.device-archive.json"), "utf8"));
+  assert.ok(store.isDeviceArchive(raw), "device archive として認識される");
+  assert.equal(raw.users.length, 2, "2 ユーザー");
+
+  const w = raw.users[0].workspaces[0];
+  const norm = store.normalizeLoaded({ title: w.title, patients: w.patients });
+  const statuses = new Set(norm.patients.map((p) => p.status));
+  for (const s of ["none", "yellow", "green", "gray", "blue"]) {
+    assert.ok(statuses.has(s), `全ステータスを網羅: ${s} がある`);
+  }
+  assert.ok(norm.patients.some((p) => p.transferredAt > 0), "移動済マーカーの患者がいる");
+  assert.ok(norm.patients.some((p) => p.origin === "external"), "外部受信(external)の患者がいる");
+  assert.ok(norm.patients.some((p) => p.memo && p.s && p.a.text && p.shared), "SOAP+プロブレムリスト+共有が揃った患者がいる");
+});
+
+// ============================
 // Summary
 // ============================
 console.log("");
