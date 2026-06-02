@@ -96,7 +96,7 @@ const openDocsPage = createDocsOpener({ docsBundle: DOCS_BUNDLE });
 // ============================
 // Boot 2: Settings / Detail wiring
 // ============================
-initSettingsView(doRenderDetail, renderQrIfNeeded, refreshPatientUI, refreshAppWsLabel);
+initSettingsView(doRenderDetail, refreshPatientUI, refreshAppWsLabel);
 initDetailEvents(doRenderHome);
 initStatusButtons(doRenderHome);
 initQrNavButtons();
@@ -383,8 +383,9 @@ document.getElementById("clearAllBtn")?.addEventListener("click", async () => {
     p.updatedAt = now;
   }
   saveNow();
-  doRenderHome();
-  doRenderDetail();
+  // 個別 view を列挙すると memo/shared を開いた状態で更新が漏れる。中央の
+  // refreshPatientUI() に集約する (CLAUDE.md「状態更新後の再描画」)。
+  refreshPatientUI();
 });
 
 // ============================

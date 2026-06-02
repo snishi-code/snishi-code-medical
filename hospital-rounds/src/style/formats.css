@@ -186,7 +186,7 @@
       padding: 6px 8px;
       border: 1px solid var(--line);
       border-radius: 6px;
-      font-size: 14px;
+      font-size: 16px; /* iOS の focus ズーム防止: 入力欄は最低 16px */
       box-sizing: border-box;
     }
     .formatInputBody.text .formatInputValue {
@@ -288,7 +288,7 @@
       padding: 6px 8px;
       border: 1px solid var(--line);
       border-radius: 6px;
-      font-size: 14px;
+      font-size: 16px; /* iOS の focus ズーム防止: 入力欄は最低 16px */
       font-weight: 500;
       box-sizing: border-box;
     }

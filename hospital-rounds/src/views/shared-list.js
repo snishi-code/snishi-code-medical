@@ -11,7 +11,6 @@ import { bindTapOrLongPress } from "./detail.js";
 let _editMode = false;
 
 export function setSharedEditMode(val) { _editMode = !!val; }
-export function getSharedEditMode() { return _editMode; }
 
 function renderSharedTagFilter(rerender) {
   const slot = document.getElementById("sharedTagFilterSlot");

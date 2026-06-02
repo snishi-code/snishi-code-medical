@@ -753,13 +753,11 @@ export function renderSettings() {
 
 // Callbacks wired by main.js to avoid circular deps
 let _renderDetailFn = null;
-let _renderQrFn = null;
 let _renderPatientUIFn = null;
 let _refreshHeaderWsLabelFn = null;
 
-export function initSettingsView(renderDetailFn, renderQrFn, renderPatientUIFn, refreshHeaderWsLabelFn) {
+export function initSettingsView(renderDetailFn, renderPatientUIFn, refreshHeaderWsLabelFn) {
   _renderDetailFn = renderDetailFn;
-  _renderQrFn = renderQrFn;
   _renderPatientUIFn = renderPatientUIFn;
   _refreshHeaderWsLabelFn = refreshHeaderWsLabelFn || null;
 

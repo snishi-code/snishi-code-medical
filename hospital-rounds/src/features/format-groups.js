@@ -261,7 +261,7 @@ function renderFormatsCheckList() {
     sec.className = "formatGroupEditSection";
     const head = document.createElement("div");
     head.className = "formatGroupEditSectionHead";
-    head.textContent = t("panel." + panel) + " 欄";
+    head.textContent = t("format.panelSection", { panel: t("panel." + panel) });
     sec.appendChild(head);
     for (const f of inPanel) sec.appendChild(buildGroupFormatRow(f, panel));
     host.appendChild(sec);
