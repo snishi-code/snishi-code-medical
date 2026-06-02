@@ -120,7 +120,7 @@ export function buildTimestampHeader() {
 // 時は WIRE_V を bump する必要がある (旧版が未知 index を解釈できない)。
 
 export const PANEL_BY_INDEX = Object.freeze(FORMAT_PANELS.slice());      // ["S","O","A","P"]
-export const KIND_BY_INDEX  = Object.freeze(FORMAT_ITEM_KINDS.slice());  // ["text","number","fraction","date"]
+export const KIND_BY_INDEX  = Object.freeze(FORMAT_ITEM_KINDS.slice());  // ["text","number","fraction"] (v8: "date" は撤去)
 // v7.7+: MODE_BY_INDEX は撤去 (タグ・カテゴリ機能撤去のため)
 
 const PANEL_INDEX = Object.fromEntries(PANEL_BY_INDEX.map((v, i) => [v, i]));

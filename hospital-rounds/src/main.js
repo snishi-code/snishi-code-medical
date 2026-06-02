@@ -10,7 +10,8 @@ import {
   saveNow, saveSettings,
   normalizeLoaded,
   requestStoragePersistence,
-  initStore, flushSavePending, setOnWorkspaceChanged,
+  initStore, flushSavePending, setOnWorkspaceChanged, setOnUserChanged,
+  setMarkUpdatedHandler, setRecvContent,
 } from "./store.js";
 
 import { renderHome, updateCountChip } from "./views/home.js";
@@ -22,8 +23,11 @@ import { renderSettings, initSettingsView } from "./views/settings-view.js";
 import { showView, syncDetailMemoDisplay, createNavigators, createDocsOpener } from "./features/navigation.js";
 import { createRenderers } from "./features/renderers.js";
 // header-menu.js (ハンバーガー) は v8.6 で廃止。import 削除済み。
-import { initAppTitle, refreshAppWsLabel } from "./features/app-title.js";
+import { initAppTitle, refreshAppWsLabel, refreshAppUserName } from "./features/app-title.js";
 import { initWsPicker } from "./features/ws-picker.js";
+import { initUserPicker } from "./features/user-picker.js";
+import { initEventLog, logEvent, EVENT } from "./features/eventlog.js";
+import { initSnapshots, captureSnapshot, REASON } from "./features/snapshots.js";
 import { DOCS_BUNDLE } from "./docs-bundle.js";
 import { setDataChangeHandler, initActionMenu } from "./features/drag.js";
 import { initFormats, setOnTextChanged as setOnFormatTextChanged, setOnExpandedInput, setFormatStoreAdapter } from "./features/formats.js";
@@ -43,6 +47,7 @@ import { wireScanButton } from "./features/qr-scan.js";
 import { initNoAutofill } from "./features/no-autofill.js";
 import { maybeShowPwaInitDialog } from "./features/pwa-init.js";
 import { maybeShowDisclaimer } from "./features/splash-disclaimer.js";
+import { runBootGate } from "./features/boot-gate.js";
 
 // ============================
 // Boot 0: PWA 初回起動チェック + IDB hydration
@@ -54,6 +59,12 @@ await maybeShowPwaInitDialog();
 // store.js は module-init 時に state を読み込まなくなったので、ここで明示的に
 // 待つ。以降のすべての top-level コードは hydration 完了後に実行される。
 await initStore();
+
+// 研究用テレメトリ + スナップショットの起動処理 (独立モジュール・端末内のみ)。
+// initEventLog: 古いイベント間引き + app_open 記録 + ライフサイクル配線。
+// initSnapshots: 期限切れスナップショット間引き。
+initEventLog();
+initSnapshots();
 
 // ============================
 // Boot 1: Renderers + Navigators (組み立てだけ)
@@ -276,20 +287,55 @@ setOnSettingsApplied(() => refreshPatientUI());
 
 // v8.7+: 部屋番号順は自動 (各 view の描画時に ensureRoomOrder)。手動ソートボタンは撤去。
 
-// 共有画面：×でそのまま閉じる（受信内容を続きでスキャンするケースに備え確認なし）
-document.getElementById("sharedPasteCloseBtn")?.addEventListener("click", () => {
-  document.getElementById("sharedPasteCard")?.classList.remove("active");
-});
-
-// メモ画面：受信メモはスキャン直後のスクラッチ表示で、閉じると内容も破棄する。
-// 誤タップでスキャン結果を失わないよう確認を入れる。
-document.getElementById("memoPasteCloseBtn")?.addEventListener("click", () => {
-  const area = document.getElementById("memoPasteArea");
-  const hasContent = !!(area && String(area.value || "").trim());
-  if (hasContent && !confirm(t("main.recvMemo.close.confirm"))) return;
-  document.getElementById("memoPasteCard")?.classList.remove("active");
-  if (area) area.value = "";
-});
+// 受信ボックス (プロブレムリスト/共有) の共通配線。挙動を両画面で統一する:
+//   閉じる = 隠すだけ (内容は保持。誤タップで受信結果を失わない)
+//   消去   = 確認の上で内容を空に (永続データなので「消去」)
+//   開く   = 再表示 (閉じたあと中身が残っているときだけ「受信ボックスを開く」が出る)
+// 受信ボックスは病棟単位で永続化 (appState.recvMemo / recvShared)。医師が後で
+// 転記する運用に合わせ、消去するまで残す。受信(dump)も input イベント経由で保存される。
+const _recvCards = [];
+function wireRecvCard({ cardId, areaId, closeBtnId, clearBtnId, openBtnId, stateKey }) {
+  const card = document.getElementById(cardId);
+  const area = document.getElementById(areaId);
+  const openBtn = document.getElementById(openBtnId);
+  const syncOpenBtn = () => {
+    if (!openBtn) return;
+    const closed = !card?.classList.contains("active");
+    const hasContent = !!(area && String(area.value || "").trim());
+    openBtn.style.display = (closed && hasContent) ? "" : "none";
+  };
+  // 永続値を textarea へ反映 (起動時・病棟/ユーザー切替時)。カードは自動で開かない。
+  const reload = () => {
+    if (area) area.value = appState[stateKey] || "";
+    card?.classList.remove("active");
+    syncOpenBtn();
+  };
+  document.getElementById(closeBtnId)?.addEventListener("click", () => {
+    card?.classList.remove("active");
+    syncOpenBtn();
+  });
+  document.getElementById(clearBtnId)?.addEventListener("click", () => {
+    if (area && String(area.value || "").trim() && !confirm(t("recv.clear.confirm"))) return;
+    if (area) area.value = "";
+    setRecvContent(stateKey, "");
+    syncOpenBtn();
+  });
+  openBtn?.addEventListener("click", () => {
+    card?.classList.add("active");
+    syncOpenBtn();
+    area?.focus();
+  });
+  // 入力 / 受信(dump) のたびに永続化 + 開くボタン同期
+  area?.addEventListener("input", () => {
+    setRecvContent(stateKey, area.value);
+    syncOpenBtn();
+  });
+  reload();
+  _recvCards.push({ reload });
+}
+function reloadRecvCards() { for (const c of _recvCards) c.reload(); }
+wireRecvCard({ cardId: "memoPasteCard", areaId: "memoPasteArea", closeBtnId: "memoPasteCloseBtn", clearBtnId: "memoPasteClearBtn", openBtnId: "memoRecvOpenBtn", stateKey: "recvMemo" });
+wireRecvCard({ cardId: "sharedPasteCard", areaId: "sharedPasteArea", closeBtnId: "sharedPasteCloseBtn", clearBtnId: "sharedPasteClearBtn", openBtnId: "sharedRecvOpenBtn", stateKey: "recvShared" });
 
 // Paste-card camera handles continuation scans (text accumulates in the area).
 wireScanButton("sharedPasteScanBtn", "sharedPasteArea");
@@ -302,19 +348,25 @@ wireScanButton("adminImportScanBtn", "adminImportArea");
 // ============================
 document.getElementById("resetBtn")?.addEventListener("click", async () => {
   if (!confirm(t("settings.fullReset.confirm"))) return;
-  // 全Origin消去: LocalStorage + IndexedDB を全削除してリロード
+  // 全Origin消去: LocalStorage + IndexedDB を全削除してリロード。
+  // 患者データ本体 + 独立 DB (イベントログ / スナップショット) もまとめて消す。
   try { localStorage.clear(); } catch (_) {}
   if (window.indexedDB) {
-    try {
-      const req = indexedDB.deleteDatabase("hospital-rounds");
-      await new Promise(r => { req.onsuccess = req.onerror = req.onblocked = r; });
-    } catch (_) {}
+    for (const name of ["hospital-rounds", "hospital-rounds-eventlog", "hospital-rounds-snapshots"]) {
+      try {
+        const req = indexedDB.deleteDatabase(name);
+        await new Promise(r => { req.onsuccess = req.onerror = req.onblocked = r; });
+      } catch (_) {}
+    }
   }
   location.reload();
 });
 
-document.getElementById("clearAllBtn")?.addEventListener("click", () => {
+document.getElementById("clearAllBtn")?.addEventListener("click", async () => {
   if (!confirm(t("home.start.confirm"))) return;
+  // 破壊操作の直前: 現状を 1 枚スナップショット (await して clear 前の状態を確実に撮る)
+  await captureSnapshot(REASON.CLEAR);
+  logEvent(EVENT.CLEAR);
   const ct = settings.clearTargets;
   const now = Date.now();
   for (const p of appState.patients) {
@@ -352,11 +404,32 @@ setOnWorkspaceChanged(() => {
   // 患者 index を前 ws から引きずらないように、再描画前に必ずリセット
   setSelectedNo(1);
   refreshPatientUI();
-  // タイトル (端末固定なので変化しない) の表示同期 + ws label を更新
-  const appTitleInput = document.getElementById("appTitleInput");
-  if (appTitleInput) appTitleInput.value = appState.title;
-  document.title = appState.title;
+  // タイトル (= 現ユーザー名、ws 切替では不変) の表示同期 + ws label を更新
+  refreshAppUserName();
   refreshAppWsLabel();
+  reloadRecvCards(); // 受信ボックスは病棟単位なので切替で再読込
+  logEvent(EVENT.WS_SWITCH);
+});
+
+// ユーザー切替時に画面全体 + ヘッダー (ユーザー名/病棟) を再描画する (案B)。
+setOnUserChanged(() => {
+  setSelectedNo(1);
+  refreshPatientUI();
+  refreshAppUserName();
+  refreshAppWsLabel();
+  reloadRecvCards(); // 受信ボックスはユーザー/病棟単位なので切替で再読込
+  logEvent(EVENT.USER_SWITCH);
+});
+
+// 患者編集 (ステータス変更・SOAP 等) の研究ログ。markUpdated は編集サイトから
+// 高頻度に呼ばれるので、5 秒に 1 件へ debounce し「編集していた」だけを無記名で残す
+// (キーごとには取らない)。_onMarkUpdated は他に未配線なので追加配線は安全。
+let _editLogPending = false;
+setMarkUpdatedHandler(() => {
+  if (_editLogPending) return;
+  _editLogPending = true;
+  logEvent(EVENT.PATIENT_EDIT);
+  setTimeout(() => { _editLogPending = false; }, 5000);
 });
 
 // ============================
@@ -366,11 +439,10 @@ setOnWorkspaceChanged(() => {
 // WS 名: readonly でタップ → WS picker (切替/新規作成/リネーム)。
 // タイトル: ただのラベル (編集は設定画面)。
 initAppTitle();
-// v8.9: ヘッダーの鉛筆 (タイトル/WS編集トグル) は撤去。タイトル編集は設定画面、
-// WS リネームは WS ピッカー内に移動。ホームへはヘッダー左の家ボタンで戻る。
+// 案B: ヘッダーのタイトル枠はユーザー名。タップ → ユーザーピッカー (user-picker.js が配線)。
+// WS リネームは WS ピッカー内。ホームへはヘッダー左の家ボタンで戻る。
 document.getElementById("homeNavBtn")?.addEventListener("click", navToHome);
-// タイトルタップもホームへ (家ボタンと同じ。支障ないので導線を増やす)
-document.getElementById("appTitleInput")?.addEventListener("click", navToHome);
+initUserPicker();
 initWsPicker();
 
 // ============================
@@ -425,6 +497,12 @@ setSelectedNo(1);
 doRenderDetail();
 showView("home");
 
-// 月 1 回程度、「これは個人メモであり正式な医療記録ではない」旨のスプラッシュ。
-// home が描画されてから出すので、ユーザは閉じた瞬間にホーム画面に戻れる。
-maybeShowDisclaimer();
+// 起動ゲート: 初回はオンボーディング (名前+同意)、2人以上は日次のユーザー選択。
+// home 描画後に出すので、閉じた瞬間にホーム画面へ戻れる。オンボーディングを出した
+// 場合は同意取得済みなので月次免責は出さない。
+(async () => {
+  let onboarded = false;
+  try { ({ onboarded } = await runBootGate()); }
+  catch (e) { console.error("boot gate failed:", e); }
+  if (!onboarded) maybeShowDisclaimer();
+})();

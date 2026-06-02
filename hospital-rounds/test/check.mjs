@@ -337,7 +337,7 @@ await test("default formats include バイタル (number/fraction items) and 身
   const phys = fmts.find(f => f.name === "身体所見");
   assert.ok(vital, "バイタル exists");
   assert.equal(vital.panel, "O");
-  assert.equal(vital.pinned, true);
+  // (v8: フォーマットの pinned/isDefault は撤去。展開/規定文はグループ側で管理)
   // バイタル は kind=number / fraction (BP) で構成され、text はゼロのはず
   assert.ok(vital.items.length >= 5, "vital has >=5 items");
   assert.ok(vital.items.some(it => it.kind === "fraction"), "vital has a fraction item (BP)");
@@ -541,8 +541,8 @@ await test("PANEL/KIND/MODE enum tables are stable (bump WIRE_V if you add to th
   // 順序を変えると旧 wire の index が破壊される。本テストは「うっかり順序を
   // 変えないための歩哨」。enum を増やす時は WIRE_V を bump する必要がある。
   assert.deepEqual([...p.PANEL_BY_INDEX], ["S", "O", "A", "P"]);
-  assert.deepEqual([...p.KIND_BY_INDEX], ["text", "number", "fraction", "date"]);
-  // v7.7+: MODE_BY_INDEX (タグ・カテゴリ用) は撤去
+  // v8: "date" kind は撤去 (fraction に統合)。MODE_BY_INDEX (タグ・カテゴリ用) も撤去 (v7.7)
+  assert.deepEqual([...p.KIND_BY_INDEX], ["text", "number", "fraction"]);
 });
 
 await test("formatToWire / formatFromWire round-trip with tag dict", async () => {
@@ -568,8 +568,9 @@ await test("formatToWire / formatFromWire round-trip with tag dict", async () =>
   assert.equal(wire.n, "バイタル");
   assert.equal(wire.p, 1, "panel O = index 1");
   assert.deepEqual(wire.t, [1, 3], "tags use 1-based dict indices");
-  assert.equal(wire.pn, 1);
-  assert.equal(wire.d, undefined, "isDefault=false is omitted");
+  // v8: pn(pinned) / d(isDefault) は wire から撤去 (グループ側で管理)
+  assert.equal(wire.pn, undefined, "pinned is no longer emitted");
+  assert.equal(wire.d, undefined, "isDefault is no longer emitted");
   assert.equal(wire.i[0].k, 2, "kind fraction = index 2");
   assert.equal(wire.i[1].k, 1, "kind number = index 1");
   assert.equal(wire.i[2].k, 0, "kind text = index 0");
@@ -579,8 +580,7 @@ await test("formatToWire / formatFromWire round-trip with tag dict", async () =>
   assert.equal(restored.name, fmt.name);
   assert.equal(restored.panel, "O");
   assert.deepEqual(restored.tags, fmt.tags);
-  assert.equal(restored.pinned, true);
-  assert.equal(restored.isDefault, false);
+  // v8: pinned / isDefault は撤去済みなので復元されない
   assert.equal(restored.items.length, 3);
   assert.equal(restored.items[0].kind, "fraction");
   assert.equal(restored.items[1].kind, "number");
@@ -666,6 +666,74 @@ await test("qr-patient-list v3 round-trip via encodePatientList + decodePatientL
   assert.ok(found, "patient round-trips");
   assert.equal(found.room, "301");
   assert.equal(found.content, "経過良好");
+});
+
+// ============================
+// 受信ボックス (recvMemo / recvShared) の永続化 — bundle meta 経由
+// v8.10.0 で追加。IDB 非依存の経路だけを検査する (storage は no-op)。
+// ============================
+section("recv box persistence (bundle meta)");
+
+await test("projectBundle carries recvMemo / recvShared in meta; parseBundle preserves", () => {
+  const appState = { title: "x", patients: [], recvMemo: "受信A", recvShared: "受信B" };
+  const projected = projectBundle({ appState, settings: { deviceId: "", tags: [] }, sections: [SECTION.META, SECTION.PATIENTS] });
+  const meta = getSection(parseBundle(projected), SECTION.META) || {};
+  assert.equal(meta.recvMemo, "受信A");
+  assert.equal(meta.recvShared, "受信B");
+});
+
+await test("projectBundle defaults recv fields to empty string when absent", () => {
+  const projected = projectBundle({ appState: { title: "x", patients: [] }, settings: { deviceId: "", tags: [] }, sections: [SECTION.META] });
+  const meta = getSection(parseBundle(projected), SECTION.META) || {};
+  assert.equal(meta.recvMemo, "");
+  assert.equal(meta.recvShared, "");
+});
+
+await test("normalizeLoaded reads recv fields from raw, defaults to empty", async () => {
+  const store = await freshStore();
+  const withVals = store.normalizeLoaded({ title: "t", patients: [], recvMemo: "M", recvShared: "S" });
+  assert.equal(withVals.recvMemo, "M");
+  assert.equal(withVals.recvShared, "S");
+  const without = store.normalizeLoaded({ patients: [] });
+  assert.equal(without.recvMemo, "");
+  assert.equal(without.recvShared, "");
+});
+
+await test("warm boot: recvMemo in seed bundle meta hydrates appState", async () => {
+  const bundle = projectBundle({ appState: { title: "t", patients: [], recvMemo: "持ち越し", recvShared: "" }, settings: { deviceId: "", tags: [] } });
+  const store = await freshStore({ bundle });
+  assert.equal(store.appState.recvMemo, "持ち越し");
+  assert.equal(store.appState.recvShared, "");
+});
+
+await test("setRecvContent updates appState; ignores unknown key", async () => {
+  const store = await freshStore();
+  store.setRecvContent("recvMemo", "hello");
+  assert.equal(store.appState.recvMemo, "hello");
+  store.setRecvContent("bogus", "x");
+  assert.equal(store.appState.bogus, undefined);
+});
+
+// ============================
+// サンプルデータ (手動テスト用の網羅的アーカイブ) の妥当性
+// ============================
+section("sample data");
+
+await test("comprehensive.device-archive.json は妥当な端末アーカイブで、患者が正しく正規化される", async () => {
+  const store = await freshStore();
+  const raw = JSON.parse(readFileSync(join(__dirname, "sample-data", "comprehensive.device-archive.json"), "utf8"));
+  assert.ok(store.isDeviceArchive(raw), "device archive として認識される");
+  assert.equal(raw.users.length, 2, "2 ユーザー");
+
+  const w = raw.users[0].workspaces[0];
+  const norm = store.normalizeLoaded({ title: w.title, patients: w.patients });
+  const statuses = new Set(norm.patients.map((p) => p.status));
+  for (const s of ["none", "yellow", "green", "gray", "blue"]) {
+    assert.ok(statuses.has(s), `全ステータスを網羅: ${s} がある`);
+  }
+  assert.ok(norm.patients.some((p) => p.transferredAt > 0), "移動済マーカーの患者がいる");
+  assert.ok(norm.patients.some((p) => p.origin === "external"), "外部受信(external)の患者がいる");
+  assert.ok(norm.patients.some((p) => p.memo && p.s && p.a.text && p.shared), "SOAP+プロブレムリスト+共有が揃った患者がいる");
 });
 
 // ============================

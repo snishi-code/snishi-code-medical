@@ -68,13 +68,9 @@ function patientRoomCompare(a, b) {
 // 「表示中に動く」気持ち悪さを避けるため、描画前にだけ並べ替える (描画後は動かさない)。
 // 移動済 (transferred) は末尾、部屋番号なしも末尾グループ。
 //
-// 戻り値: 並びが変わったら true (保存要否の判定に使える)。
+// 旧実装は「並びが変わったか」を返していたが、どの caller も使っておらず、
+// 「意図せぬ並び替えを戻す」用途は画面遷移スナップショット (features/snapshots.js)
+// が担うようになったため、変化検出は撤去した。
 export function ensureRoomOrder() {
-  const before = appState.patients.map(p => p.pid);
   appState.patients.sort(patientRoomCompare);
-  let changed = false;
-  for (let i = 0; i < appState.patients.length; i++) {
-    if (appState.patients[i].pid !== before[i]) { changed = true; break; }
-  }
-  return changed;
 }

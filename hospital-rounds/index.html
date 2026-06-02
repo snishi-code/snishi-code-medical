@@ -55,9 +55,10 @@
           <button class="appLogo" id="homeNavBtn" type="button" data-i18n-aria="header.home" data-i18n-title="header.home" aria-label="ホーム" title="ホーム">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           </button>
-          <!-- 端末固定タイトル (localStorage 保存)。v8.9: ただのラベル化 (編集は設定画面)。
-               タップ→ホームは家ボタンに移譲。 -->
-          <input type="text" id="appTitleInput" class="appTitleInput" value="回診" readonly data-i18n-title="header.title.tooltip" data-i18n-aria="header.title.tooltip" title="ホームに戻る" aria-label="ホームに戻る" style="cursor:pointer;" />
+          <!-- ユーザー名 (案B: タイトル枠をユーザーに転用)。タップ→ユーザーピッカー。
+               ▾ で切替可を明示。リネームはピッカー内/設定画面。ホーム遷移は家ボタン。 -->
+          <input type="text" id="appTitleInput" class="appTitleInput" value="" readonly data-i18n-title="header.user.tooltip" data-i18n-aria="header.user.tooltip" title="ユーザーを切替" aria-label="ユーザーを切替" style="cursor:pointer;" />
+          <svg class="appWsChevron" id="appUserChevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
           <span class="appTitleWsSeparator" aria-hidden="true">/</span>
           <!-- ワークスペース名 (タップ→WSピッカー。リネームはピッカー内)。▾ で切替可を明示 -->
           <input type="text" id="appWsLabelInput" class="appTitleInput appWsLabelInput" value="" readonly data-i18n-title="header.ws.tooltip" data-i18n-aria="header.ws.tooltip" title="ワークスペースを切替" aria-label="ワークスペースを切替" />
@@ -65,7 +66,7 @@
         </div>
       </div>
       <div class="chipRow">
-        <button class="secondary" id="headerMemoBtn" type="button" data-i18n-title="header.memo" data-i18n-aria="header.memo" title="メモ" aria-label="メモ">
+        <button class="secondary" id="headerMemoBtn" type="button" data-i18n-title="header.memo" data-i18n-aria="header.memo" title="プロブレムリスト" aria-label="プロブレムリスト">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         </button>
         <button class="secondary" id="headerSharedBtn" type="button" data-i18n-title="header.shared" data-i18n-aria="header.shared" title="共有" aria-label="共有">
@@ -124,17 +125,18 @@
     </section>
 
     <!-- Memo view -->
-    <section class="view" id="memoView" aria-label="メモ一覧">
+    <section class="view" id="memoView" aria-label="プロブレムリスト一覧">
       <div class="detailTop noprint">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <button class="secondary editTextBtn" id="memoEditBtn" type="button" data-i18n="common.edit" data-i18n-title="memo.edit.tooltip" data-i18n-aria="memo.edit.tooltip" title="編集">編集</button>
+          <button class="secondary" id="memoRecvOpenBtn" type="button" data-i18n="recv.open" style="display:none;">受信ボックスを開く</button>
           <span id="memoTagFilterSlot"></span>
         </div>
         <div class="detailTopActions">
           <button class="iconBtn helpLinkBtn" data-help-page="04_メモ・共有" type="button" title="メモ画面の説明" aria-label="メモ画面の説明">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </button>
-          <button class="iconBtn" id="memoShowQrBtn" type="button" data-i18n-title="memo.qr.show" data-i18n-aria="memo.qr.show" title="メモQR表示" aria-label="メモQR表示">
+          <button class="iconBtn" id="memoShowQrBtn" type="button" data-i18n-title="memo.qr.show" data-i18n-aria="memo.qr.show" title="プロブレムリストQR表示" aria-label="プロブレムリストQR表示">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
           </button>
         </div>
@@ -158,13 +160,15 @@
       </div>
       <div class="card qrWrap" id="memoPasteCard">
         <div class="cardHead">
-          <div class="label" data-i18n="memo.recv.label">受信メモ</div>
-          <button class="iconBtn" id="memoPasteCloseBtn" type="button" data-i18n-title="common.close" data-i18n-aria="common.close" title="閉じる" aria-label="閉じる">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+          <div class="label" data-i18n="recv.label">受信ボックス</div>
         </div>
         <div class="cardBody">
+          <div class="movePatientHint" data-i18n="recv.hint"></div>
           <textarea id="memoPasteArea" style="min-height: 160px;"></textarea>
+          <div class="recvActions" style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">
+            <button class="secondary" id="memoPasteClearBtn" type="button" data-i18n="recv.clear">消去する</button>
+            <button class="secondary" id="memoPasteCloseBtn" type="button" data-i18n="common.close">閉じる</button>
+          </div>
         </div>
       </div>
       <div class="memoScroll" id="memoListHost"></div>
@@ -175,6 +179,7 @@
       <div class="detailTop noprint">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <button class="secondary editTextBtn" id="sharedEditBtn" type="button" data-i18n="common.edit" data-i18n-title="shared.edit.tooltip" data-i18n-aria="shared.edit.tooltip" title="編集">編集</button>
+          <button class="secondary" id="sharedRecvOpenBtn" type="button" data-i18n="recv.open" style="display:none;">受信ボックスを開く</button>
           <span id="sharedTagFilterSlot"></span>
         </div>
         <div class="detailTopActions">
@@ -188,21 +193,20 @@
       </div>
       <div class="card qrWrap" id="sharedPasteCard">
         <div class="cardHead">
-          <div class="label" data-i18n="shared.recv.label">受信メモ</div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <div class="qrHint" data-i18n="shared.paste.hint">他端末で読み取ったテキストをここに貼り付けて確認できます</div>
-            <button class="iconBtn" id="sharedPasteCloseBtn" type="button" data-i18n-title="common.close" data-i18n-aria="common.close" title="閉じる" aria-label="閉じる">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
+          <div class="label" data-i18n="recv.label">受信ボックス</div>
         </div>
         <div class="cardBody">
+          <div class="movePatientHint" data-i18n="recv.hint"></div>
           <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
             <button class="iconBtn" id="sharedPasteScanBtn" type="button" data-i18n-title="qr.scan.tooltip" data-i18n-aria="qr.scan.tooltip" title="カメラで QR を読む" aria-label="カメラで QR を読む">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             </button>
           </div>
           <textarea id="sharedPasteArea" style="min-height: 160px;"></textarea>
+          <div class="recvActions" style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">
+            <button class="secondary" id="sharedPasteClearBtn" type="button" data-i18n="recv.clear">消去する</button>
+            <button class="secondary" id="sharedPasteCloseBtn" type="button" data-i18n="common.close">閉じる</button>
+          </div>
         </div>
       </div>
 
@@ -353,14 +357,16 @@
            設定モデル (settings.qrEncryption / qrRedistribution) はそのまま機能する
            ので、デフォルト値で常時 ON で動く。将来 admin 機能で expose する想定。 -->
 
-      <!-- タイトル (端末固定)。ヘッダーから編集を撤去しここに集約。WS 管理の直上 =
-           「アプリ全体の名前」→「その中の WS」という概念順 -->
+      <!-- ユーザー管理 (案B)。切替・新規作成はヘッダーのユーザー名タップで開く
+           ユーザーピッカーが手早い。ここでは rename / delete / 切替ができる。
+           「ユーザー」→「その中の病棟」という概念順で病棟管理の直上に置く。 -->
       <div class="card">
         <div class="cardHead">
-          <div class="label" data-i18n="settings.appTitle.label">タイトル</div>
+          <div class="label" data-i18n="settings.user.section">ユーザー</div>
         </div>
         <div class="cardBody">
-          <input type="text" id="settingsTitleInput" class="settingsInp" data-i18n-placeholder="app.title" placeholder="回診" />
+          <div class="movePatientHint" data-i18n="settings.user.hint"></div>
+          <div class="ioDbList" id="settingsUserList"></div>
         </div>
       </div>
 
@@ -383,10 +389,55 @@
         </div>
       </div>
 
+      <!-- 巻き戻し / スナップショット (現在の病棟)。破壊操作 (クリア/移動/取込) の直前と
+           画面遷移直前の状態を自動保存。14日で自動失効。患者データを含むので短期保持。 -->
+      <div class="card">
+        <div class="cardHead">
+          <div class="label" data-i18n="settings.restore.section">巻き戻し</div>
+        </div>
+        <div class="cardBody">
+          <div class="movePatientHint" data-i18n="settings.restore.hint"></div>
+          <div class="ioDbList" id="settingsRestoreList"></div>
+        </div>
+      </div>
+
+      <!-- 研究用ログ (無記名・端末内のみ・365日保持)。書出/消去。 -->
+      <div class="card">
+        <div class="cardHead">
+          <div class="label" data-i18n="settings.log.section">研究ログ</div>
+        </div>
+        <div class="cardBody">
+          <div class="movePatientHint" data-i18n="settings.log.hint"></div>
+          <div class="ioJsonSection">
+            <div class="ioJsonActions">
+              <button class="secondary ioJsonTextBtn" id="ioLogExportBtn" type="button" data-i18n="io.log.export.label">ログ書出</button>
+              <button class="secondary ioJsonTextBtn" id="ioLogClearBtn" type="button" data-i18n="io.log.clear.label">ログ消去</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 端末まるごと (全ユーザー) バックアップ / 復元。研究用の端末交換・移行向け。
+           通常の JSON 取込/書き出し (病棟カード内) は現ユーザー単位。 -->
+      <div class="card">
+        <div class="cardHead">
+          <div class="label" data-i18n="settings.device.section">端末まるごと</div>
+        </div>
+        <div class="cardBody">
+          <div class="movePatientHint" data-i18n="settings.device.hint"></div>
+          <div class="ioJsonSection">
+            <div class="ioJsonActions">
+              <button class="secondary ioJsonTextBtn" id="ioDeviceImportBtn" type="button" data-i18n="io.device.import.label">端末まるごと取込</button>
+              <button class="secondary ioJsonTextBtn" id="ioDeviceSaveBtn" type="button" data-i18n="io.device.export.label">端末まるごと書出</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 全データ消去 (稀な操作。このOriginのすべてのLocalStorage+IndexedDBを削除) -->
       <div class="card settingsDangerCard">
         <button class="danger settingsFullResetBtn" id="resetBtn" type="button" data-i18n="settings.fullReset.btn">全データを消去する</button>
-        <p class="settingsDangerHint" data-i18n="settings.fullReset.hint">全ワークスペース・設定を完全に削除します。元に戻せません。</p>
+        <p class="settingsDangerHint" data-i18n="settings.fullReset.hint">全ユーザー・全病棟・設定を完全に削除します。元に戻せません。</p>
       </div>
       </div>
     </section>
@@ -445,7 +496,7 @@
             <button class="iconBtn" id="qrNextBtn" type="button" data-i18n-title="qr.next.tooltip" data-i18n-aria="qr.next.tooltip" title="次" aria-label="次">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
-            <button class="iconBtn" id="detailScanBtn" type="button" title="カメラでQRを読み取りメモに追記" aria-label="カメラでQRを読み取りメモに追記">
+            <button class="iconBtn" id="detailScanBtn" type="button" data-i18n-title="detail.scan.append" data-i18n-aria="detail.scan.append" title="カメラでQRを読み取りプロブレムリストに追記" aria-label="カメラでQRを読み取りプロブレムリストに追記">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             </button>
           </div>
@@ -460,7 +511,7 @@
       <div class="viewScroll">
       <div class="card" id="detailMemoCard">
         <div class="cardHead">
-          <div class="label" style="display:flex;align-items:center;" title="メモ" aria-label="メモ">
+          <div class="label" style="display:flex;align-items:center;" data-i18n-title="header.memo" data-i18n-aria="header.memo" title="プロブレムリスト" aria-label="プロブレムリスト">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           </div>
         </div>
@@ -631,6 +682,28 @@
       </div>
     </div>
 
+    <!-- 初回オンボーディング (ユーザーが0人の初回起動)。boot-gate.js が表示制御。
+         名前 + 同意 (個人情報を入力しない / 利用ログを無記名で端末内記録) を1画面で。 -->
+    <div class="popupMenuOverlay" id="onboardingOverlay" data-no-backdrop-close>
+      <div class="popupMenu">
+        <div class="popupTitle" id="onboardingTitle" data-i18n="onboarding.title">はじめに</div>
+        <div id="onboardingBody" style="font-size:13px;color:#333;line-height:1.6;margin-bottom:12px;white-space:pre-line;text-align:left;"></div>
+        <input type="text" id="onboardingNameInput" data-i18n-placeholder="onboarding.name.placeholder" placeholder="お名前" style="width:100%;margin-bottom:6px;" />
+        <div id="onboardingNameError" style="display:none;font-size:12px;color:#b91c1c;margin-bottom:8px;text-align:left;"></div>
+        <button class="primary" id="onboardingStartBtn" type="button" data-i18n="onboarding.start">はじめる</button>
+      </div>
+    </div>
+
+    <!-- ユーザー選択 (2人以上いて、最後の確認から一定期間経過した起動時)。boot-gate.js。
+         誤って別ユーザーに書くのを防ぐ。背景タップ不可・選ぶまで閉じない。 -->
+    <div class="popupMenuOverlay" id="userSelectOverlay" data-no-backdrop-close>
+      <div class="popupMenu">
+        <div class="popupTitle" data-i18n="userSelect.title">どのユーザーで使いますか？</div>
+        <div class="ioDbList" id="userSelectList"></div>
+        <div class="ioWsAddRow" id="userSelectAdd"></div>
+      </div>
+    </div>
+
     <!-- 月 1 回程度の利用注意スプラッシュ。splash-disclaimer.js が表示制御 -->
     <div class="popupMenuOverlay" id="disclaimerOverlay" data-no-backdrop-close>
       <div class="popupMenu">
@@ -724,6 +797,16 @@
       <div class="popupMenu wsPickerMenu">
         <div class="ioDbList" id="wsPickerList"></div>
         <div class="ioWsAddRow" id="wsPickerAdd"></div>
+      </div>
+    </div>
+
+    <!-- ユーザーピッカー (ヘッダーのユーザー名タップで開く軽量 popup)。
+         切替 + 新規作成 + リネーム。削除は設定画面の「ユーザー管理」へ。
+         ws ピッカーと同じ CSS クラス (wsPicker*/ioWs*) を再利用。 -->
+    <div class="popupMenuOverlay" id="userPickerOverlay">
+      <div class="popupMenu wsPickerMenu">
+        <div class="ioDbList" id="userPickerList"></div>
+        <div class="ioWsAddRow" id="userPickerAdd"></div>
       </div>
     </div>
   </main>

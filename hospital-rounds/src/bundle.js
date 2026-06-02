@@ -91,7 +91,14 @@ export function projectBundle({
   };
 
   if (want.has(SECTION.META)) {
-    out.sections.meta = { title: String(appState?.title || t("app.title")) };
+    // recvMemo / recvShared = 受信ボックス (他端末から受け取った内容)。病棟単位で
+    // 永続化し、消去するまで残す (医師が後で転記する運用)。患者データではないが
+    // 同じ病棟スナップショットに含めて保存・復元する。
+    out.sections.meta = {
+      title: String(appState?.title || t("app.title")),
+      recvMemo: String(appState?.recvMemo || ""),
+      recvShared: String(appState?.recvShared || ""),
+    };
   }
   if (want.has(SECTION.SETTINGS) && settings) {
     out.sections.settings = settings;

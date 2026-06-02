@@ -167,6 +167,64 @@
       margin-top: 6px;
     }
 
+    /* v8.11: タグピッカーのチップ・トグル (設定画面の chip と統一)。タップで選択
+       ON/OFF、選択中=青。ステータスは色 swatch + 記号のチップを横並びに。 */
+    .tagPickerChipRow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      padding: 4px 2px;
+    }
+    .tagPickerStatusRow {
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 8px;
+      margin-bottom: 2px;
+    }
+    .tagSelChip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 12px;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .tagSelChip.selected {
+      background: var(--blue-light, #eff6ff);
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+    .tagSelChip.statusChip {
+      padding: 5px;
+      min-height: 0;
+    }
+    .tagSelChip.statusChip.selected {
+      background: #fff;
+      box-shadow: 0 0 0 2px var(--blue);
+    }
+    .tagSelChipSwatch {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      border: 1px solid;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .tagPickerChipRow .tagAddWidget {
+      margin-top: 0;
+    }
+
     /* AND/OR mode toggle inside filter popup */
     .tagPickerModeRow {
       display: flex;

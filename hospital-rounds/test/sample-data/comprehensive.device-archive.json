@@ -1,0 +1,106 @@
+{
+  "format": "hospital-rounds-device-archive",
+  "schema": 1,
+  "exportedAt": "2026-01-01T00:00:00.000Z",
+  "_note": "テスト用サンプル（架空データ・PIIなし）。設定→端末まるごと→端末まるごと取込 から読み込む。全ステータス/タグ/SOAP/プロブレムリスト/共有/移動済/外部受信を網羅。",
+  "users": [
+    {
+      "name": "テスト太郎",
+      "settings": { "tags": ["要注意", "担当A", "感染症", "内科", "外科"] },
+      "workspaces": [
+        {
+          "label": "内科病棟",
+          "title": "テスト太郎",
+          "patients": [
+            {
+              "room": "301", "name": "田中 一郎", "status": "yellow",
+              "tags": ["要注意", "担当A"],
+              "memo": "#1 市中肺炎\n#2 高血圧",
+              "s": "咳嗽は軽減。食欲やや改善。",
+              "oFree": "胸部ラ音 右下肺野に軽度",
+              "a": { "text": "#1 改善傾向。抗菌薬継続。\n#2 コントロール良好。" },
+              "p": { "text": "抗菌薬あと3日。明日採血。" },
+              "shared": "解熱薬の追加処方を希望。"
+            },
+            {
+              "room": "302", "name": "佐藤 花江", "status": "green",
+              "tags": ["担当A"],
+              "memo": "#1 慢性心不全 利尿薬調整中",
+              "a": { "text": "体重 -0.5kg。浮腫軽減。" }
+            },
+            {
+              "room": "303", "name": "鈴木 次郎", "status": "gray",
+              "tags": ["感染症"],
+              "memo": "#1 COVID-19 隔離解除予定",
+              "shared": "本日で隔離解除、一般病棟へ。"
+            },
+            {
+              "room": "305", "name": "高橋 三郎", "status": "blue",
+              "tags": ["内科"],
+              "memo": "#1 誤嚥性肺炎（他院から受け入れ）",
+              "origin": "external"
+            },
+            {
+              "room": "308", "name": "伊藤 桜", "status": "none",
+              "tags": ["内科"]
+            },
+            {
+              "room": "310", "name": "渡辺 健", "status": "yellow",
+              "tags": ["要注意"],
+              "memo": "#1 胆石症 → 外科へ転棟",
+              "transferredAt": 1735689600000,
+              "transferredTo": "外科病棟"
+            }
+          ]
+        },
+        {
+          "label": "外科病棟",
+          "title": "テスト太郎",
+          "patients": [
+            {
+              "room": "401", "name": "山本 大輔", "status": "green",
+              "tags": ["外科"],
+              "memo": "#1 腹腔鏡下胆嚢摘出 術後3日",
+              "p": { "text": "ドレーン抜去、明日退院。" }
+            },
+            {
+              "room": "402", "name": "中村 美咲", "status": "yellow",
+              "tags": ["外科", "要注意"],
+              "s": "創部痛あり。",
+              "oFree": "創部に軽度発赤。",
+              "a": { "text": "創部感染の初期を疑う。" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "テスト花子",
+      "settings": { "tags": ["救急", "感染症", "経過観察"] },
+      "workspaces": [
+        {
+          "label": "救急外来",
+          "title": "テスト花子",
+          "patients": [
+            {
+              "room": "501", "name": "小林 葵", "status": "blue",
+              "tags": ["救急"],
+              "memo": "#1 胸痛精査中",
+              "s": "持続する前胸部痛。",
+              "a": { "text": "ACS除外目的で心電図・トロポニン。" }
+            },
+            {
+              "room": "502", "name": "加藤 蓮", "status": "yellow",
+              "tags": ["救急", "感染症"],
+              "memo": "#1 発熱 + 咽頭痛"
+            },
+            {
+              "room": "503", "name": "吉田 結衣", "status": "none",
+              "tags": ["経過観察"]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

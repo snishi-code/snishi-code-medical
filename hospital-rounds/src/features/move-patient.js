@@ -23,6 +23,7 @@ import {
   listBundles, loadBundle, saveBundle, getActiveWorkspaceId,
 } from "../storage.js";
 import { getSection, SECTION } from "../bundle.js";
+import { captureSnapshot, REASON } from "./snapshots.js";
 import { t } from "../i18n.js";
 
 // 新 pid 生成 (storage 側の crypto を再利用するため makeDefaultPatient 経由でだけ取得)
@@ -108,6 +109,9 @@ export async function movePatients(srcPatientIndices, destId, destLabel) {
     valid.push({ idx, src: p });
   }
   if (!valid.length) return 0;
+
+  // 破壊操作の直前: 元 ws (= 現アクティブ) の状態を 1 枚スナップショット
+  await captureSnapshot(REASON.MOVE);
 
   // 2) 移動先用コピーを一括作成
   const copies = valid.map(({ src }) => buildDestCopy(src));

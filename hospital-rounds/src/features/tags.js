@@ -80,6 +80,12 @@ export function getStatusTagMark(value) {
   return STATUS_TAG_MARK[getStatusFromTag(value)] || "";
 }
 
+// 生のステータス値 (STATUS.YELLOW 等) → 形マーク。色盲対応で「色だけに依存しない」
+// ために、色記号の単一ソース (STATUS_TAG_MARK) からそのまま引く。
+export function getStatusMark(status) {
+  return STATUS_TAG_MARK[status] || "";
+}
+
 // ステータス選択ポップアップ用の選択肢 (色 + 枠 + ラベル + 形マーク)。
 // STATUS_TAG_DEFS と STATUS_TAG_MARK を単一ソースに、患者画面のステータス選択で使う。
 export function getStatusOptions() {
@@ -458,49 +464,54 @@ export function makeTagPicker(opts) {
       popup.appendChild(buildAddWidget(() => { refreshPopup(); refreshTrigger(); }));
       return;
     }
+    // v8.11: チェックボックス縦並び → チップ・トグル。タップで選択 ON/OFF (選択中=青)。
+    // 設定画面のタグ chip と同じ pill 見た目で統一。ステータスは記号チップを横並びに。
     const current = new Set(getSelected());
-    for (const e of list) {
-      // onItemClick あり: 行は <div>。checkbox = お気に入り、name = 呼び出しと役割分離
-      // onItemClick なし: 行は <label>。clickable area 全体で checkbox トグル (現状互換)
-      const row = document.createElement(onItemClick ? "div" : "label");
-      row.className = "tagPickerOpt";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = current.has(e.value);
-      cb.addEventListener("change", () => {
+    const buildSelChip = (e) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      const sel = current.has(e.value);
+      chip.className = "tagSelChip" + (e.color ? " statusChip" : "") + (sel ? " selected" : "");
+      if (e.color) {
+        // Status: 色 swatch に形マーク (色＋形の2軸で色覚対応)
+        const sw = document.createElement("span");
+        sw.className = "tagSelChipSwatch";
+        const fg = e.color === "#ffffff" ? "#111" : "#fff";
+        sw.style.cssText = `background:${e.color};border-color:${e.borderColor || "rgba(0,0,0,.25)"};color:${fg};`;
+        sw.textContent = getStatusTagMark(e.value);
+        chip.appendChild(sw);
+      } else {
+        chip.textContent = e.label;
+      }
+      chip.title = e.label;
+      chip.setAttribute("aria-label", e.label);
+      chip.setAttribute("aria-pressed", sel ? "true" : "false");
+      chip.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const nowSel = chip.classList.toggle("selected");
+        chip.setAttribute("aria-pressed", nowSel ? "true" : "false");
         const next = new Set(getSelected());
-        if (cb.checked) next.add(e.value);
-        else next.delete(e.value);
+        if (nowSel) next.add(e.value); else next.delete(e.value);
         setSelected(Array.from(next));
         refreshTrigger();
         if (onChange) _pendingOnChange = onChange;
       });
-      row.appendChild(cb);
-      if (e.color) {
-        // Status: 色の swatch に形マークを重ねる (色＋形の2軸で色覚対応)
-        const sw = document.createElement("span");
-        const fg = e.color === "#ffffff" ? "#111" : "#fff";
-        sw.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;background:${e.color};border:1px solid ${e.borderColor || "rgba(0,0,0,.2)"};flex-shrink:0;font-size:11px;font-weight:700;line-height:1;color:${fg};`;
-        sw.textContent = getStatusTagMark(e.value);
-        sw.title = e.label;
-        sw.setAttribute("aria-label", e.label);
-        row.appendChild(sw);
-      } else {
-        const txt = document.createElement("span");
-        txt.textContent = e.label;
-        if (onItemClick) {
-          txt.className = "tagPickerOptName";
-          txt.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            closeOpenPopup();
-            onItemClick(e);
-          });
-        }
-        row.appendChild(txt);
-      }
-      popup.appendChild(row);
+      return chip;
+    };
+
+    const statusEntries = list.filter(e => e.color);
+    const tagEntries = list.filter(e => !e.color);
+    if (statusEntries.length) {
+      const srow = document.createElement("div");
+      srow.className = "tagPickerChipRow tagPickerStatusRow";
+      for (const e of statusEntries) srow.appendChild(buildSelChip(e));
+      popup.appendChild(srow);
     }
-    popup.appendChild(buildAddWidget(() => { refreshPopup(); refreshTrigger(); }));
+    const trow = document.createElement("div");
+    trow.className = "tagPickerChipRow";
+    for (const e of tagEntries) trow.appendChild(buildSelChip(e));
+    trow.appendChild(buildAddWidget(() => { refreshPopup(); refreshTrigger(); }));
+    popup.appendChild(trow);
   }
 
   // launcher (= フォーマット ☰) は overflow:hidden の card 内に置かれるため、

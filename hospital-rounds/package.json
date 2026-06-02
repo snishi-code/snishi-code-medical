@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "esbuild": "^0.28.0",
     "vite": "^8.0.12",
     "vite-plugin-singlefile": "^2.3.3"
@@ -12,7 +13,8 @@
     "build": "vite build",
     "build:test": "vite build --mode test",
     "preview": "vite preview",
-    "test": "node test/check.mjs"
+    "test": "node test/check.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "jsqr": "^1.4.0"

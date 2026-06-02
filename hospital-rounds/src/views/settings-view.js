@@ -1,13 +1,17 @@
 "use strict";
 
-import { settings, appState, saveSettings } from "../store.js";
+import { settings, saveSettings } from "../store.js";
 import { DEFAULT_TAGS, clone } from "../constants.js";
 import { renameTagAt, deleteTagAt, moveTag, makeAddTagWidget } from "../features/tags.js";
 import { bindLongPressAndDrag } from "../features/drag.js";
 import { startNewFormat, startEditFormat, deleteFormatById } from "../features/formats.js";
 import { getAllFormatGroups, startNewFormatGroup, startEditFormatGroup, deleteFormatGroupById } from "../features/format-groups.js";
-import { listBundles, renameBundle, deleteBundle, getActiveWorkspaceId } from "../storage.js";
-import { updateAppTitle, refreshAppTitle } from "../features/app-title.js";
+import { listBundles, renameBundle, deleteBundle, getActiveWorkspaceId,
+  listUsers, getCurrentUserId, renameUser, deleteUser, userNameExists } from "../storage.js";
+import { switchUser, renameCurrentUser } from "../store.js";
+import { refreshAppUserName } from "../features/app-title.js";
+import { listRestorePoints, restoreSnapshot, deleteRestorePoint, REASON } from "../features/snapshots.js";
+import { logEvent, EVENT } from "../features/eventlog.js";
 import { getStatusOptions } from "../features/tags.js";
 import { icon } from "../icons.js";
 import { t } from "../i18n.js";
@@ -361,6 +365,254 @@ function fmtTimestamp(ms) {
   return `${yy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
+// ============================
+// ユーザー管理 (案B)
+// ============================
+// 切替・新規作成はヘッダーのユーザーピッカーが手早い。ここでは rename / delete /
+// 切替ができる。現ユーザー / 最後の 1 人は削除不可。
+
+async function renderUserList() {
+  const host = document.getElementById("settingsUserList");
+  if (!host) return;
+  host.textContent = "";
+
+  let all = [];
+  try { all = await listUsers(); } catch (e) { console.error("listUsers failed:", e); }
+  if (!all.length) {
+    const empty = document.createElement("div");
+    empty.className = "ioDbListEmpty";
+    empty.textContent = t("io.user.list.empty");
+    host.appendChild(empty);
+    return;
+  }
+
+  const currentId = getCurrentUserId();
+  // current が一番上、その他は登録順
+  const sorted = all.slice().sort((a, b) => {
+    if (a.id === currentId) return -1;
+    if (b.id === currentId) return 1;
+    return (a.createdAt || 0) - (b.createdAt || 0);
+  });
+  for (const r of sorted) host.appendChild(buildUserRow(r, r.id === currentId, all.length));
+}
+
+function buildUserRow(r, isCurrent, totalCount) {
+  const row = document.createElement("div");
+  row.className = "ioDbRow" + (isCurrent ? " activeRow" : "");
+
+  // 主領域: current 以外はタップで切替
+  const main = document.createElement("div");
+  main.className = "ioDbRowMain";
+  main.style.cursor = isCurrent ? "default" : "pointer";
+  row.appendChild(main);
+
+  const labelHost = document.createElement("div");
+  labelHost.className = "ioDbRowLabelHost";
+  main.appendChild(labelHost);
+
+  const meta = document.createElement("div");
+  meta.className = "ioDbRowMeta";
+  meta.textContent = fmtTimestamp(r.createdAt);
+  main.appendChild(meta);
+
+  if (!isCurrent) {
+    main.addEventListener("click", async () => {
+      try {
+        await switchUser(r.id);
+        refreshAppUserName();
+        renderSettings(); // 設定はユーザー別なので再描画
+      } catch (err) {
+        console.error("user switch failed:", err);
+        alert(t("io.user.switch.failed"));
+      }
+    });
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "ioDbRowActions";
+  row.appendChild(actions);
+
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "ioDbRowEdit";
+  editBtn.title = t("common.edit");
+  editBtn.setAttribute("aria-label", t("common.edit"));
+  editBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
+  editBtn.addEventListener("click", (e) => { e.stopPropagation(); enterRenameMode(); });
+  actions.appendChild(editBtn);
+
+  // 削除: 現ユーザー / 最後の 1 人は不可
+  if (!isCurrent && totalCount > 1) {
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "ioDbRowDel";
+    del.title = t("common.delete");
+    del.setAttribute("aria-label", t("common.delete"));
+    del.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
+    del.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const name = r.name || t("io.user.untitled");
+      if (!confirm(t("io.user.delete.confirm", { name }))) return;
+      try {
+        await deleteUser(r.id);
+        await renderUserList();
+      } catch (err) {
+        console.error("user delete failed:", err);
+        alert(t("io.user.delete.failed"));
+      }
+    });
+    actions.appendChild(del);
+  }
+
+  showReadMode();
+
+  function showReadMode() {
+    labelHost.textContent = "";
+    const lbl = document.createElement("div");
+    lbl.className = "ioDbRowLabel";
+    lbl.textContent = r.name || t("io.user.untitled");
+    labelHost.appendChild(lbl);
+    editBtn.style.display = "";
+  }
+
+  function enterRenameMode() {
+    labelHost.textContent = "";
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.className = "ioDbRowEditInput";
+    inp.value = r.name || "";
+    labelHost.appendChild(inp);
+    editBtn.style.display = "none";
+
+    let done = false;
+    async function finalize(commit) {
+      if (done) return;
+      done = true;
+      if (!commit) { showReadMode(); return; }
+      const next = String(inp.value || "").trim();
+      if (!next || next === (r.name || "")) { showReadMode(); return; }
+      try {
+        if (await userNameExists(next, r.id)) {
+          alert(t("io.user.name.duplicate"));
+          done = false;
+          setTimeout(() => { inp.focus(); inp.select(); }, 0);
+          return;
+        }
+        if (r.id === getCurrentUserId()) {
+          // 現ユーザーは live キャッシュ名 + appState.title も更新する必要があるため store 経由
+          await renameCurrentUser(next);
+          refreshAppUserName();
+        } else {
+          await renameUser(r.id, next);
+        }
+        r.name = next;
+      } catch (err) {
+        console.error("user rename failed:", err);
+        alert(t("io.user.rename.failed"));
+      }
+      showReadMode();
+    }
+    inp.addEventListener("blur", () => finalize(true));
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); finalize(true); }
+      else if (e.key === "Escape") { e.preventDefault(); finalize(false); }
+    });
+    setTimeout(() => { inp.focus(); inp.select(); }, 0);
+  }
+
+  return row;
+}
+
+// ============================
+// 巻き戻し / スナップショット (現在の病棟)
+// ============================
+
+function restoreReasonLabel(reason) {
+  const key = {
+    [REASON.CLEAR]: "settings.restore.reason.clear",
+    [REASON.MOVE]: "settings.restore.reason.move",
+    [REASON.IMPORT]: "settings.restore.reason.import",
+    [REASON.NAV]: "settings.restore.reason.nav",
+    [REASON.RESTORE_UNDO]: "settings.restore.reason.undo",
+  }[reason];
+  return key ? t(key) : "";
+}
+
+async function renderRestoreList() {
+  const host = document.getElementById("settingsRestoreList");
+  if (!host) return;
+  host.textContent = "";
+
+  let points = [];
+  try { points = await listRestorePoints(); } catch (e) { console.error("listRestorePoints failed:", e); }
+  if (!points.length) {
+    const empty = document.createElement("div");
+    empty.className = "ioDbListEmpty";
+    empty.textContent = t("settings.restore.empty");
+    host.appendChild(empty);
+    return;
+  }
+  for (const p of points) host.appendChild(buildRestoreRow(p));
+}
+
+function buildRestoreRow(p) {
+  const row = document.createElement("div");
+  row.className = "ioDbRow";
+
+  const main = document.createElement("div");
+  main.className = "ioDbRowMain";
+  main.style.cursor = "default";
+  row.appendChild(main);
+
+  const label = document.createElement("div");
+  label.className = "ioDbRowLabel";
+  label.textContent = `${fmtTimestamp(p.t)}`;
+  main.appendChild(label);
+
+  const meta = document.createElement("div");
+  meta.className = "ioDbRowMeta";
+  const reason = restoreReasonLabel(p.reason);
+  meta.textContent = `${reason ? reason + " ・ " : ""}${t("settings.restore.count", { n: p.count })}`;
+  main.appendChild(meta);
+
+  const actions = document.createElement("div");
+  actions.className = "ioDbRowActions";
+  row.appendChild(actions);
+
+  const restoreBtn = document.createElement("button");
+  restoreBtn.type = "button";
+  restoreBtn.className = "secondary ioJsonTextBtn";
+  restoreBtn.textContent = t("settings.restore.action");
+  restoreBtn.addEventListener("click", async () => {
+    if (!confirm(t("settings.restore.confirm"))) return;
+    try {
+      const res = await restoreSnapshot(p.id);
+      if (!res.ok) { alert(t("settings.restore.failed")); return; }
+      logEvent(EVENT.SNAPSHOT_RESTORE);
+      if (_renderPatientUIFn) _renderPatientUIFn();
+      await renderRestoreList();
+    } catch (err) {
+      console.error("restore failed:", err);
+      alert(t("settings.restore.failed"));
+    }
+  });
+  actions.appendChild(restoreBtn);
+
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "ioDbRowDel";
+  del.title = t("common.delete");
+  del.setAttribute("aria-label", t("common.delete"));
+  del.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
+  del.addEventListener("click", async () => {
+    try { await deleteRestorePoint(p.id); await renderRestoreList(); }
+    catch (err) { console.error("delete restore point failed:", err); }
+  });
+  actions.appendChild(del);
+
+  return row;
+}
+
 async function renderWorkspaceList() {
   const host = document.getElementById("settingsWorkspaceList");
   if (!host) return;
@@ -490,13 +742,13 @@ function buildWorkspaceRow(r, isActive) {
 }
 
 export function renderSettings() {
-  const titleInp = document.getElementById("settingsTitleInput");
-  if (titleInp) titleInp.value = appState.title;
   renderClearTargets();
   renderTagsList();
   renderFormatList();
   renderFormatGroupList();
+  renderUserList();
   renderWorkspaceList();
+  renderRestoreList();
 }
 
 // Callbacks wired by main.js to avoid circular deps
@@ -511,14 +763,8 @@ export function initSettingsView(renderDetailFn, renderQrFn, renderPatientUIFn, 
   _renderPatientUIFn = renderPatientUIFn;
   _refreshHeaderWsLabelFn = refreshHeaderWsLabelFn || null;
 
-  // アプリ名 (端末固定タイトル) の編集 → updateAppTitle で保存 + ヘッダー反映
-  const settingsTitleInput = document.getElementById("settingsTitleInput");
-  if (settingsTitleInput) {
-    settingsTitleInput.addEventListener("input", () => {
-      updateAppTitle(settingsTitleInput.value);
-      refreshAppTitle();
-    });
-  }
+  // 案B: タイトル枠はユーザー名になり、編集はユーザーピッカー / ユーザー管理リストの
+  // 鉛筆で行う。旧「タイトル」入力欄 (settingsTitleInput) は撤去済み。
 
   const addTagBtn = document.getElementById("addTagBtn");
   const resetTagsBtn = document.getElementById("resetTagsBtn");
