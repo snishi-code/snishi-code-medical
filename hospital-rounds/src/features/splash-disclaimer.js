@@ -26,10 +26,11 @@ function shouldShow() {
   return (Date.now() - last) >= PERIOD_MS;
 }
 
-function markShown() {
+export function markDisclaimerShown() {
   if (typeof localStorage === "undefined") return;
   try { localStorage.setItem(LAST_SHOWN_KEY, String(Date.now())); } catch (_) { /* ignore */ }
 }
+const markShown = markDisclaimerShown;
 
 export async function maybeShowDisclaimer() {
   if (!shouldShow()) return;

@@ -682,6 +682,28 @@
       </div>
     </div>
 
+    <!-- 初回オンボーディング (ユーザーが0人の初回起動)。boot-gate.js が表示制御。
+         名前 + 同意 (個人情報を入力しない / 利用ログを無記名で端末内記録) を1画面で。 -->
+    <div class="popupMenuOverlay" id="onboardingOverlay" data-no-backdrop-close>
+      <div class="popupMenu">
+        <div class="popupTitle" id="onboardingTitle" data-i18n="onboarding.title">はじめに</div>
+        <div id="onboardingBody" style="font-size:13px;color:#333;line-height:1.6;margin-bottom:12px;white-space:pre-line;text-align:left;"></div>
+        <input type="text" id="onboardingNameInput" data-i18n-placeholder="onboarding.name.placeholder" placeholder="お名前" style="width:100%;margin-bottom:6px;" />
+        <div id="onboardingNameError" style="display:none;font-size:12px;color:#b91c1c;margin-bottom:8px;text-align:left;"></div>
+        <button class="primary" id="onboardingStartBtn" type="button" data-i18n="onboarding.start">はじめる</button>
+      </div>
+    </div>
+
+    <!-- ユーザー選択 (2人以上いて、最後の確認から一定期間経過した起動時)。boot-gate.js。
+         誤って別ユーザーに書くのを防ぐ。背景タップ不可・選ぶまで閉じない。 -->
+    <div class="popupMenuOverlay" id="userSelectOverlay" data-no-backdrop-close>
+      <div class="popupMenu">
+        <div class="popupTitle" data-i18n="userSelect.title">どのユーザーで使いますか？</div>
+        <div class="ioDbList" id="userSelectList"></div>
+        <div class="ioWsAddRow" id="userSelectAdd"></div>
+      </div>
+    </div>
+
     <!-- 月 1 回程度の利用注意スプラッシュ。splash-disclaimer.js が表示制御 -->
     <div class="popupMenuOverlay" id="disclaimerOverlay" data-no-backdrop-close>
       <div class="popupMenu">

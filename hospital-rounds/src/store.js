@@ -22,7 +22,7 @@ import {
   ensureUsersInitialized,
   getCurrentUserId, setCurrentUserId,
   loadUsers, listUsers,
-  createUser,
+  createUser, renameUser,
   setUserActiveWorkspaceId, getUserActiveWorkspaceId,
   getDefaultUserName, userNameExists,
 } from "./storage.js";
@@ -653,6 +653,20 @@ export async function createUserAndSwitch(name) {
   const newId = await createUser(trimmed);
   await switchUser(newId); // 空病棟を 1 つ作って切替
   return { ok: true, id: newId };
+}
+
+// 現ユーザーの名前を変更し、live state (キャッシュ名 + appState.title) にも反映する。
+// オンボーディング (初回の名前設定) と設定画面の現ユーザーリネームの両方で使う。
+// 重複名は拒否。caller はヘッダー再描画 (refreshAppUserName) の責務。
+export async function renameCurrentUser(name) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return { ok: false, reason: "empty" };
+  const uid = getCurrentUserId();
+  if (await userNameExists(trimmed, uid)) return { ok: false, reason: "duplicate" };
+  await renameUser(uid, trimmed);
+  _currentUserName = trimmed;
+  appState.title = trimmed;
+  return { ok: true };
 }
 
 // ============================

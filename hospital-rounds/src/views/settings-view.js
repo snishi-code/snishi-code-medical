@@ -8,7 +8,7 @@ import { startNewFormat, startEditFormat, deleteFormatById } from "../features/f
 import { getAllFormatGroups, startNewFormatGroup, startEditFormatGroup, deleteFormatGroupById } from "../features/format-groups.js";
 import { listBundles, renameBundle, deleteBundle, getActiveWorkspaceId,
   listUsers, getCurrentUserId, renameUser, deleteUser, userNameExists } from "../storage.js";
-import { switchUser } from "../store.js";
+import { switchUser, renameCurrentUser } from "../store.js";
 import { refreshAppUserName } from "../features/app-title.js";
 import { listRestorePoints, restoreSnapshot, deleteRestorePoint, REASON } from "../features/snapshots.js";
 import { logEvent, EVENT } from "../features/eventlog.js";
@@ -498,9 +498,14 @@ function buildUserRow(r, isCurrent, totalCount) {
           setTimeout(() => { inp.focus(); inp.select(); }, 0);
           return;
         }
-        await renameUser(r.id, next);
+        if (r.id === getCurrentUserId()) {
+          // 現ユーザーは live キャッシュ名 + appState.title も更新する必要があるため store 経由
+          await renameCurrentUser(next);
+          refreshAppUserName();
+        } else {
+          await renameUser(r.id, next);
+        }
         r.name = next;
-        if (r.id === getCurrentUserId()) refreshAppUserName();
       } catch (err) {
         console.error("user rename failed:", err);
         alert(t("io.user.rename.failed"));

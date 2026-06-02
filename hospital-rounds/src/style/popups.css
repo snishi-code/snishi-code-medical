@@ -347,6 +347,27 @@
       text-overflow: ellipsis;
     }
 
+    /* boot-gate のユーザー選択ボタン。単独 <button> なので明示的に白地+濃文字で配色 */
+    .userSelectRow {
+      width: 100%;
+      text-align: center;
+      align-items: center;
+      padding: 14px 12px;
+      margin-bottom: 8px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      min-height: 44px;
+    }
+    .userSelectRow:hover { background: #f3f4f6; }
+    .userSelectRow.selected {
+      border-color: var(--blue);
+      background: var(--blue-light);
+    }
+    .userSelectRow .ioDbRowLabel { font-size: 16px; white-space: normal; }
+    .userSelectRow .ioDbRowMeta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
     /* rename inline 編集中の input は label と同じ font-size/weight でブレないように */
     .ioDbRowEditInput {
       width: 100%;

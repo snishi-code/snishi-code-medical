@@ -344,6 +344,13 @@
   "pwa.init.clear": "削除して開始",
   "pwa.init.keep": "続きから使う",
   "web.warning.banner": "⚠ Web 版です。実データの入力は PWA (ホーム画面に追加) からどうぞ",
+  "onboarding.title": "はじめに",
+  "onboarding.body": "このアプリは医師個人の業務支援メモで、正式な医療記録ではありません。\n\n・フルネーム / 患者ID / 生年月日 / 住所 / 連絡先 / 画像 は入力しないでください。\n・利用状況（起動・操作の時刻など）を無記名で端末内に記録します（患者名は含まず、外部には送信しません）。\n\nまず、あなたのお名前を登録してください。",
+  "onboarding.name.placeholder": "お名前（例：田中）",
+  "onboarding.name.required": "お名前を入力してください",
+  "onboarding.start": "同意してはじめる",
+  "userSelect.title": "どのユーザーで使いますか？",
+  "userSelect.current": "現在のユーザー",
   "disclaimer.title": "これは個人メモです",
   "disclaimer.body": "本アプリは医師個人の業務支援メモであり、正式な医療記録ではありません。\n正式な診療記録は電子カルテにご記載ください。\n\n入力不可:\n・フルネーム / 患者 ID / 生年月日 / 住所 / 連絡先 / 画像\n\n表示は月 1 回程度です。",
   "disclaimer.ack": "確認しました"

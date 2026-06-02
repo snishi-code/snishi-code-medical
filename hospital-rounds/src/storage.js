@@ -109,6 +109,52 @@ export function setCurrentUserId(id) {
   localStorage.setItem(CURRENT_USER_KEY, id);
 }
 
+// ============================
+// オンボーディング / ユーザー再選択 (localStorage・同期 read)
+// ============================
+//
+// - 初回起動 (onboardedAt 未設定) = 名前 + 同意のポップアップを出す合図。
+// - ユーザー再選択 = 最後の確認から一定期間 (既定 1 日) 経過で起動時に選択画面。
+//   インターバルは将来 UI から変えられるよう localStorage に持たせる器だけ用意し、
+//   現状は設定 UI を出さない (既定値を返すだけ)。
+const ONBOARDED_KEY = "hospital_rounds_onboarded_at";
+const LAST_USER_CONFIRM_KEY = "hospital_rounds_last_user_confirm_at";
+const USER_RESELECT_INTERVAL_KEY = "hospital_rounds_user_reselect_interval_ms";
+const DEFAULT_USER_RESELECT_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1 日
+
+export function getOnboardedAt() {
+  if (typeof localStorage === "undefined") return 0;
+  return parseInt(localStorage.getItem(ONBOARDED_KEY) || "0", 10) || 0;
+}
+export function setOnboardedAt(ts) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(ONBOARDED_KEY, String(ts || Date.now()));
+}
+export function getLastUserConfirmAt() {
+  if (typeof localStorage === "undefined") return 0;
+  return parseInt(localStorage.getItem(LAST_USER_CONFIRM_KEY) || "0", 10) || 0;
+}
+export function setLastUserConfirmAt(ts) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(LAST_USER_CONFIRM_KEY, String(ts || Date.now()));
+}
+// 将来 UI から変更可能にする器 (現状は setter を呼ぶ箇所が無い)。
+export function getUserReselectIntervalMs() {
+  if (typeof localStorage === "undefined") return DEFAULT_USER_RESELECT_INTERVAL_MS;
+  const v = parseInt(localStorage.getItem(USER_RESELECT_INTERVAL_KEY) || "", 10);
+  return Number.isFinite(v) && v >= 0 ? v : DEFAULT_USER_RESELECT_INTERVAL_MS;
+}
+export function setUserReselectIntervalMs(ms) {
+  if (typeof localStorage === "undefined") return;
+  if (Number.isFinite(ms) && ms >= 0) localStorage.setItem(USER_RESELECT_INTERVAL_KEY, String(ms));
+}
+// 起動時にユーザー再選択を促すべきか。
+export function isUserReselectDue() {
+  const last = getLastUserConfirmAt();
+  if (!last) return true;
+  return (Date.now() - last) >= getUserReselectIntervalMs();
+}
+
 // 既定ユーザー名 (i18n)。getDefaultWorkspaceLabel と同じ理由で関数経由。
 export function getDefaultUserName() {
   return t("user.default.name");

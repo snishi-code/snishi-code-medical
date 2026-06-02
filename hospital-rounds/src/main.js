@@ -47,6 +47,7 @@ import { wireScanButton } from "./features/qr-scan.js";
 import { initNoAutofill } from "./features/no-autofill.js";
 import { maybeShowPwaInitDialog } from "./features/pwa-init.js";
 import { maybeShowDisclaimer } from "./features/splash-disclaimer.js";
+import { runBootGate } from "./features/boot-gate.js";
 
 // ============================
 // Boot 0: PWA 初回起動チェック + IDB hydration
@@ -496,6 +497,12 @@ setSelectedNo(1);
 doRenderDetail();
 showView("home");
 
-// 月 1 回程度、「これは個人メモであり正式な医療記録ではない」旨のスプラッシュ。
-// home が描画されてから出すので、ユーザは閉じた瞬間にホーム画面に戻れる。
-maybeShowDisclaimer();
+// 起動ゲート: 初回はオンボーディング (名前+同意)、2人以上は日次のユーザー選択。
+// home 描画後に出すので、閉じた瞬間にホーム画面へ戻れる。オンボーディングを出した
+// 場合は同意取得済みなので月次免責は出さない。
+(async () => {
+  let onboarded = false;
+  try { ({ onboarded } = await runBootGate()); }
+  catch (e) { console.error("boot gate failed:", e); }
+  if (!onboarded) maybeShowDisclaimer();
+})();
