@@ -207,6 +207,7 @@ function initAddWidget() {
         vibrate();
         refreshAppUserName();
         refreshAppWsLabel();
+        showButton(); // 次に開いた時に「＋」へ戻す (作成直後の dead input 化を防ぐ)
         closeUserPicker();
       } catch (err) {
         console.error("user create failed:", err);

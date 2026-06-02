@@ -192,6 +192,7 @@ function initAddWidget() {
       try {
         await createWorkspace(label);
         vibrate();
+        showButton(); // 次に開いた時に「＋」へ戻す (作成直後の dead input 化を防ぐ)
         closeWsPicker();
       } catch (err) {
         console.error("workspace create failed:", err);
