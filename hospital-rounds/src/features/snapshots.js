@@ -182,12 +182,16 @@ export async function initSnapshots() {
 }
 
 // 復元候補一覧 (新しい順)。UI 表示用に患者本体は返さず軽量メタだけ。
+// 期限切れ (TTL_DAYS 超) は、間引き (initSnapshots/pruneWs) がまだ走っていなくても
+// 候補に出さない (読み出し時 TTL 防御)。PII を含むため失効後は確実に隠す。
 export async function listRestorePoints(wsId) {
   const id = wsId || getActiveWorkspaceId();
   const db = await openDb();
   if (!db) return [];
+  const cutoff = Date.now() - TTL_DAYS * 24 * 60 * 60 * 1000;
   const all = await listForWs(db, id);
   return all
+    .filter(s => s.t >= cutoff)
     .sort((a, b) => b.t - a.t)
     .map(s => ({ id: s.id, t: s.t, reason: s.reason, count: Array.isArray(s.patients) ? s.patients.filter(p => p && (p.name || p.status !== "none")).length : 0 }));
 }
@@ -205,6 +209,9 @@ export async function restoreSnapshot(id) {
   if (!snap) return { ok: false, reason: "notfound" };
   // 現アクティブ病棟と一致する場合のみ復元 (UI は現病棟の候補だけ出す前提)
   if (snap.wsId !== getActiveWorkspaceId()) return { ok: false, reason: "wsmismatch" };
+  // 期限切れは復元しない (読み出し時 TTL 防御。間引き未実行でも失効後の PII を戻さない)
+  const cutoff = Date.now() - TTL_DAYS * 24 * 60 * 60 * 1000;
+  if (snap.t < cutoff) return { ok: false, reason: "expired" };
 
   // 1) 現状を「復元の取り消し」用に撮る (同日 dedup を避けるため直接 add)
   try {
@@ -226,4 +233,38 @@ export async function deleteRestorePoint(id) {
   if (!db) return;
   try { const tx = db.transaction(STORE, "readwrite"); tx.objectStore(STORE).delete(id); await txDone(tx); }
   catch (e) { console.warn("deleteRestorePoint failed:", e); }
+}
+
+// 指定した病棟 ID 群に属するスナップショットを全削除する。戻り値: 削除件数。
+// ユーザー削除・病棟削除時に呼ぶ: スナップショットは患者 PII を含むので、本体 DB
+// (bundles) から病棟が消えたらこちらにも残さない (= 「削除したのに端末内に残る」を防ぐ
+// データ約束)。best-effort で、失敗しても削除フロー本体は止めない。
+export async function purgeSnapshotsForWorkspaces(wsIds) {
+  const ids = Array.isArray(wsIds) ? wsIds.filter(Boolean) : [];
+  if (!ids.length) return 0;
+  const db = await openDb();
+  if (!db) return 0;
+  let toDelete = [];
+  try {
+    // 各 wsId の主キーを 1 つの readonly tx 内で同期発行して集める
+    // (await を挟まず発行 → tx が非アクティブ化しない)。
+    const txR = db.transaction(STORE, "readonly");
+    const idx = txR.objectStore(STORE).index("wsId");
+    const keyLists = await Promise.all(ids.map(wsId => reqDone(idx.getAllKeys(IDBKeyRange.only(wsId)))));
+    toDelete = keyLists.flat();
+  } catch (e) { console.warn("purgeSnapshots scan failed:", e); return 0; }
+  if (!toDelete.length) return 0;
+  try {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    for (const k of toDelete) store.delete(k);
+    await txDone(tx);
+  } catch (e) { console.warn("purgeSnapshots delete failed:", e); return 0; }
+  return toDelete.length;
+}
+
+// テスト用: 次の openDb() を再実行できるよう memoized promise をリセットする。
+// fake-indexeddb の差し替え後に呼ぶ。通常コードからは呼ばない。
+export function _resetSnapshotsDbForTests() {
+  _dbPromise = null;
 }

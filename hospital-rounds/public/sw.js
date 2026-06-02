@@ -30,11 +30,20 @@ async function precacheAll() {
   } catch (_) { /* first install offline: shell only, images fill in on next online visit */ }
 }
 
-// 自動更新の無効化:
-//   - skipWaiting() を呼ばないので、新しい SW は 'waiting' 状態に留まる
-//   - clients.claim() を呼ばないので、既に開いている PWA は古い SW を使い続ける
-//   - 結果として「ユーザが明示的にアプリを完全に閉じて開き直す」まで更新は適用されない
-//   - 院内運用では「ホーム画面から削除 → 再追加」を更新フローとするため、これで十分
+// 自動更新の無効化 = 意図的な「不変性 (immutability)」設計。【セキュリティ要件・変更厳禁】
+//   一度インストールされた PWA は、その後 origin から配信される内容に一切影響されない:
+//     - skipWaiting() を呼ばない    → 新しい SW は 'waiting' に留まり発火しない
+//     - clients.claim() を呼ばない  → 既存インストールは古い SW を使い続ける
+//     - index.html は cache-first    → アプリ本体コードは install 時点で凍結される
+//     - 登録側 (index.html) も registration.update() / updatefound を配線していない
+//   狙い: 配信元が信用できるのは「install の瞬間」だけ、と割り切る。install 後に
+//     (a) コードの瑕疵が後から「勝手に直って」臨床端末の挙動が変わる、
+//     (b) デプロイ環境やアカウントが乗っ取られ悪性コードが既存インストールへ波及する、
+//     のどちらも起こさない。可搬性(patchability)より完全性(integrity)を優先する設計。
+//   トレードオフ: 正規の修正も既存端末には届かない。更新は「アンインストール →
+//     再インストール」のみ (= ユーザーが明示的に再信頼する操作を要求する)。
+//   ⚠️ skipWaiting / clients.claim / registration.update / 自動更新プロンプトを
+//      足すと、この保証が壊れる。追加しないこと。
 self.addEventListener('install', (e) => {
   e.waitUntil(precacheAll());
 });

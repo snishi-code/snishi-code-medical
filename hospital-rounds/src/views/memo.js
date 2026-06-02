@@ -12,7 +12,6 @@ import { bindTapOrLongPress } from "./detail.js";
 let _editMode = false;
 
 export function setMemoEditMode(val) { _editMode = !!val; }
-export function getMemoEditMode() { return _editMode; }
 
 function renderMemoTagFilter(rerender) {
   const slot = document.getElementById("memoTagFilterSlot");

@@ -12,7 +12,7 @@
 //        STATUS_TAG_DEFS / isStatusTag / getStatusFromTag
 //
 //   §2. MODEL: TAG LIST QUERIES
-//        getAllTags / getAllFilterEntries / getStatusTagDefs
+//        getAllTags / getAllFilterEntries
 //
 //   §4. MODEL: TAG LIST MUTATIONS & PATIENT TAGS
 //        タグ自体の CRUD (addNewTag / renameTagAt / deleteTagAt / moveTag)
@@ -117,8 +117,6 @@ export function getAllFilterEntries() {
   const userTags = getAllTags().map(t => ({ value: t, label: t }));
   return [...userTags, ...STATUS_TAG_DEFS];
 }
-
-export function getStatusTagDefs() { return STATUS_TAG_DEFS.slice(); }
 
 // v7.7+: §3 TAG GROUPING (タグ・カテゴリ機能) 撤去。設定モデル上の
 // tagGroupingEnabled / tagGroups / tagGroupAssign は normalizeSettings の

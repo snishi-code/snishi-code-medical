@@ -185,7 +185,7 @@ function showQrError(msg) {
     ctx.fillRect(0, 0, qrCanvas.width, qrCanvas.height);
     ctx.fillStyle = "#111827";
     ctx.font = "16px ui-sans-serif, system-ui, sans-serif";
-    ctx.fillText("QR生成に失敗しました。", 16, 40);
+    ctx.fillText(t("detail.qr.renderFailed"), 16, 40);
   }
 }
 
@@ -488,7 +488,7 @@ function renderInlineTags() {
     const chip = document.createElement("span");
     chip.className = "inlineTagChip";
     chip.textContent = tagName;
-    chip.title = `${tagName}（長押しで外す）`;
+    chip.title = t("tag.detail.removeHint", { name: tagName });
     bindTapOrLongPress(
       chip,
       () => { /* タップ単独は何もしない（誤タップ保護） */ },

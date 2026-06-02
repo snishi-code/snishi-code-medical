@@ -164,33 +164,3 @@ export function getSection(bundle, key) {
 export function hasSection(bundle, key) {
   return !!(bundle && bundle.sections && Object.prototype.hasOwnProperty.call(bundle.sections, key));
 }
-
-// Forward-looking helper: future partial-import flows will use this to merge
-// a bundle's section into a patients array by pid. Today only export uses
-// projectBundle, so this is unused, but defining it now keeps the contract
-// stable.
-export function mergeMemoSection(patients, memoSection) {
-  if (!Array.isArray(memoSection)) return 0;
-  let n = 0;
-  for (const entry of memoSection) {
-    if (!entry || typeof entry.pid !== "string") continue;
-    const p = patients.find(x => x && x.pid === entry.pid);
-    if (!p) continue;
-    p.memo = String(entry.memo || "");
-    n++;
-  }
-  return n;
-}
-
-export function mergeSharedSection(patients, sharedSection) {
-  if (!Array.isArray(sharedSection)) return 0;
-  let n = 0;
-  for (const entry of sharedSection) {
-    if (!entry || typeof entry.pid !== "string") continue;
-    const p = patients.find(x => x && x.pid === entry.pid);
-    if (!p) continue;
-    p.shared = String(entry.shared || "");
-    n++;
-  }
-  return n;
-}

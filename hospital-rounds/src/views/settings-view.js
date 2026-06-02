@@ -10,7 +10,7 @@ import { listBundles, renameBundle, deleteBundle, getActiveWorkspaceId,
   listUsers, getCurrentUserId, renameUser, deleteUser, userNameExists } from "../storage.js";
 import { switchUser, renameCurrentUser } from "../store.js";
 import { refreshAppUserName } from "../features/app-title.js";
-import { listRestorePoints, restoreSnapshot, deleteRestorePoint, REASON } from "../features/snapshots.js";
+import { listRestorePoints, restoreSnapshot, deleteRestorePoint, purgeSnapshotsForWorkspaces, REASON } from "../features/snapshots.js";
 import { logEvent, EVENT } from "../features/eventlog.js";
 import { getStatusOptions } from "../features/tags.js";
 import { icon } from "../icons.js";
@@ -454,7 +454,9 @@ function buildUserRow(r, isCurrent, totalCount) {
       const name = r.name || t("io.user.untitled");
       if (!confirm(t("io.user.delete.confirm", { name }))) return;
       try {
-        await deleteUser(r.id);
+        const { workspaceIds } = await deleteUser(r.id);
+        // 削除ユーザーの病棟スナップショット (患者 PII) を別 DB からも消す
+        try { await purgeSnapshotsForWorkspaces(workspaceIds); } catch (_) {}
         await renderUserList();
       } catch (err) {
         console.error("user delete failed:", err);
@@ -683,6 +685,8 @@ function buildWorkspaceRow(r, isActive) {
       if (!confirm(t("io.ws.delete.confirm", { name }))) return;
       try {
         await deleteBundle(r.id);
+        // 削除病棟のスナップショット (患者 PII) を別 DB からも消す
+        try { await purgeSnapshotsForWorkspaces([r.id]); } catch (_) {}
         await renderWorkspaceList();
       } catch (err) {
         console.error("workspace delete failed:", err);
@@ -753,13 +757,11 @@ export function renderSettings() {
 
 // Callbacks wired by main.js to avoid circular deps
 let _renderDetailFn = null;
-let _renderQrFn = null;
 let _renderPatientUIFn = null;
 let _refreshHeaderWsLabelFn = null;
 
-export function initSettingsView(renderDetailFn, renderQrFn, renderPatientUIFn, refreshHeaderWsLabelFn) {
+export function initSettingsView(renderDetailFn, renderPatientUIFn, refreshHeaderWsLabelFn) {
   _renderDetailFn = renderDetailFn;
-  _renderQrFn = renderQrFn;
   _renderPatientUIFn = renderPatientUIFn;
   _refreshHeaderWsLabelFn = refreshHeaderWsLabelFn || null;
 
