@@ -60,6 +60,7 @@
     }
 
     .patientBtn {
+      position: relative;
       width: 100%;
       min-height: 58px;
       border-radius: 14px;
@@ -167,3 +168,22 @@
       border-color: var(--status-blue-bd);
       color: var(--status-blue-text);
     }
+
+    /* 色盲対応: ステータス色のボタン左上に小さな形マークを重ねる。色だけに依存
+       させないための歩哨。白縁 (text-shadow) で背景色に関わらず読めるようにする。
+       マークの色は各ステータスの濃文字色 (3層パレットの「文字」値)。 */
+    .patientBtnMark {
+      position: absolute;
+      top: 4px;
+      left: 7px;
+      font-size: 13px;
+      font-weight: 900;
+      line-height: 1;
+      pointer-events: none;
+      text-shadow:
+        0 0 2px #fff, 0 0 2px #fff, 0 0 3px rgba(255, 255, 255, 0.9);
+    }
+    .patientBtn.status-yellow .patientBtnMark { color: var(--status-yellow-fg); }
+    .patientBtn.status-green  .patientBtnMark { color: var(--status-green-fg); }
+    .patientBtn.status-gray   .patientBtnMark { color: var(--status-gray-text); }
+    .patientBtn.status-blue   .patientBtnMark { color: var(--status-blue-text); }

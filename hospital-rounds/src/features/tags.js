@@ -80,6 +80,12 @@ export function getStatusTagMark(value) {
   return STATUS_TAG_MARK[getStatusFromTag(value)] || "";
 }
 
+// 生のステータス値 (STATUS.YELLOW 等) → 形マーク。色盲対応で「色だけに依存しない」
+// ために、色記号の単一ソース (STATUS_TAG_MARK) からそのまま引く。
+export function getStatusMark(status) {
+  return STATUS_TAG_MARK[status] || "";
+}
+
 // ステータス選択ポップアップ用の選択肢 (色 + 枠 + ラベル + 形マーク)。
 // STATUS_TAG_DEFS と STATUS_TAG_MARK を単一ソースに、患者画面のステータス選択で使う。
 export function getStatusOptions() {

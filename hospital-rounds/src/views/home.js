@@ -3,7 +3,7 @@
 import { appState } from "../store.js";
 import { STATUS } from "../constants.js";
 import { openActionMenu } from "../features/drag.js";
-import { makeSharedTagFilterPicker, patientMatchesSharedFilter } from "../features/tags.js";
+import { makeSharedTagFilterPicker, patientMatchesSharedFilter, getStatusMark } from "../features/tags.js";
 import { formatPatientLabel, ensureRoomOrder } from "../features/room.js";
 import { bindTapOrLongPress } from "./detail.js";
 import { t } from "../i18n.js";
@@ -53,6 +53,15 @@ export function renderHome(onPatientClick) {
     const displayName = formatPatientLabel(p, String(i));
     btn.textContent = displayName;
     btn.setAttribute("aria-label", displayName);
+    // 色盲対応: ステータス色のボタンには隅に小さく形マークを重ねる (色だけに
+    // 依存しない)。白(none)は色が無く混同しないのでマーク無し。aria は名前のまま。
+    if (p.status && p.status !== STATUS.NONE) {
+      const mark = document.createElement("span");
+      mark.className = "patientBtnMark";
+      mark.textContent = getStatusMark(p.status);
+      mark.setAttribute("aria-hidden", "true");
+      btn.appendChild(mark);
+    }
     // タップ=患者を開く / 長押し=操作メニュー (追加/削除/移動)。
     // v8.7+: ステータス一括編集 (色パレット) は撤去。ドラッグ並べ替えも自動ソート化で撤去。
     bindTapOrLongPress(

@@ -136,6 +136,19 @@ test("2人以上いて1日経つと、起動時にユーザー選択が出る", 
   await expect(page.locator("#appTitleInput")).toHaveValue("テスト医師");
 });
 
+test("ステータス色の患者ボタンには形マークが出る（色盲対応）", async ({ page }) => {
+  await boot(page);
+  // 患者1を黄(▲)にする: 患者→ステータススウォッチ→黄を選ぶ
+  await page.locator("#homeGrid .patientBtn").first().click();
+  await page.locator("#detailStatusBtn").click();
+  await page.locator("#statusPickerList .statusPickerBox", { hasText: "▲" }).click();
+  await page.locator("#homeNavBtn").click();
+  // ホームの先頭ボタンに ▲ マークが重なっている
+  const first = page.locator("#homeGrid .patientBtn").first();
+  await expect(first).toHaveClass(/status-yellow/);
+  await expect(first.locator(".patientBtnMark")).toHaveText("▲");
+});
+
 test("ユーザーが1人なら1日経っても選択画面は出ない", async ({ page }) => {
   await boot(page, "テスト医師");
   await page.evaluate(() =>
