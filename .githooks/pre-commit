@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# snishi-code.com: コミット前に外部送信ガードを実行する。
+# 有効化(clone 後 1 回だけ): git config core.hooksPath .githooks
+exec "$(git rev-parse --show-toplevel)/tools/no-exfil-guard.sh"
