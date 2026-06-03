@@ -46,6 +46,7 @@ import { wireScanButton } from "./features/qr-scan.js";
 // docs-demo.js (説明書のインタラクティブデモ) は v8.9.4 で撤去
 import { initNoAutofill } from "./features/no-autofill.js";
 import { maybeShowPwaInitDialog } from "./features/pwa-init.js";
+import { dropAllAppIndexedDbs } from "./features/idb-wipe.js";
 import { maybeShowDisclaimer } from "./features/splash-disclaimer.js";
 import { runBootGate } from "./features/boot-gate.js";
 
@@ -348,17 +349,19 @@ wireScanButton("adminImportScanBtn", "adminImportArea");
 // ============================
 document.getElementById("resetBtn")?.addEventListener("click", async () => {
   if (!confirm(t("settings.fullReset.confirm"))) return;
-  // 全Origin消去: LocalStorage + IndexedDB を全削除してリロード。
-  // 患者データ本体 + 独立 DB (イベントログ / スナップショット) もまとめて消す。
-  try { localStorage.clear(); } catch (_) {}
-  if (window.indexedDB) {
-    for (const name of ["hospital-rounds", "hospital-rounds-eventlog", "hospital-rounds-snapshots"]) {
-      try {
-        const req = indexedDB.deleteDatabase(name);
-        await new Promise(r => { req.onsuccess = req.onerror = req.onblocked = r; });
-      } catch (_) {}
-    }
+  // 全消去: IndexedDB (本体 + イベントログ + スナップショット) を fail-closed で全削除してから
+  // LocalStorage を消して reload。順序が重要: 先に IDB(患者 PII) の削除確認を取り、確認できた
+  // 時だけ LS 消去 + reload へ進む。別タブが接続を握って blocked になった等で消えていないのに
+  // reload すると PII が残ったまま「消えた」ように見える (fail-open)。失敗時は中断して通知する。
+  // 削除ロジックは PWA 初回ダイアログと同一ソース (features/idb-wipe.js)。
+  try {
+    await dropAllAppIndexedDbs();
+  } catch (e) {
+    console.error("full reset: idb wipe failed:", e);
+    alert(t("pwa.init.wipeFailed")); // 「他のタブ/ウィンドウを閉じて再試行」
+    return; // LS 消去も reload もしない
   }
+  try { localStorage.clear(); } catch (_) {}
   location.reload();
 });
 

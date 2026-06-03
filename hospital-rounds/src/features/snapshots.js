@@ -25,7 +25,7 @@
 // ============================================================================
 
 import { getActiveWorkspaceId } from "../storage.js";
-import { appState, setAppState, saveNow } from "../store.js";
+import { appState, setAppState, persistActiveOrThrow } from "../store.js";
 
 const DB_NAME = "hospital-rounds-snapshots";
 const DB_VERSION = 1;
@@ -236,9 +236,20 @@ export async function restoreSnapshot(id) {
     await txDone(tx);
   } catch (e) { console.warn("restore undo snapshot failed:", e); }
 
-  // 2) 差し替え (title=現ユーザー名は維持、患者だけ復元)
+  // 2) 差し替え (title=現ユーザー名は維持、患者だけ復元)。
+  //    fail-closed: 保存できなければ成功扱いにしない。saveNow() は throw しないので、
+  //    復元成功表示・イベント記録・UI 反映後にリロードで復元前へ戻る危険がある。
+  //    persistActiveOrThrow() で保存成功を確認できた時だけ ok を返し、失敗時は live
+  //    state も元へ戻して (画面と durable を一致させ)、{ ok:false } を返す。
+  const prev = appState;
   setAppState({ v: 3, title: appState.title, patients: clonePatients(snap.patients) });
-  await saveNow();
+  try {
+    await persistActiveOrThrow();
+  } catch (e) {
+    console.error("restoreSnapshot: save failed:", e);
+    setAppState(prev);
+    return { ok: false, reason: "save" };
+  }
   await pruneWs(db, snap.wsId);
   return { ok: true };
 }
