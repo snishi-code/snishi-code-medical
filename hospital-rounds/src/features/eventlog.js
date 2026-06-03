@@ -71,7 +71,13 @@ function openDb() {
         store.createIndex("t", "t", { unique: false });
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // delete/version 変更要求時に自接続を閉じて解放 (設定画面 reset の fail-closed 削除が
+      // 自分の接続で onblocked になり永久に完了しないのを防ぐ)。storage.js openDb と同じ。
+      db.onversionchange = () => { try { db.close(); } catch (_) {} _dbPromise = null; };
+      resolve(db);
+    };
     req.onerror = () => { console.warn("eventlog open failed:", req.error); resolve(null); };
     req.onblocked = () => resolve(null);
   });
