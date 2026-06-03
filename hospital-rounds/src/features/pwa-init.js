@@ -21,6 +21,8 @@
 //   main.js から、await initStore() の "前" に await maybeShowPwaInitDialog()
 //   を呼ぶ。「削除して開始」を選んだ場合は内部でリロードするので、戻ってこない。
 
+import { t } from "../i18n.js";
+
 const MARKER = "hospital_rounds_standalone_initialized";
 
 // アプリのデータが使う識別子の prefix。
@@ -42,17 +44,34 @@ function isStandaloneLaunch() {
 }
 
 // IDB データベースを丸ごと削除。Promise 化。
+// fail-closed: 削除が確認できない (onerror / onblocked / 例外) 場合は reject する。
+// 「削除して開始」は全 DB の onsuccess を確認できた時だけ初期化済み扱い→reload する
+// ので、別タブ/ウィンドウが接続を握って blocked になった等で消えていないのに患者
+// データが残ったまま本番運用へ進む (fail-open) のを防ぐ。
+// この dialog は initStore/initSnapshots より前に出る (= アプリ自身はまだ IDB を
+// 開いていない) ため、blocked になるのは他タブ等が握っている本当に危険な時だけ。
 function dropIndexedDb(dbName) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (typeof indexedDB === "undefined") { resolve(); return; }
+    let settled = false;
     try {
       const req = indexedDB.deleteDatabase(dbName);
-      req.onsuccess = () => resolve();
-      req.onerror = () => { console.warn("idb delete failed:", req.error); resolve(); };
-      req.onblocked = () => { console.warn("idb delete blocked"); resolve(); };
+      req.onsuccess = () => { if (!settled) { settled = true; resolve(); } };
+      req.onerror = () => {
+        if (settled) return;
+        settled = true;
+        console.warn("idb delete failed:", req.error);
+        reject(req.error || new Error(`idb delete failed: ${dbName}`));
+      };
+      req.onblocked = () => {
+        if (settled) return;
+        settled = true;
+        console.warn("idb delete blocked:", dbName);
+        reject(new Error(`idb delete blocked: ${dbName}`));
+      };
     } catch (e) {
       console.warn("idb delete threw:", e);
-      resolve();
+      reject(e);
     }
   });
 }
@@ -117,9 +136,22 @@ export async function maybeShowPwaInitDialog() {
       keepBtn.removeEventListener("click", onKeep);
     };
     const onClear = async () => {
-      cleanup();
-      await dropAllAppIndexedDbs();
+      // 二重押し防止。削除が確認できるまで cleanup/marker/reload はしない (fail-closed)。
+      clearBtn.disabled = true;
+      keepBtn.disabled = true;
+      try {
+        await dropAllAppIndexedDbs();
+      } catch (e) {
+        // 削除が確認できなかった (別タブが DB 接続を握って blocked 等)。患者データが
+        // 残ったまま「初期化済み」にしてはいけない。dialog を出したまま再試行を促す。
+        console.error("pwa init: data wipe failed:", e);
+        clearBtn.disabled = false;
+        keepBtn.disabled = false;
+        alert(t("pwa.init.wipeFailed"));
+        return;
+      }
       clearAppLocalStorage();
+      cleanup();
       // 削除完了後、まっさらな状態でリロード。MARKER も削除済みなので
       // 次回起動でまた出てしまうが、リロード後は MARKER をすぐ立てる:
       try { localStorage.setItem(MARKER, "1"); } catch (_) { /* ignore */ }

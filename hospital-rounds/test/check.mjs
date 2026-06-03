@@ -824,7 +824,8 @@ await test("deleteUser がそのユーザーの病棟スナップショットを
   const res = await storageMod.deleteUser(uid);
   assert.ok(Array.isArray(res.workspaceIds) && res.workspaceIds.includes(wsId), "deleteUser が削除した病棟 ID を返す");
   const purged = await snapshotsMod.purgeSnapshotsForWorkspaces(res.workspaceIds);
-  assert.ok(purged >= 1, "purge が 1 件以上削除する");
+  assert.equal(purged.ok, true, "purge は成功 (ok=true)");
+  assert.ok(purged.count >= 1, "purge が 1 件以上削除する");
   rp = await snapshotsMod.listRestorePoints(wsId);
   assert.equal(rp.length, 0, "purge 後はスナップショットが残らない");
 });
@@ -846,10 +847,10 @@ await test("失効 (TTL 超過) スナップショットは候補に出ず・復
   assert.equal(restore.reason, "expired", "復元拒否の理由は expired");
 });
 
-await test("purgeSnapshotsForWorkspaces は空配列・未知 ID で安全に 0 を返す", async () => {
-  assert.equal(await snapshotsMod.purgeSnapshotsForWorkspaces([]), 0);
-  assert.equal(await snapshotsMod.purgeSnapshotsForWorkspaces(["ws_does_not_exist"]), 0);
-  assert.equal(await snapshotsMod.purgeSnapshotsForWorkspaces(null), 0);
+await test("purgeSnapshotsForWorkspaces は空配列・未知 ID で {ok:true,count:0} を返す", async () => {
+  assert.deepEqual(await snapshotsMod.purgeSnapshotsForWorkspaces([]), { ok: true, count: 0 });
+  assert.deepEqual(await snapshotsMod.purgeSnapshotsForWorkspaces(["ws_does_not_exist"]), { ok: true, count: 0 });
+  assert.deepEqual(await snapshotsMod.purgeSnapshotsForWorkspaces(null), { ok: true, count: 0 });
 });
 
 // ============================
@@ -982,6 +983,56 @@ await test("restoreSnapshot: 存在しない id は notfound", async () => {
   const res = await snapshotsMod.restoreSnapshot(99999999);
   assert.equal(res.ok, false);
   assert.equal(res.reason, "notfound");
+});
+
+// ============================
+// room order lock (編集中の自動ソート抑止 → 患者取り違え防止) #1
+// ============================
+section("room order lock");
+
+const roomMod = await import(pathToFileURL(join(srcDir, "features", "room.js")).href);
+
+await test("setRoomOrderLocked(true) 中は ensureRoomOrder が並べ替えない", async () => {
+  storeForIdb.setAppState({ v: 3, title: "", patients: [
+    { ...storeForIdb.makeDefaultPatient(), name: "A", room: "300" },
+    { ...storeForIdb.makeDefaultPatient(), name: "B", room: "100" },
+  ] });
+  // ロック中 (= memo/共有のインライン編集中相当) は並びが固定される。
+  roomMod.setRoomOrderLocked(true);
+  roomMod.ensureRoomOrder();
+  assert.equal(storeForIdb.appState.patients[0].name, "A", "ロック中は並びが変わらない (index 束縛の編集 UI が別患者を指さない)");
+  // 解除すると部屋番号順 (100 < 300) に並ぶ。
+  roomMod.setRoomOrderLocked(false);
+  roomMod.ensureRoomOrder();
+  assert.equal(storeForIdb.appState.patients[0].name, "B", "解除後は部屋番号順に並ぶ");
+});
+
+// ============================
+// snapshot purge tombstone 再試行 (PII 回収) #4
+// ============================
+section("snapshot purge tombstone retry");
+
+await test("purge 成功で tombstone は残らない", async () => {
+  const wsId = storageMod.newWorkspaceId();
+  storageMod.setActiveWorkspaceId(wsId);
+  storeForIdb.setAppState({ v: 3, title: "", patients: [{ ...storeForIdb.makeDefaultPatient(), name: "PII", status: "yellow" }] });
+  await snapshotsMod.captureSnapshot(snapshotsMod.REASON.CLEAR);
+  const res = await snapshotsMod.purgeSnapshotsForWorkspaces([wsId]);
+  assert.equal(res.ok, true);
+  assert.equal(localStorage.getItem("hospital_rounds_snapshot_purge_pending"), null, "成功後 tombstone は消える");
+});
+
+await test("前回失敗した purge を initSnapshots() が tombstone から再試行する (PII 回収)", async () => {
+  const wsId = storageMod.newWorkspaceId();
+  storageMod.setActiveWorkspaceId(wsId);
+  storeForIdb.setAppState({ v: 3, title: "", patients: [{ ...storeForIdb.makeDefaultPatient(), name: "残留PII", status: "yellow" }] });
+  await snapshotsMod.captureSnapshot(snapshotsMod.REASON.CLEAR);
+  assert.equal((await snapshotsMod.listRestorePoints(wsId)).length, 1, "撮影直後はスナップショットがある");
+  // 「前回の purge が途中で失敗して tombstone だけ残った」状況を作る。
+  localStorage.setItem("hospital_rounds_snapshot_purge_pending", JSON.stringify([wsId]));
+  await snapshotsMod.initSnapshots();
+  assert.equal((await snapshotsMod.listRestorePoints(wsId)).length, 0, "起動時の再試行で PII スナップショットが消える");
+  assert.equal(localStorage.getItem("hospital_rounds_snapshot_purge_pending"), null, "再試行成功で tombstone は消える");
 });
 
 // ============================

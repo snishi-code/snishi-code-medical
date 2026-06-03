@@ -157,7 +157,18 @@ function showUserSelection(users) {
           const name = String(inp.value || "").trim();
           if (!name) return;
           done = true;
-          const res = await createUserAndSwitch(name);
+          let res;
+          try {
+            res = await createUserAndSwitch(name);
+          } catch (e) {
+            // createUserAndSwitch は内部で switchUser → 現状を fail-closed 保存する。
+            // 保存できなければ throw されるので作成/切替を中断して通知する。
+            console.error("create user (boot-gate) failed:", e);
+            done = false;
+            alert(t("io.user.create.failed"));
+            inp.focus();
+            return;
+          }
           if (!res.ok) {
             done = false;
             if (res.reason === "duplicate") alert(t("io.user.name.duplicate"));

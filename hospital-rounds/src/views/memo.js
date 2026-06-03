@@ -4,14 +4,18 @@ import { appState, selectedNo, markUpdated, scheduleSave } from "../store.js";
 import { openActionMenu } from "../features/drag.js";
 import { syncDetailMemoDisplay } from "../features/navigation.js";
 import { makePatientTagPicker, makeSharedTagFilterPicker, patientMatchesSharedFilter } from "../features/tags.js";
-import { makeRoomInput, formatPatientLabel, ensureRoomOrder } from "../features/room.js";
+import { makeRoomInput, formatPatientLabel, ensureRoomOrder, setRoomOrderLocked } from "../features/room.js";
 import { refreshMemoQrIfActive } from "../features/qr-shared.js";
 import { statusClass } from "./home.js";
 import { bindTapOrLongPress } from "./detail.js";
 
 let _editMode = false;
 
-export function setMemoEditMode(val) { _editMode = !!val; }
+export function setMemoEditMode(val) {
+  _editMode = !!val;
+  // 編集中は自動部屋順ソートを止める (インライン編集中に並びが動くと行が別患者を指す)
+  setRoomOrderLocked(_editMode);
+}
 
 function renderMemoTagFilter(rerender) {
   const slot = document.getElementById("memoTagFilterSlot");
@@ -42,19 +46,21 @@ export function renderMemoScreen(renderHomeFn, opts, navigateToPatientFn) {
     if (_editMode) {
       const nameWrap = document.createElement("div");
       nameWrap.className = "nameDoctorRow";
-      nameWrap.appendChild(makeRoomInput(i - 1, () => {
+      // 患者は index でなくオブジェクト参照 p で捕捉する (ソートで並びが変わっても
+      // 別患者へ書き込まない)。編集中はソート自体も止まる (setRoomOrderLocked) ので
+      // index 束縛のタグピッカーも安全だが、テキスト入力は念のため p 直書きにする。
+      nameWrap.appendChild(makeRoomInput(p, () => {
         if (renderHomeFn) renderHomeFn();
       }));
       const numInp = document.createElement("input");
       numInp.type = "text";
       numInp.className = "memoNoInp";
       numInp.placeholder = String(i);
-      numInp.value = String(appState.patients[i - 1]?.name ?? "");
+      numInp.value = String(p?.name ?? "");
       numInp.addEventListener("input", () => {
         const next = String(numInp.value ?? "");
-        const cur = appState.patients[i - 1];
-        if (cur.name !== next) {
-          cur.name = next;
+        if (p.name !== next) {
+          p.name = next;
         }
         markUpdated(appState.patients.indexOf(p) + 1);
         scheduleSave();
@@ -83,9 +89,9 @@ export function renderMemoScreen(renderHomeFn, opts, navigateToPatientFn) {
     inp.type = "text";
     inp.autocomplete = "off";
     inp.maxLength = 200;
-    inp.value = String(appState.patients[i - 1]?.memo ?? "");
+    inp.value = String(p?.memo ?? "");
     inp.addEventListener("input", () => {
-      appState.patients[i - 1].memo = String(inp.value ?? "");
+      p.memo = String(inp.value ?? "");
       markUpdated(appState.patients.indexOf(p) + 1);
       scheduleSave();
       if (selectedNo === appState.patients.indexOf(p) + 1) syncDetailMemoDisplay();

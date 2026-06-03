@@ -17,10 +17,10 @@
 //   - これは admin 実装時にあらためて考える。今はローカル端末モードなので op は流さない
 // ============================
 
-import { appState, settings, selectedNo, markUpdated, scheduleSave, saveNow, makeDefaultPatient, createWorkspaceWithPatients } from "../store.js";
+import { appState, settings, selectedNo, markUpdated, scheduleSave, persistActiveOrThrow, makeDefaultPatient, createWorkspaceWithPatients } from "../store.js";
 import { STATUS } from "../constants.js";
 import {
-  listBundles, loadBundle, saveBundle, getActiveWorkspaceId,
+  listBundles, loadBundle, saveBundle, deleteBundle, getActiveWorkspaceId,
 } from "../storage.js";
 import { getSection, SECTION } from "../bundle.js";
 import { captureSnapshot, REASON } from "./snapshots.js";
@@ -58,6 +58,38 @@ async function appendPatientsToWorkspace(destId, patients) {
 // 1 患者用の thin wrapper (互換維持)
 async function appendPatientToWorkspace(destId, patient) {
   return appendPatientsToWorkspace(destId, [patient]);
+}
+
+// 指定 pid 群を移動先 ws から取り除いて保存 (移動の補償 = append の取り消し用)。
+// 移動先保存は成功したが元 ws 保存が失敗した時に、移動先のコピーを巻き戻して
+// 「両病棟に重複」を防ぐために使う。
+async function removePatientsFromWorkspace(destId, pids) {
+  const drop = new Set((pids || []).filter(Boolean));
+  if (!drop.size) return;
+  const bundle = await loadBundle(destId);
+  if (!bundle) return;
+  const current = getSection(bundle, SECTION.PATIENTS);
+  const next = (Array.isArray(current) ? current : []).filter(p => !drop.has(p && p.pid));
+  bundle.sections = bundle.sections || {};
+  bundle.sections.patients = next;
+  await saveBundle(bundle, destId);
+}
+
+// 元 ws の患者に移動マーカーを立てる前の値を控え、失敗時に元へ戻すための snapshot。
+function captureMarks(valid) {
+  return valid.map(({ src }) => ({
+    src,
+    transferredAt: src.transferredAt,
+    transferredTo: src.transferredTo,
+    status: src.status,
+  }));
+}
+function revertMarks(marks) {
+  for (const m of marks) {
+    m.src.transferredAt = m.transferredAt;
+    m.src.transferredTo = m.transferredTo;
+    m.src.status = m.status;
+  }
 }
 
 // 移動先用に「コピー版」を作る (pid 新発番、status BLUE、transferred マーカー無し)
@@ -116,16 +148,27 @@ export async function movePatients(srcPatientIndices, destId, destLabel) {
   // 2) 移動先用コピーを一括作成
   const copies = valid.map(({ src }) => buildDestCopy(src));
 
-  // 3) 移動先 ws へまとめて append + save (失敗したら例外を caller に)
+  // 3) 移動先 ws へまとめて append + save (失敗したら元 ws を一切触らず例外を caller に)
   await appendPatientsToWorkspace(destId, copies);
 
-  // 4) 元 ws の各患者にマーカーを立てる
+  // 4) 元 ws の各患者にマーカーを立てる (失敗時に戻せるよう旧値を控える)
+  const marks = captureMarks(valid);
   for (const { idx, src } of valid) {
     markPatientTransferred(src, destLabel);
     markUpdated(idx + 1);
   }
-  // 移動の完全性のためここは即時保存 (debounce しない)
-  await saveNow();
+
+  // 5) 元 ws を fail-closed で即時保存 (debounce しない)。失敗したら「全部成功か全部
+  //    無し」を守るため補償する: 移動先に append したコピーを取り除き、元 ws のマーカー
+  //    も戻してから throw する (握って成功件数を返すと両病棟に重複が残る)。
+  try {
+    await persistActiveOrThrow();
+  } catch (e) {
+    try { await removePatientsFromWorkspace(destId, copies.map(c => c.pid)); }
+    catch (e2) { console.error("move rollback (dest cleanup) failed:", e2); }
+    revertMarks(marks);
+    throw e;
+  }
   return valid.length;
 }
 
@@ -143,14 +186,24 @@ export async function moveToNewWorkspace(srcPatientIndices, label) {
   }
   if (!valid.length) return 0;
   const copies = valid.map(({ src }) => buildDestCopy(src));
-  // 新規 ws を作成 (コピーのみを内包)。失敗したら例外を caller に投げる
-  await createWorkspaceWithPatients(label, copies);
-  // 元 ws の各患者に移動マーカー
+  // 新規 ws を作成 (コピーのみを内包)。失敗したら元 ws を触らず例外を caller に投げる
+  const newWsId = await createWorkspaceWithPatients(label, copies);
+  // 元 ws の各患者に移動マーカー (失敗時に戻せるよう旧値を控える)
+  const marks = captureMarks(valid);
   for (const { idx, src } of valid) {
     markPatientTransferred(src, label);
     markUpdated(idx + 1);
   }
-  await saveNow();
+  // 元 ws を fail-closed で保存。失敗したら作成した新 ws を削除し、マーカーも戻して
+  // throw する (新 ws にコピーが残ったまま元が未移動に戻る = 重複を防ぐ)。
+  try {
+    await persistActiveOrThrow();
+  } catch (e) {
+    try { await deleteBundle(newWsId); }
+    catch (e2) { console.error("moveToNewWorkspace rollback (delete new ws) failed:", e2); }
+    revertMarks(marks);
+    throw e;
+  }
   return valid.length;
 }
 

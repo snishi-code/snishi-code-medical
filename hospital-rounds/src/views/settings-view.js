@@ -455,8 +455,11 @@ function buildUserRow(r, isCurrent, totalCount) {
       if (!confirm(t("io.user.delete.confirm", { name }))) return;
       try {
         const { workspaceIds } = await deleteUser(r.id);
-        // 削除ユーザーの病棟スナップショット (患者 PII) を別 DB からも消す
-        try { await purgeSnapshotsForWorkspaces(workspaceIds); } catch (_) {}
+        // 削除ユーザーの病棟スナップショット (患者 PII) を別 DB からも消す。
+        // 失敗 (ok=false) は黙って成功扱いにせず通知する。tombstone により次回起動で
+        // 自動再試行されるので PII は best-effort で捨てられない。
+        const purge = await purgeSnapshotsForWorkspaces(workspaceIds);
+        if (!purge.ok) alert(t("io.snapshot.purge.deferred"));
         await renderUserList();
       } catch (err) {
         console.error("user delete failed:", err);
@@ -685,8 +688,10 @@ function buildWorkspaceRow(r, isActive) {
       if (!confirm(t("io.ws.delete.confirm", { name }))) return;
       try {
         await deleteBundle(r.id);
-        // 削除病棟のスナップショット (患者 PII) を別 DB からも消す
-        try { await purgeSnapshotsForWorkspaces([r.id]); } catch (_) {}
+        // 削除病棟のスナップショット (患者 PII) を別 DB からも消す。失敗は通知し、
+        // tombstone により次回起動で自動再試行される (best-effort で捨てない)。
+        const purge = await purgeSnapshotsForWorkspaces([r.id]);
+        if (!purge.ok) alert(t("io.snapshot.purge.deferred"));
         await renderWorkspaceList();
       } catch (err) {
         console.error("workspace delete failed:", err);
