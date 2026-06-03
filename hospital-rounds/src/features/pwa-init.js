@@ -22,15 +22,14 @@
 //   を呼ぶ。「削除して開始」を選んだ場合は内部でリロードするので、戻ってこない。
 
 import { t } from "../i18n.js";
+import { dropAllAppIndexedDbs } from "./idb-wipe.js";
 
 const MARKER = "hospital_rounds_standalone_initialized";
 
-// アプリのデータが使う識別子の prefix。
-//   - localStorage キーは "hospital_rounds_" (アンダースコア) で統一
-//   - IndexedDB 名は "hospital-rounds" (ハイフン) で統一 (本体/eventlog/snapshots)
+// localStorage キーは "hospital_rounds_" (アンダースコア) で統一。
 // 「完全に初期化」はこの prefix で一掃する (origin 共有なので全消しは他アプリを巻き込む)。
+// IndexedDB の全削除は features/idb-wipe.js (fail-closed) に集約。
 const LS_PREFIX = "hospital_rounds_";
-const DB_PREFIX = "hospital-rounds";
 
 // PWA standalone モードかを判定。
 //   - 標準的なブラウザ: matchMedia('(display-mode: standalone)')
@@ -41,39 +40,6 @@ function isStandaloneLaunch() {
   } catch (_) { /* ignore */ }
   if (window.navigator && window.navigator.standalone === true) return true;
   return false;
-}
-
-// IDB データベースを丸ごと削除。Promise 化。
-// fail-closed: 削除が確認できない (onerror / onblocked / 例外) 場合は reject する。
-// 「削除して開始」は全 DB の onsuccess を確認できた時だけ初期化済み扱い→reload する
-// ので、別タブ/ウィンドウが接続を握って blocked になった等で消えていないのに患者
-// データが残ったまま本番運用へ進む (fail-open) のを防ぐ。
-// この dialog は initStore/initSnapshots より前に出る (= アプリ自身はまだ IDB を
-// 開いていない) ため、blocked になるのは他タブ等が握っている本当に危険な時だけ。
-function dropIndexedDb(dbName) {
-  return new Promise((resolve, reject) => {
-    if (typeof indexedDB === "undefined") { resolve(); return; }
-    let settled = false;
-    try {
-      const req = indexedDB.deleteDatabase(dbName);
-      req.onsuccess = () => { if (!settled) { settled = true; resolve(); } };
-      req.onerror = () => {
-        if (settled) return;
-        settled = true;
-        console.warn("idb delete failed:", req.error);
-        reject(req.error || new Error(`idb delete failed: ${dbName}`));
-      };
-      req.onblocked = () => {
-        if (settled) return;
-        settled = true;
-        console.warn("idb delete blocked:", dbName);
-        reject(new Error(`idb delete blocked: ${dbName}`));
-      };
-    } catch (e) {
-      console.warn("idb delete threw:", e);
-      reject(e);
-    }
-  });
 }
 
 // アプリの localStorage キーをすべて削除する。origin 共有のため localStorage.clear()
@@ -90,27 +56,6 @@ function clearAppLocalStorage() {
   for (const k of keys) {
     try { localStorage.removeItem(k); } catch (_) { /* ignore */ }
   }
-}
-
-// アプリの全 IndexedDB (本体 + eventlog + snapshots) を削除する。
-// 既知の 3 つを必ず対象にし、databases() が使えれば DB_PREFIX の他 DB も拾う
-// (将来 DB が増えた時の取りこぼし防止)。存在しない DB の削除は無害な no-op。
-async function dropAllAppIndexedDbs() {
-  if (typeof indexedDB === "undefined") return;
-  const names = new Set([
-    DB_PREFIX,                    // "hospital-rounds"        本体 (病棟/ユーザー/設定)
-    `${DB_PREFIX}-eventlog`,      // 無記名 利用ログ
-    `${DB_PREFIX}-snapshots`,     // スナップショット (患者 PII 含む)
-  ]);
-  try {
-    if (typeof indexedDB.databases === "function") {
-      const dbs = await indexedDB.databases();
-      for (const d of (dbs || [])) {
-        if (d && typeof d.name === "string" && d.name.startsWith(DB_PREFIX)) names.add(d.name);
-      }
-    }
-  } catch (_) { /* databases() 非対応環境は既知の 3 つだけで続行 */ }
-  await Promise.all([...names].map(dropIndexedDb));
 }
 
 // 初回起動なら overlay を出してユーザに尋ねる。それ以外なら no-op。

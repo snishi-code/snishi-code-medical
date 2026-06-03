@@ -972,6 +972,10 @@ await test("restoreSnapshot: 患者を撮影時点へ戻し、取り消し用ス
   assert.equal(res.ok, true, "復元成功");
   assert.equal(storeForIdb.appState.patients[0].name, "復元太郎", "撮影時点の患者へ戻る");
   assert.equal(storeForIdb.appState.patients[0].status, "yellow", "ステータスも戻る");
+  // fail-closed: ok=true は「保存できた」を意味する。IDB にも復元結果が永続化されている
+  // (saveNow の握り潰しだとリロードで復元前へ戻り得たため、persistActiveOrThrow で確認)。
+  const persisted = getSection(await storageMod.loadBundle(wsR), SECTION.PATIENTS);
+  assert.equal(persisted[0].name, "復元太郎", "復元結果が IDB に永続化されている");
 
   // 復元の取り消し用スナップショット (restore_undo) が残る = 復元自体も巻き戻せる
   const after = await snapshotsMod.listRestorePoints(wsR);

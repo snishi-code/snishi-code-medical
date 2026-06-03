@@ -699,8 +699,10 @@ export function isArchive(obj) {
 
 // 全 ws + グローバル設定をアーカイブオブジェクトとして返す。
 export async function exportArchive() {
-  // 現在の状態を確実に保存してから全 ws を読み出す
-  try { await persistActive(); } catch (e) { console.warn("exportArchive: persist failed:", e); }
+  // 現在の状態を確実に保存してから全 ws を読み出す。fail-closed: 保存できなければ中断
+  //    して throw する (握って続行すると、直前編集を欠いた古い IDB 内容を「最新バック
+  //    アップ」として書き出し、それを信じて運用すると編集が失われる)。caller が通知する。
+  await persistActiveOrThrow();
   const list = await listBundles();
   const workspaces = [];
   for (const w of list) {
@@ -761,7 +763,8 @@ export function isDeviceArchive(obj) {
 }
 
 export async function exportDeviceArchive() {
-  try { await persistActive(); } catch (e) { console.warn("exportDeviceArchive: persist failed:", e); }
+  // fail-closed: 保存できなければ中断 (古い IDB 内容を最新バックアップと誤認させない)。
+  await persistActiveOrThrow();
   const users = await listUsers();
   const allWs = await listAllWorkspaces();
   const outUsers = [];
