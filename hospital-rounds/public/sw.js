@@ -19,7 +19,7 @@ async function precacheAll() {
   // precache-list.json はファイル名の配列（例: ["foo.webp", "bar.webp"]）。
   // URL は SW スコープを起点に組み立てるので prod/test どちらの base でも動く。
   try {
-    const res = await fetch(new URL('./docs-images/precache-list.json', SCOPE).href, { cache: 'no-cache' });
+    const res = await fetch(new URL('./docs-images/precache-list.json', SCOPE).href, { cache: 'no-cache' }); // network-ok: 同一オリジンの静的アセット precache のみ。ユーザーデータ送信なし
     if (res && res.ok) {
       const list = await res.json();
       if (Array.isArray(list)) {
@@ -64,7 +64,7 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     caches.match(e.request).then((cached) => {
       if (cached) return cached;
-      return fetch(e.request).then((res) => {
+      return fetch(e.request).then((res) => { // network-ok: 同一オリジン GET のみ(上の origin チェック済み)のキャッシュ通過。外部送信なし
         if (res && res.ok && res.status === 200) {
           const clone = res.clone();
           caches.open(CACHE).then((c) => c.put(e.request, clone));

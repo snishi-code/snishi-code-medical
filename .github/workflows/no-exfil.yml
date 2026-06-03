@@ -1,0 +1,15 @@
+name: no-exfil-guard
+
+# ユーザーデータの外部送信を機械的に禁止する (サイト全体の絶対方針)。
+# push / PR のたびに走り、未承認の送信系API・外部リソース読込があれば赤くなる。
+on:
+  push:
+  pull_request:
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: 外部送信/外部読込ガード
+        run: bash tools/no-exfil-guard.sh

@@ -1,15 +1,20 @@
 "use strict";
 
 // ============================================================================
-// アイコン一元管理 (lucide ベース)
+// アイコン登録簿 (Lucide ベース) — UI アイコンの「概念 → グリフ」正本
 //
-// 同じアイコンが複数箇所 (静的 HTML / JS 生成 DOM) にベタ打ちされて drift する
-// 問題を防ぐため、再利用するグリフはここに 1 か所だけ定義し参照する。
-//   icon("people")        -> <svg ...>…</svg> 文字列 (既定 18px)
-//   icon("people", 16)    -> サイズ指定
+// 正本は apex リポの shared/icons.js。各アプリへ同一コピー（別 origin +
+// 完全オフラインのため参照不可。site-links.js / サイト憲法と同じコピー運用）。
 //
-// path 部分のみを保持し、共通の <svg> ラッパで包む (stroke/viewBox を統一)。
-// 形マーク (ステータスの ▲✓✕★−) は tags.js の STATUS_TAG_MARK が単一ソース。
+// 使い方: アイコンは「意味」で参照する（形名ではなく概念名）:
+//   icon("share")            -> <svg ...>…</svg> 文字列 (既定 18px)  ← 推奨
+//   icon("settings", 16)     -> サイズ指定
+//   形名 (people/gear…) も後方互換で使えるが、新規コードは概念名を使う。
+//
+// 方針: 同じアイコンが複数箇所に drift するのを防ぐためグリフはここに 1 か所だけ定義。
+//   新しい概念は勝手にグリフを足さず、まず既存トークンを再利用。無ければ Lucide から
+//   選んで CONCEPT に概念名を足す。十字 (+) は使わない。
+//   形マーク (ステータスの ▲✓✕★−) は tags.js の STATUS_TAG_MARK が単一ソース。
 // ============================================================================
 
 const PATHS = {
@@ -41,7 +46,26 @@ const PATHS = {
   chevronDown: '<polyline points="6 9 12 15 18 9"/>',
 };
 
+// 概念 → グリフ（セマンティック・トークン）。UI はこの「意味」で参照する。
+// 同じ意味で複数グリフを増やさない。新概念はここに 1 行足す。
+const CONCEPT = {
+  share: "people",        // チームへの申し送り / 共有
+  problemList: "memo",    // プロブレムリスト / メモ
+  scan: "camera",         // QR スキャン
+  qr: "qr",               // QR 表示
+  home: "home",           // ホーム
+  edit: "pencil",         // 編集
+  delete: "trash",        // 削除
+  add: "plus",            // 追加
+  close: "close",         // 閉じる
+  settings: "gear",       // 設定
+  help: "help",           // ヘルプ
+  tag: "tag",             // タグ
+  expand: "chevronDown",  // 展開 / シェブロン
+};
+
 export function icon(name, size = 18) {
-  const p = PATHS[name] || "";
+  const key = CONCEPT[name] || name;   // 概念名なら解決、形名ならそのまま (後方互換)
+  const p = PATHS[key] || "";
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 }
