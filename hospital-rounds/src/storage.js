@@ -315,7 +315,15 @@ function openDb() {
         store.createIndex("updatedAt", "updatedAt", { unique: false });
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // 別接続 (このタブの「全データ消去」reset や別タブ) が deleteDatabase / version
+      // 変更を要求したら、自接続を閉じて解放する。閉じないと delete が onblocked で永久に
+      // 進まない (設定画面 reset は initStore 後に走り、この接続が開いたままのため必須)。
+      // memoized promise も捨てて、次回 openDb() が新規接続を張れるようにする。
+      db.onversionchange = () => { try { db.close(); } catch (_) {} _dbPromise = null; };
+      resolve(db);
+    };
     req.onerror = () => {
       console.warn("indexedDB open failed:", req.error);
       resolve(null);
