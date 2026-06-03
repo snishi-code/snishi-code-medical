@@ -72,7 +72,16 @@ async function applyRosterAsNewWorkspace(decoded, ctrl) {
   const newAppState = { v: 3, title: appState.title, patients: newPatients };
   const newBundle = projectBundle({ appState: newAppState, settings: newSettings });
   const newId = await createWorkspaceRecord(label, newBundle);
-  await switchWorkspace(newId);
+  // switchWorkspace は切替前に現病棟を fail-closed 保存する。失敗時は throw されるので
+  // 切替を中断して通知 (現病棟データは保たれる。新病棟は作成済みなので後から手動切替可)。
+  try {
+    await switchWorkspace(newId);
+  } catch (e) {
+    console.error("qr import: switch to new ws failed:", e);
+    ctrl.close();
+    alert(t("io.ws.switch.failed"));
+    return;
+  }
   ctrl.close();
   alert(t("home.qrImport.newWs.done", { count: roster.length, label }));
 }

@@ -3,8 +3,7 @@
 import { appState, settings, markUpdated, scheduleSave, saveNow } from "../store.js";
 import { t } from "../i18n.js";
 
-export function getPatientRoom(patientIndex) {
-  const p = appState.patients[patientIndex];
+export function getPatientRoom(p) {
   return String(p?.room ?? "");
 }
 
@@ -12,23 +11,26 @@ function sanitizeRoomInput(s) {
   return String(s ?? "").replace(/[^0-9]/g, "");
 }
 
-export function makeRoomInput(patientIndex, onChange) {
+// 部屋入力欄は患者を index ではなく「患者オブジェクト参照」で捕捉する。これにより
+// 入力中に appState.patients の並び (ensureRoomOrder の自動ソート) が変わっても、欄は
+// 常に元の患者へ書き込む (= index 束縛による患者取り違えを防ぐ)。引数は患者オブジェクト。
+export function makeRoomInput(patient, onChange) {
   const inp = document.createElement("input");
   inp.type = "text";
   inp.inputMode = "numeric";
   inp.pattern = "[0-9]*";
   inp.className = "roomInput";
   inp.maxLength = 6;
-  inp.value = getPatientRoom(patientIndex);
+  inp.value = getPatientRoom(patient);
   inp.addEventListener("input", () => {
     const cleaned = sanitizeRoomInput(inp.value);
     if (cleaned !== inp.value) inp.value = cleaned;
-    const p = appState.patients[patientIndex];
-    if (!p) return;
-    if (p.room !== cleaned) {
-      p.room = cleaned;
+    if (!patient) return;
+    if (patient.room !== cleaned) {
+      patient.room = cleaned;
     }
-    markUpdated(patientIndex + 1);
+    // markUpdated は 1-based の no を取るので、現在位置を indexOf で解決する
+    markUpdated(appState.patients.indexOf(patient) + 1);
     scheduleSave();
     if (onChange) onChange();
   });
@@ -71,6 +73,14 @@ function patientRoomCompare(a, b) {
 // 旧実装は「並びが変わったか」を返していたが、どの caller も使っておらず、
 // 「意図せぬ並び替えを戻す」用途は画面遷移スナップショット (features/snapshots.js)
 // が担うようになったため、変化検出は撤去した。
+// 編集セッション中 (memo / 共有のインライン編集モード) は自動ソートを止める。
+// インライン編集 UI は行ごとに患者を捕捉しているため、編集中に並びが動くと
+// index 束縛の入力 (タグピッカー等) が別患者を指す。memo/shared の編集モード
+// 出入りで set し、「ソートは view 入室時のみ」(描画前にだけ) の不変条件を編集中も守る。
+let _orderLocked = false;
+export function setRoomOrderLocked(v) { _orderLocked = !!v; }
+
 export function ensureRoomOrder() {
+  if (_orderLocked) return; // 編集中は並べ替えない (患者取り違え防止)
   appState.patients.sort(patientRoomCompare);
 }

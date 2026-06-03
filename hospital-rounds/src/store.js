@@ -20,6 +20,7 @@ import {
   listAllWorkspaces,
   getActiveWorkspaceId, setActiveWorkspaceId,
   loadGlobalSettings, saveGlobalSettings,
+  isStorageAvailable,
   ensureUsersInitialized,
   getCurrentUserId, setCurrentUserId,
   loadUsers, listUsers,
@@ -481,6 +482,18 @@ async function persistActive() {
   await saveGlobalSettings(settings);
 }
 
+// fail-closed な保存経路。病棟切替・ユーザー切替・患者移動など「保存できていないのに
+// 先へ進むと臨床被害 (取り違え・重複・消失) になる」操作が使う。saveNow() (toast のみ・
+// 例外を投げない) とは違い、失敗は必ず throw して呼び出し側に中断させる。
+//   - db=null (IDB 不可) の no-op 保存は「保存できていない事実」として失敗扱いにする
+//     (本番でここに来るのはストレージが本当に使えない時なので、黙って成功にしない)。
+export async function persistActiveOrThrow() {
+  if (!(await isStorageAvailable())) {
+    throw new Error("persistActiveOrThrow: storage unavailable (IDB not usable)");
+  }
+  await persistActive();
+}
+
 // async になったが「fire and forget」呼び出しが多いので返り値を await する
 // 義務はない。内部 try/catch で失敗は console に出すだけ。
 export async function saveNow() {
@@ -522,13 +535,11 @@ export function flushSavePending() {
 // 入れ替わる」体験になる。
 export async function switchWorkspace(targetId) {
   if (!targetId) throw new Error("switchWorkspace: targetId required");
-  // 1) 現アクティブを必ず保存 (患者 + グローバル設定)
+  // 1) 現アクティブを必ず保存 (患者 + グローバル設定)。fail-closed: 保存できなければ
+  //    切替を中断して throw する (ポインタを動かす前に止めるので現データは無傷。
+  //    握って先へ進むと直前の編集がサイレントに失われる)。caller が通知する。
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-  try {
-    await persistActive();
-  } catch (e) {
-    console.error("save before switch failed:", e);
-  }
+  await persistActiveOrThrow();
   // 2) ポインタ切替
   setActiveWorkspaceId(targetId);
   // 3) ロード + 適用
@@ -545,13 +556,10 @@ export async function switchWorkspace(targetId) {
 // 空の新規ワークスペースを作成し、そのワークスペースに切替える。
 // label はユーザが画面で入力した名前。
 export async function createWorkspace(label) {
-  // 1) 現アクティブを保存 (患者 + グローバル設定)
+  // 1) 現アクティブを保存 (患者 + グローバル設定)。fail-closed: 保存できなければ新規
+  //    作成・切替を中断して throw (現データを失わない)。caller が通知する。
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-  try {
-    await persistActive();
-  } catch (e) {
-    console.error("save before create failed:", e);
-  }
+  await persistActiveOrThrow();
   // 2) 空の bundle を構築 (default 50 患者)。settings はグローバル共通なので bundle
   //    には含めない。新 ws は現在のグローバル設定をそのまま継承する。
   const emptyAppState = { v: 3, title: t("app.title"), patients: normalizePatientArray(null) };
@@ -602,9 +610,10 @@ export async function switchUser(targetUserId) {
   const fromUserId = getCurrentUserId();
   if (targetUserId === fromUserId) return;
 
-  // 1) 現状を保存
+  // 1) 現状を保存。fail-closed: 保存できなければ throw してユーザー切替を中断する
+  //    (現ユーザーの直前編集をサイレントに失わない)。caller が通知する。
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-  try { await persistActive(); } catch (e) { console.error("save before user switch failed:", e); }
+  await persistActiveOrThrow();
   // 2) 退出ユーザーの activeWorkspaceId を記録
   try { await setUserActiveWorkspaceId(fromUserId, getActiveWorkspaceId()); } catch (_) {}
 

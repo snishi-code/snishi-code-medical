@@ -3,14 +3,18 @@
 import { appState, selectedNo, markUpdated, scheduleSave } from "../store.js";
 import { openActionMenu } from "../features/drag.js";
 import { makePatientTagPicker, makeSharedTagFilterPicker, patientMatchesSharedFilter } from "../features/tags.js";
-import { makeRoomInput, formatPatientLabel, ensureRoomOrder } from "../features/room.js";
+import { makeRoomInput, formatPatientLabel, ensureRoomOrder, setRoomOrderLocked } from "../features/room.js";
 import { refreshSharedQrIfActive } from "../features/qr-shared.js";
 import { statusClass } from "./home.js";
 import { bindTapOrLongPress } from "./detail.js";
 
 let _editMode = false;
 
-export function setSharedEditMode(val) { _editMode = !!val; }
+export function setSharedEditMode(val) {
+  _editMode = !!val;
+  // 編集中は自動部屋順ソートを止める (インライン編集中に並びが動くと行が別患者を指す)
+  setRoomOrderLocked(_editMode);
+}
 
 function renderSharedTagFilter(rerender) {
   const slot = document.getElementById("sharedTagFilterSlot");
@@ -41,19 +45,20 @@ export function renderSharedScreen(renderHomeFn, opts, navigateToPatientFn) {
     if (_editMode) {
       const nameWrap = document.createElement("div");
       nameWrap.className = "nameDoctorRow";
-      nameWrap.appendChild(makeRoomInput(i - 1, () => {
+      // 患者は index でなくオブジェクト参照 p で捕捉する (ソートで並びが変わっても
+      // 別患者へ書き込まない)。編集中はソート自体も止まる (setRoomOrderLocked)。
+      nameWrap.appendChild(makeRoomInput(p, () => {
         if (renderHomeFn) renderHomeFn();
       }));
       const numInp = document.createElement("input");
       numInp.type = "text";
       numInp.className = "memoNoInp";
       numInp.placeholder = String(i);
-      numInp.value = String(appState.patients[i - 1]?.name ?? "");
+      numInp.value = String(p?.name ?? "");
       numInp.addEventListener("input", () => {
         const next = String(numInp.value ?? "");
-        const cur = appState.patients[i - 1];
-        if (cur.name !== next) {
-          cur.name = next;
+        if (p.name !== next) {
+          p.name = next;
         }
         markUpdated(appState.patients.indexOf(p) + 1);
         scheduleSave();
@@ -82,14 +87,14 @@ export function renderSharedScreen(renderHomeFn, opts, navigateToPatientFn) {
     // 既定の rows=2 だとメモページの input (1行) より縦に高くなるため 1 行に揃える (#9)。
     // resize:vertical は CSS 側で残しているのでユーザーは必要時に伸ばせる。
     inp.rows = 1;
-    inp.value = String(appState.patients[i - 1]?.shared ?? "");
+    inp.value = String(p?.shared ?? "");
     inp.addEventListener("input", () => {
-      appState.patients[i - 1].shared = String(inp.value ?? "");
+      p.shared = String(inp.value ?? "");
       markUpdated(appState.patients.indexOf(p) + 1);
       scheduleSave();
       if (selectedNo === appState.patients.indexOf(p) + 1) {
         const detailSharedText = document.getElementById("detailSharedText");
-        if (detailSharedText) detailSharedText.value = appState.patients[i - 1].shared;
+        if (detailSharedText) detailSharedText.value = p.shared;
       }
     });
     row.appendChild(inp);

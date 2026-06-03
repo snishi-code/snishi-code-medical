@@ -327,7 +327,7 @@ export function renderDetail(syncDetailMemoDisplay) {
   const detailRoomSlot = document.getElementById("detailRoomSlot");
   if (detailRoomSlot) {
     detailRoomSlot.textContent = "";
-    const roomInp = makeRoomInput(selectedNo - 1);
+    const roomInp = makeRoomInput(p);
     roomInp.classList.add("detailRoomInput");
     detailRoomSlot.appendChild(roomInp);
   }

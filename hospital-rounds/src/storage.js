@@ -328,6 +328,13 @@ function openDb() {
   return _dbPromise;
 }
 
+// IndexedDB が実際に開けるか (= 永続化が効くか) を返す。db=null の no-op 保存を
+// 「保存できていない事実」として扱いたい durable な経路 (病棟切替・患者移動など) が
+// 事前判定に使う。fire-and-forget の autosave はこれを見ない (従来どおり no-op 許容)。
+export async function isStorageAvailable() {
+  return (await openDb()) !== null;
+}
+
 function idbReq(req) {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);

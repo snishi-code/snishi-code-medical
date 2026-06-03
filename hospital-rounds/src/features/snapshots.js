@@ -31,6 +31,12 @@ const DB_NAME = "hospital-rounds-snapshots";
 const DB_VERSION = 1;
 const STORE = "snapshots";
 
+// purge 失敗時に「まだ消えていない PII スナップショットの病棟 ID」を retry 用に
+// 残す tombstone (localStorage = 数バイトのポインタ用途で可)。病棟/ユーザー削除で
+// 本体 DB から病棟が消えた後、スナップショット purge が失敗 (nodb / 別タブ blocked /
+// 例外) しても、次回起動の initSnapshots() で再試行して PII を確実に回収する。
+const PURGE_TOMBSTONE_KEY = "hospital_rounds_snapshot_purge_pending";
+
 const TTL_DAYS = 14;     // 失効日数 (PII のため短め)
 const NAV_KEEP = 2;      // 病棟ごとに保持する nav スナップショット数
 
@@ -179,6 +185,15 @@ export async function initSnapshots() {
     });
     await txDone(tx);
   } catch (e) { console.warn("initSnapshots prune failed:", e); }
+
+  // 前回 purge に失敗した病棟スナップショット (PII) を再試行する。本体 DB からは
+  // 既に消えている病棟なので、ここで確実に回収する (best-effort で捨てない)。
+  const pending = readPurgeTombstone();
+  if (pending.length) {
+    const res = await _purgeNow(pending);
+    if (res.ok) removePurgeTombstone(pending);
+    else console.warn("initSnapshots: deferred purge retry failed:", res.reason);
+  }
 }
 
 // 復元候補一覧 (新しい順)。UI 表示用に患者本体は返さず軽量メタだけ。
@@ -235,15 +250,37 @@ export async function deleteRestorePoint(id) {
   catch (e) { console.warn("deleteRestorePoint failed:", e); }
 }
 
-// 指定した病棟 ID 群に属するスナップショットを全削除する。戻り値: 削除件数。
-// ユーザー削除・病棟削除時に呼ぶ: スナップショットは患者 PII を含むので、本体 DB
-// (bundles) から病棟が消えたらこちらにも残さない (= 「削除したのに端末内に残る」を防ぐ
-// データ約束)。best-effort で、失敗しても削除フロー本体は止めない。
-export async function purgeSnapshotsForWorkspaces(wsIds) {
-  const ids = Array.isArray(wsIds) ? wsIds.filter(Boolean) : [];
-  if (!ids.length) return 0;
+// ============================
+// purge tombstone (localStorage)
+// ============================
+function readPurgeTombstone() {
+  try {
+    if (typeof localStorage === "undefined") return [];
+    const raw = localStorage.getItem(PURGE_TOMBSTONE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter(x => typeof x === "string" && x) : [];
+  } catch (_) { return []; }
+}
+function writePurgeTombstone(ids) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const uniq = [...new Set(ids)];
+    if (!uniq.length) localStorage.removeItem(PURGE_TOMBSTONE_KEY);
+    else localStorage.setItem(PURGE_TOMBSTONE_KEY, JSON.stringify(uniq));
+  } catch (_) { /* ignore */ }
+}
+function addPurgeTombstone(ids) {
+  writePurgeTombstone([...readPurgeTombstone(), ...ids]);
+}
+function removePurgeTombstone(ids) {
+  const drop = new Set(ids);
+  writePurgeTombstone(readPurgeTombstone().filter(id => !drop.has(id)));
+}
+
+// 実際の削除 (scan + delete)。戻り値 { ok, count, reason? }。tombstone は触らない。
+async function _purgeNow(ids) {
   const db = await openDb();
-  if (!db) return 0;
+  if (!db) return { ok: false, count: 0, reason: "nodb" };
   let toDelete = [];
   try {
     // 各 wsId の主キーを 1 つの readonly tx 内で同期発行して集める
@@ -252,15 +289,33 @@ export async function purgeSnapshotsForWorkspaces(wsIds) {
     const idx = txR.objectStore(STORE).index("wsId");
     const keyLists = await Promise.all(ids.map(wsId => reqDone(idx.getAllKeys(IDBKeyRange.only(wsId)))));
     toDelete = keyLists.flat();
-  } catch (e) { console.warn("purgeSnapshots scan failed:", e); return 0; }
-  if (!toDelete.length) return 0;
+  } catch (e) { console.warn("purgeSnapshots scan failed:", e); return { ok: false, count: 0, reason: "scan" }; }
+  if (!toDelete.length) return { ok: true, count: 0 };
   try {
     const tx = db.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
     for (const k of toDelete) store.delete(k);
     await txDone(tx);
-  } catch (e) { console.warn("purgeSnapshots delete failed:", e); return 0; }
-  return toDelete.length;
+  } catch (e) { console.warn("purgeSnapshots delete failed:", e); return { ok: false, count: 0, reason: "delete" }; }
+  return { ok: true, count: toDelete.length };
+}
+
+// 指定した病棟 ID 群に属するスナップショットを全削除する。戻り値: { ok, count, reason? }。
+// ユーザー削除・病棟削除時に呼ぶ: スナップショットは患者 PII を含むので、本体 DB
+// (bundles) から病棟が消えたらこちらにも残さない (= 「削除したのに端末内に残る」を防ぐ
+// データ約束)。
+//
+// fail-closed: 「0 件成功」と「失敗」を { ok } で区別する (件数だけ返すと取り違える)。
+// 削除完了が確認できるまで tombstone に積み、成功してから外す → 途中失敗 (nodb / 別タブ
+// blocked / 例外) でも次回起動の initSnapshots() で再試行され、PII が best-effort で
+// 捨てられない (= retry 可能な追跡)。呼び出し側は ok を見て「完了扱い」を判断する。
+export async function purgeSnapshotsForWorkspaces(wsIds) {
+  const ids = Array.isArray(wsIds) ? wsIds.filter(Boolean) : [];
+  if (!ids.length) return { ok: true, count: 0 };
+  addPurgeTombstone(ids);
+  const res = await _purgeNow(ids);
+  if (res.ok) removePurgeTombstone(ids);
+  return res;
 }
 
 // テスト用: 次の openDb() を再実行できるよう memoized promise をリセットする。
