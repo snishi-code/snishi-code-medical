@@ -797,7 +797,9 @@ function rawAddSnapshot(rec) {
       const db = open.result;
       const tx = db.transaction("snapshots", "readwrite");
       const r = tx.objectStore("snapshots").add(rec);
-      tx.oncomplete = () => res(r.result);
+      // 接続を閉じてから resolve (閉じ忘れると後続の「全データ消去」テストで
+      // ハンドラ無しの未閉鎖接続が deleteDatabase を block する)。
+      tx.oncomplete = () => { try { db.close(); } catch (_) {} res(r.result); };
       tx.onerror = () => rej(tx.error);
     };
     open.onerror = () => rej(open.error);
@@ -972,6 +974,10 @@ await test("restoreSnapshot: 患者を撮影時点へ戻し、取り消し用ス
   assert.equal(res.ok, true, "復元成功");
   assert.equal(storeForIdb.appState.patients[0].name, "復元太郎", "撮影時点の患者へ戻る");
   assert.equal(storeForIdb.appState.patients[0].status, "yellow", "ステータスも戻る");
+  // fail-closed: ok=true は「保存できた」を意味する。IDB にも復元結果が永続化されている
+  // (saveNow の握り潰しだとリロードで復元前へ戻り得たため、persistActiveOrThrow で確認)。
+  const persisted = getSection(await storageMod.loadBundle(wsR), SECTION.PATIENTS);
+  assert.equal(persisted[0].name, "復元太郎", "復元結果が IDB に永続化されている");
 
   // 復元の取り消し用スナップショット (restore_undo) が残る = 復元自体も巻き戻せる
   const after = await snapshotsMod.listRestorePoints(wsR);
@@ -1033,6 +1039,41 @@ await test("前回失敗した purge を initSnapshots() が tombstone から再
   await snapshotsMod.initSnapshots();
   assert.equal((await snapshotsMod.listRestorePoints(wsId)).length, 0, "起動時の再試行で PII スナップショットが消える");
   assert.equal(localStorage.getItem("hospital_rounds_snapshot_purge_pending"), null, "再試行成功で tombstone は消える");
+});
+
+// ============================
+// 全データ消去: 自接続を閉じて削除できる (onversionchange / fail-closed)
+// ============================
+// 注意: このセクションはアプリ共有 DB を実際に削除するため、他の fake-idb テストの
+// 後 (= 末尾) に置く。設定画面 reset は initStore/initEventLog/initSnapshots 後に走り、
+// 本体・eventlog・snapshots の接続が開いたまま deleteDatabase する。openDb 成功時に
+// db.onversionchange で自接続を閉じないと、自分の接続で onblocked になり永久に完了しない。
+section("全データ消去: 自接続を閉じて削除 (onversionchange)");
+
+const { dropAllAppIndexedDbs } = await import(pathToFileURL(join(srcDir, "features", "idb-wipe.js")).href);
+const eventlogMod = await import(pathToFileURL(join(srcDir, "features", "eventlog.js")).href);
+
+await test("初期化後に接続が開いていても dropAllAppIndexedDbs() が完了する (自接続を versionchange で閉じる)", async () => {
+  // 本体 DB の接続を開いて memoize させる
+  const wsId = storageMod.newWorkspaceId();
+  storageMod.setActiveWorkspaceId(wsId);
+  await storageMod.saveBundle(
+    projectBundle({ appState: { v: 3, title: "", patients: [] }, settings: storeForIdb.settings, sections: [SECTION.META, SECTION.PATIENTS] }),
+    wsId, "WipeWard",
+  );
+  assert.ok(await storageMod.loadBundle(wsId), "削除前は本体 DB に病棟がある");
+  // snapshots DB の接続も開く (captureSnapshot 経由)
+  storeForIdb.setAppState({ v: 3, title: "", patients: [{ ...storeForIdb.makeDefaultPatient(), name: "PII", status: "yellow" }] });
+  await snapshotsMod.captureSnapshot(snapshotsMod.REASON.CLEAR);
+  // eventlog DB の接続も開く (read で open される)
+  await eventlogMod.exportEventLog();
+
+  // 接続が開いたまま全削除。onversionchange が無いと dropIndexedDb が onblocked で reject
+  // するため、ここが resolve すること自体が回帰テスト (設定画面 reset の fail-closed 完了)。
+  await dropAllAppIndexedDbs();
+
+  // 削除後は本体 DB が空 (onversionchange で _dbPromise を捨てたので再 open は新規 = 空)
+  assert.equal(await storageMod.loadBundle(wsId), null, "全消去後は本体 DB の病棟が消えている");
 });
 
 // ============================
