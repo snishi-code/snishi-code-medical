@@ -7,65 +7,16 @@ import { STATUS } from "../constants.js";
 import { buildTabPayload } from "../payload.js";
 import { utf8ByteLength } from "../payload.js";
 import { qrcodegen } from "../libs/qrcodegen.js";
-import { makePatientTagPicker, getPatientTags, setPatientTags, getStatusOptions } from "../features/tags.js";
-import { makeRoomInput, formatPatientLabel } from "../features/room.js";
+import { getPatientTags, getStatusMark } from "../features/tags.js";
+import { formatPatientLabel } from "../features/room.js";
 import { isPatientTransferred } from "../features/move-patient.js";
 import { t } from "../i18n.js";
 import { scanQR, isScannerSupported } from "../features/qr-scan.js";
 import { buildTimestampHeader } from "../features/qr-protocol.js";
-import { createEditToggle } from "../features/edit-toggle.js";
+import { openPatientSheet } from "../features/patient-sheet.js";
 import { statusClass } from "./home.js";
 
 let qrVisible = false;
-let nameToggle = null; // createEditToggle で初期化
-
-// 詳細画面・ホーム編集モード共通のステータス巡回。
-//   - タップ: 白→黄→緑→灰→白 を巡回 (青はサイクル外、青のタップは白に戻る)
-//   - 長押し: 白 → 青 / それ以外 → 白
-// 青は「新着 (取込で追加された患者) / 注意」を任意で示すスロット。
-export const STATUS_CYCLE = [STATUS.NONE, STATUS.YELLOW, STATUS.GREEN, STATUS.GRAY];
-
-export function nextStatusInCycle(current) {
-  const idx = STATUS_CYCLE.indexOf(current);
-  // 青などサイクル外から短タップで戻ると idx=-1 → 0 (= NONE) になる
-  return STATUS_CYCLE[(idx + 1 + STATUS_CYCLE.length) % STATUS_CYCLE.length] || STATUS.YELLOW;
-}
-
-export function statusOnLongPress(current) {
-  // 白からの長押しのみ青へ。青を含むそれ以外は全て白へ強制リセット。
-  return current === STATUS.NONE ? STATUS.BLUE : STATUS.NONE;
-}
-
-// ステータス選択ポップアップ (患者画面・ホーム編集モード共用)。色＋形マークの
-// 大きいボックスを横1行で出す。単一選択なので「選んだら閉じる」(close-on-select)。
-//   patientIdx: 0-based。onChange(newStatus): 選択後の view 再描画 (caller 責務)。
-export function openStatusPicker(patientIdx, onChange) {
-  const p = appState.patients[patientIdx];
-  const overlay = document.getElementById("statusPickerOverlay");
-  const list = document.getElementById("statusPickerList");
-  if (!p || !overlay || !list) return;
-  list.textContent = "";
-  // 色名テキスト/タイトルは出さず色＋形マークのみ。ラベルは aria-label で SR 対応。
-  for (const opt of getStatusOptions()) {
-    const box = document.createElement("button");
-    box.type = "button";
-    box.className = "statusPickerBox" + (p.status === opt.status ? " selected" : "");
-    const fg = opt.color === "#ffffff" ? "#111827" : "#fff";
-    box.style.cssText = `background:${opt.color};border:2px solid ${opt.borderColor};color:${fg};`;
-    box.textContent = opt.mark; // 無印(白)は空
-    box.title = opt.label;
-    box.setAttribute("aria-label", opt.label);
-    box.addEventListener("click", () => {
-      p.status = opt.status;
-      markUpdated(patientIdx + 1);
-      scheduleSave();
-      overlay.classList.remove("active");
-      if (onChange) onChange(opt.status);
-    });
-    list.appendChild(box);
-  }
-  overlay.classList.add("active");
-}
 
 // シンプルな「タップ vs 長押し」判定。長押し閾値 600ms。
 // スクロールを潰さないため pointerdown では preventDefault しない (要素を覆う
@@ -295,21 +246,52 @@ export function initQrNavButtons() {
 // ============================
 
 // ============================
-// Status buttons
+// Patient meta button
 // ============================
 
-// ステータススウォッチ (色+記号) を現在ステータスに合わせて更新する。
-// v8.7+: ステータス表示は名前ボタンから専用スウォッチボタンへ移動。名前ボタンは
-// 編集トリガーになり、色は持たない (中立)。外部呼び出し互換のため同名で残置。
-export function setSelectedStatusButtons(status) {
-  const sw = document.getElementById("detailStatusBtn");
-  if (!sw) return;
-  const opt = getStatusOptions().find(o => o.status === status) || getStatusOptions()[0];
-  const fg = opt.color === "#ffffff" ? "#111827" : "#fff";
-  sw.style.background = opt.color;
-  sw.style.border = `2px solid ${opt.borderColor}`;
-  sw.style.color = fg;
-  sw.textContent = opt.mark; // 白(none)も記号(−)を持つ
+// 詳細ヘッダーの「患者メタボタン」を現在の患者で再描画する。1つのボタンに
+//   ステータス色/形マーク + 部屋番号+氏名 + タグ概要
+// をまとめて表示し、タップで患者シート (openPatientSheet) を開く。ホームの
+// patientBtn と同じ色クラス・形マークを流用して見た目を統一する。
+export function renderPatientMetaBtn() {
+  const btn = document.getElementById("detailPatientMetaBtn");
+  if (!btn) return;
+  const p = appState.patients[selectedNo - 1];
+  if (!p) return;
+  btn.textContent = "";
+  btn.className = "patientBtn detailPatientMetaBtn " + statusClass(p.status);
+
+  // 形マーク (色だけに依存しない。白(none)はマーク無し)
+  if (p.status && p.status !== STATUS.NONE) {
+    const mark = document.createElement("span");
+    mark.className = "patientBtnMark";
+    mark.textContent = getStatusMark(p.status);
+    mark.setAttribute("aria-hidden", "true");
+    btn.appendChild(mark);
+  }
+
+  // 部屋番号 + 氏名
+  const label = document.createElement("span");
+  label.className = "detailMetaLabel";
+  const labelText = formatPatientLabel(p, String(selectedNo));
+  label.textContent = labelText;
+  btn.appendChild(label);
+  btn.setAttribute("aria-label", labelText);
+
+  // タグ概要 (設定タグ順。患者が持つ分だけ。多数ははみ出し横スクロール)
+  const tagSet = new Set(getPatientTags(selectedNo - 1));
+  const ordered = (settings.tags || []).filter(tg => tagSet.has(tg));
+  if (ordered.length) {
+    const tags = document.createElement("span");
+    tags.className = "detailMetaTags";
+    for (const tg of ordered) {
+      const chip = document.createElement("span");
+      chip.className = "detailMetaTagChip";
+      chip.textContent = tg;
+      tags.appendChild(chip);
+    }
+    btn.appendChild(tags);
+  }
 }
 
 // ============================
@@ -319,45 +301,16 @@ export function setSelectedStatusButtons(status) {
 export function renderDetail(syncDetailMemoDisplay) {
   qrVisible = false;
   const p = appState.patients[selectedNo - 1];
-  const detailTitle = document.getElementById("detailTitle");
   const sText = document.getElementById("sText");
   const aText = document.getElementById("aText");
   const pText = document.getElementById("pText");
   const detailSharedText = document.getElementById("detailSharedText");
   const oFreeText = document.getElementById("oFreeText");
 
-  // 名前ボタン（表示モード）の中身とステータス色
-  const nameBtn = document.getElementById("detailNameBtn");
-  if (nameBtn) {
-    nameBtn.textContent = formatPatientLabel(p, String(selectedNo));
-  }
-  // 編集モード用の name input は隠れた状態で値だけ保持
-  if (detailTitle) {
-    detailTitle.value = String(p?.name ?? "");
-    detailTitle.readOnly = false;
-  }
   if (syncDetailMemoDisplay) syncDetailMemoDisplay();
-  setSelectedStatusButtons(p.status);
 
-  // 患者切替時は常に表示モードに戻す
-  setDetailEditing(false);
-
-  const detailRoomSlot = document.getElementById("detailRoomSlot");
-  if (detailRoomSlot) {
-    detailRoomSlot.textContent = "";
-    const roomInp = makeRoomInput(p);
-    roomInp.classList.add("detailRoomInput");
-    detailRoomSlot.appendChild(roomInp);
-  }
-
-  const detailDoctorSlot = document.getElementById("detailDoctorSlot");
-  if (detailDoctorSlot) {
-    detailDoctorSlot.textContent = "";
-    const picker = makePatientTagPicker(selectedNo - 1, () => renderInlineTags());
-    detailDoctorSlot.appendChild(picker);
-  }
-
-  renderInlineTags();
+  // 患者メタボタン (ステータス色/形 + 部屋+氏名 + タグ概要)
+  renderPatientMetaBtn();
   renderTransferredBanner(p);
   refreshFormatGroupToggle();
 
@@ -385,7 +338,6 @@ export function renderDetail(syncDetailMemoDisplay) {
 // ============================
 
 export function initDetailEvents(renderHomeFn) {
-  const detailTitle = document.getElementById("detailTitle");
   const detailMemoText = document.getElementById("detailMemoText");
   const sText = document.getElementById("sText");
   const aText = document.getElementById("aText");
@@ -393,19 +345,7 @@ export function initDetailEvents(renderHomeFn) {
   const detailSharedText = document.getElementById("detailSharedText");
   const oFreeText = document.getElementById("oFreeText");
 
-  if (detailTitle) {
-    detailTitle.addEventListener("input", () => {
-      const p = appState.patients[selectedNo - 1];
-      if (!p) return;
-      const next = detailTitle.value;
-      if (p.name !== next) {
-        p.name = next;
-      }
-      markUpdated(selectedNo);
-      scheduleSave();
-      if (renderHomeFn) renderHomeFn();
-    });
-  }
+  // 氏名編集は患者シート (openPatientSheet) に集約 (詳細ヘッダーから個別入力欄を撤去)。
 
   if (detailMemoText) {
     detailMemoText.addEventListener("input", () => {
@@ -488,87 +428,23 @@ export function initDetailEvents(renderHomeFn) {
   }
 }
 
-// 患者ヘッダーのインラインタグを描画する。
-// - 表示順は設定タグ配列の順
-// - 長押しでそのタグを患者から外す（共通ヘルパ bindTapOrLongPress を流用）
-// - はみ出し分は CSS の overflow-x: auto で横スクロール表示
-function renderInlineTags() {
-  const host = document.getElementById("detailInlineTags");
-  if (!host) return;
-  host.textContent = "";
-  const p = appState.patients[selectedNo - 1];
-  if (!p) return;
-  const settingsOrder = settings.tags || [];
-  const tagSet = new Set(getPatientTags(selectedNo - 1));
-  const ordered = settingsOrder.filter(t => tagSet.has(t));
-
-  for (const tagName of ordered) {
-    const chip = document.createElement("span");
-    chip.className = "inlineTagChip";
-    chip.textContent = tagName;
-    chip.title = t("tag.detail.removeHint", { name: tagName });
-    bindTapOrLongPress(
-      chip,
-      () => { /* タップ単独は何もしない（誤タップ保護） */ },
-      () => {
-        const cur = getPatientTags(selectedNo - 1).filter(t => t !== tagName);
-        setPatientTags(selectedNo - 1, cur);
-        renderInlineTags();
-      }
-    );
-    host.appendChild(chip);
-  }
-}
-
-// 詳細画面の表示モード ↔ 編集モード切替。共通 createEditToggle を使う。
-// 表示モード: 名前ボタン（ステータス色つき）。タップでサイクル / 長押しで白。
-// 編集モード: 部屋・名前・タグの入力欄。外側クリックや別ビューで自動 exit。
-function applyEditingDom(editing) {
-  const display = document.getElementById("detailNameBtn");
-  const editRow = document.getElementById("detailEditRow");
-  if (display) display.style.display = editing ? "none" : "";
-  if (editRow) editRow.style.display = editing ? "flex" : "none";
-}
-
-function setDetailEditing(on) {
-  if (!nameToggle) return;
-  if (on) nameToggle.enter();
-  else nameToggle.exit();
-}
-
-export function initStatusButtons(renderHomeFn) {
-  const nameBtn = document.getElementById("detailNameBtn");
-  const statusBtn = document.getElementById("detailStatusBtn");
-  const container = document.querySelector("#detailView .detailTop");
-
-  // ステータススウォッチ: タップでステータス選択ポップアップ (旧: 鉛筆の位置)
-  if (statusBtn) {
-    statusBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (nameToggle?.isEditing()) return;
-      openStatusPicker(selectedNo - 1, (s) => {
-        setSelectedStatusButtons(s);
-        if (renderHomeFn) renderHomeFn();
-        renderQrIfNeeded();
-      });
+// 患者メタボタン → 患者シートを開く配線。シート内の編集 (ステータス/部屋/氏名/
+// タグ) は onChange で「今見えている詳細」(メタボタン + QR) だけを再描画する。
+//   関数名は main.js からの呼び出し互換のため initStatusButtons を踏襲。
+//
+// ホーム (renderHomeFn) はここでは描画しない。部屋番号を変えると doRenderHome →
+// ensureRoomOrder が appState.patients を in-place ソートし、編集中の患者が別 index
+// へ動く一方で detail の selectedNo は固定なので、メタボタンが「別患者」を指して
+// しまう (患者取り違え) ためである。ホームは非表示なので即時更新は不要で、navToHome
+// 時に正しい並びで再描画される (旧 detail も room 変更で home を再描画しなかった)。
+export function initStatusButtons(_renderHomeFn) {
+  const metaBtn = document.getElementById("detailPatientMetaBtn");
+  if (!metaBtn) return;
+  metaBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openPatientSheet(selectedNo - 1, () => {
+      renderPatientMetaBtn();
+      renderQrIfNeeded();
     });
-  }
-
-  // 患者名タップで編集モードへ (旧: 鉛筆。名前=テキストなのでタップで編集が自然)
-  nameToggle = createEditToggle({
-    triggerBtn: nameBtn,
-    container,
-    onEnter: () => {
-      applyEditingDom(true);
-      const titleInput = document.getElementById("detailTitle");
-      if (titleInput) { titleInput.focus(); titleInput.select(); }
-    },
-    onExit: () => {
-      applyEditingDom(false);
-      // 名前ボタンの表示を最新化
-      const p = appState.patients[selectedNo - 1];
-      const display = document.getElementById("detailNameBtn");
-      if (display && p) display.textContent = formatPatientLabel(p, String(selectedNo));
-    },
   });
 }

@@ -125,10 +125,20 @@ window.addEventListener("popstate", (e) => {
   else if (v === "detail") doRenderDetail();
 });
 
-document.getElementById("headerMemoBtn")?.addEventListener("click", navToMemo);
-document.getElementById("headerSharedBtn")?.addEventListener("click", navToShared);
-// 設定ボタン: ヘッダーに直置き (ハンバーガー廃止)
-document.getElementById("headerSettingsBtn")?.addEventListener("click", navToSettings);
+// ヘッダー右は ≡ メニュー1つに集約 (誤タップ削減・場所固定)。タップで
+// メモ/共有/設定/説明 の一覧を開き、選んだら遷移してメニューを閉じる (単一選択)。
+// 背景タップ / × は main.js のグローバルハンドラ (data-close-popup) が閉じる。
+document.getElementById("mainMenuBtn")?.addEventListener("click", () => {
+  document.getElementById("mainMenuOverlay")?.classList.add("active");
+});
+function closeMainMenu() {
+  document.getElementById("mainMenuOverlay")?.classList.remove("active");
+}
+document.getElementById("mainMenuMemoBtn")?.addEventListener("click", () => { closeMainMenu(); navToMemo(); });
+document.getElementById("mainMenuSharedBtn")?.addEventListener("click", () => { closeMainMenu(); navToShared(); });
+document.getElementById("mainMenuSettingsBtn")?.addEventListener("click", () => { closeMainMenu(); navToSettings(); });
+// 説明: アプリ内ヘルプの総目次を開く (各画面の ? を撤去し、説明はここに集約)。
+document.getElementById("mainMenuHelpBtn")?.addEventListener("click", () => { closeMainMenu(); openDocsPage("index"); });
 
 document.addEventListener("click", (e) => {
   const btn = e.target.closest(".helpLinkBtn");

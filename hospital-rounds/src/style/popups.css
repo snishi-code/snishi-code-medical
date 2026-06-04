@@ -126,10 +126,12 @@
       width: auto;
       box-sizing: border-box;
     }
-    #statusPickerList {
+    #statusPickerList,
+    .patientSheetStatusList {
       display: flex;
       flex-direction: row;
       align-items: stretch;
+      flex-wrap: wrap;
       gap: 8px;
       padding: 4px 0;
     }
@@ -149,6 +151,88 @@
     .statusPickerBox.selected {
       outline: 3px solid var(--focus, #2563eb);
       outline-offset: 2px;
+    }
+
+    /* ── メインメニュー (ヘッダー ≡)。メモ/共有/設定/説明 を縦並びの行ボタンで。 ── */
+    .popupMenu.mainMenu {
+      width: min(92vw, 360px);
+      max-width: 360px;
+      box-sizing: border-box;
+    }
+    .mainMenuList {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .mainMenuItem {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 48px;
+      padding: 12px 16px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+    }
+    .mainMenuItem .mainMenuIcon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: var(--muted);   /* アイコンは控えめ。hover で行ごと青に乗る */
+    }
+    .mainMenuItem:hover,
+    .mainMenuItem:focus-visible {
+      background: var(--blue-light);
+      border-color: var(--blue-border);
+      color: var(--blue);
+    }
+    .mainMenuItem:hover .mainMenuIcon,
+    .mainMenuItem:focus-visible .mainMenuIcon {
+      color: var(--blue);
+    }
+
+    /* ── 患者シート (詳細の患者メタボタン)。ステータス/部屋/氏名/タグ を常時表示。 ── */
+    .popupMenu.patientMetaMenu {
+      width: min(92vw, 420px);
+      max-width: 420px;
+      box-sizing: border-box;
+    }
+    .patientSheetField {
+      margin: 12px 0;
+    }
+    .patientSheetField > .label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .patientSheetNameInput,
+    .patientSheetRoomInput {
+      width: 100%;
+      min-height: 44px;
+      box-sizing: border-box;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 16px;     /* iOS で 16px 未満だと focus 時にズームするのを防ぐ */
+      font-family: inherit;
+      color: inherit;
+      outline: none;
+    }
+    .patientSheetRoomInput {
+      max-width: 140px;
+    }
+    .patientSheetNameInput:focus,
+    .patientSheetRoomInput:focus {
+      border-color: var(--blue-border);
     }
 
     /* WS picker (ヘッダー WS 名タップで開く軽量 popup。切替 + 新規のみ) */
