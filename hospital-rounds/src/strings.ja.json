@@ -249,6 +249,7 @@
   "qr.recv.text.read": "QR として読む",
   "qr.recv.router.notAllowed": "この入口では 設定 / セット / フォーマット の QR のみ読めます（kind={got}）",
   "qr.recv.router.noReceiver": "この種別の受信に対応していません（kind={got}）",
+  "qr.recv.save.failed": "保存に失敗したため取り込みを中断しました。空き容量を確認してもう一度お試しください。",
   "qr.recv.text.empty": "QR の中身を貼り付けてください",
   "qr.scan.head": "QR スキャン",
   "qr.scan.hint.stream": "QR を順に読み取ってください",

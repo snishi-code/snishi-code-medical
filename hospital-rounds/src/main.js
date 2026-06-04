@@ -7,7 +7,7 @@ import { STORAGE_KEYS } from "./storage.js";
 import {
   appState, settings, selectedNo,
   setAppState, setSelectedNo,
-  saveNow, saveSettings,
+  saveNow, saveSettings, saveSettingsOrThrow,
   normalizeLoaded,
   requestStoragePersistence,
   initStore, flushSavePending, setOnWorkspaceChanged, setOnUserChanged,
@@ -218,10 +218,16 @@ setFormatStoreAdapter({
 setQrFormatStoreAdapter({
   getExistingFormats: () => Array.isArray(settings.formats) ? settings.formats : [],
   getKnownTags: () => _getAllTagsForQr(),
-  addFormat: (newFmt) => {
+  // fail-closed: 追加 → 保存を await し、失敗時は追加分を戻して throw (呼び出し側で中断)。
+  addFormat: async (newFmt) => {
     if (!Array.isArray(settings.formats)) settings.formats = [];
     settings.formats.push(newFmt);
-    saveSettings();
+    try {
+      await saveSettingsOrThrow();
+    } catch (e) {
+      settings.formats = settings.formats.filter(f => f !== newFmt);
+      throw e;
+    }
   },
   shouldEncrypt: () => !!settings.qrEncryption?.FMT,
 });

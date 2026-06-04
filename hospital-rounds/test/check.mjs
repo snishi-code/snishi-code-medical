@@ -772,6 +772,19 @@ await test("ST v5 encode/decode round-trip (formats + formatGroups)", async () =
   }
 });
 
+await test("ST v5 reflects empty tags (whole-settings semantics, not differential)", async () => {
+  const store = await freshStore();
+  store.settings.tags = []; // 送信元のタグは 0 個
+  const qs = await import("../src/features/qr-settings.js");
+  const payload = qs.encodeSettingsPayload();
+  const obj = JSON.parse(payload);
+  assert.ok(Array.isArray(obj.td) && obj.td.length === 0, "v5 always carries td, even empty");
+  const decoded = qs.decodeSettingsPayload(payload);
+  // 受信側に既存タグがあっても「設定全体」として空に揃う
+  assert.ok(Array.isArray(decoded.tags), "tags applied even when empty");
+  assert.equal(decoded.tags.length, 0, "empty tags reflected (clears receiver tags)");
+});
+
 await test("ST v4 payload (no formatGroups) is still readable + default set rebuilt", async () => {
   const store = await freshStore();
   store.settings.tags = ["内科"];
@@ -812,6 +825,21 @@ await test("FS (set QR) encode/decode round-trip with referenced formats + renam
   assert.deepEqual(decoded.group.formatIds, decoded.formats.map(f => f.id), "group refs new ids in order");
   assert.deepEqual(decoded.group.defaultFormatIds, [decoded.formats[0].id]);
   assert.deepEqual(decoded.group.expandFormatIds, [decoded.formats[1].id]);
+});
+
+await test("FS never emits isDefault (d) — received set is always non-default", async () => {
+  const store = await freshStore();
+  const qset = await import("../src/features/qr-set.js");
+  const f0 = store.settings.formats[0];
+  // 送信元では default なセットでも、wire には d を載せない
+  const group = {
+    id: "g", name: "デフォルトを共有", isDefault: true,
+    formatIds: [f0.id], defaultFormatIds: [], expandFormatIds: [],
+  };
+  const obj = JSON.parse(qset.encodeSetPayload(group, store.settings.formats, store.settings.tags));
+  assert.equal(obj.g.d, undefined, "FS wire omits d even when source set is default");
+  const decoded = qset.decodeSetPayload(JSON.stringify(obj));
+  assert.equal(decoded.group.isDefault, false, "decoded FS set is non-default");
 });
 
 await test("FMT (format QR) encode/decode round-trip", async () => {

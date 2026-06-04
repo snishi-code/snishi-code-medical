@@ -850,6 +850,14 @@ export async function saveSettings() {
   return saveNow();
 }
 
+// fail-closed 版の saveSettings。QR 取込 (設定/フォーマット/セットの追加・上書き) など
+// 「保存できていないのに成功表示すると設定の取り違え/消失になる」操作が使う。
+// saveSettings() (= saveNow、toast のみで例外を握る) と違い、失敗は throw して
+// 呼び出し側に中断 + ロールバックさせる。IDB 不可 (db=null) の no-op も失敗扱い。
+export async function saveSettingsOrThrow() {
+  return persistActiveOrThrow();
+}
+
 // Legacy compat: returns the clinical-only appState. Roster meta and settings
 // have already been loaded into their own live bindings during module init.
 export function load() {

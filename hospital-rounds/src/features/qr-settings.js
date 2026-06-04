@@ -1,7 +1,7 @@
 "use strict";
 
 import {
-  settings, setSettings, saveSettings,
+  settings, setSettings, saveSettingsOrThrow,
   newFormatId, newGroupId, makeDefaultFormatGroups, ensureOneDefaultGroup,
 } from "../store.js";
 import { createQrFlow } from "./qr-flow.js";
@@ -42,7 +42,9 @@ export function encodeSettingsPayload() {
   const groups = Array.isArray(settings.formatGroups) ? settings.formatGroups : [];
 
   const out = { v: WIRE_V };
-  if (tagDict.length) out.td = tagDict;
+  // td は「設定全体のタグ辞書」。設定全体 QR なので空でも常に載せる
+  // (= 受信側のタグを送信側に一致させる。0 個ならタグ消去も伝わる)。
+  out.td = tagDict;
   if (formats.length) out.f = formats.map(f => formatToWire(f, tagDict));
   if (groups.length) {
     // format id → f 配列での 1-based index
@@ -68,7 +70,9 @@ export function decodeSettingsPayload(payload) {
 
   const tagDict = Array.isArray(obj.td) ? obj.td.filter(s => typeof s === "string") : [];
   const out = {};
-  if (tagDict.length) out.tags = tagDict.slice();
+  // v5 は td を常に送る (設定全体) ので tags を常に適用 = 空配列ならタグ消去も反映。
+  // v4 は td があるときだけ (後方互換: 旧版は空タグ時に td を省略していた)。
+  if (v === WIRE_V || tagDict.length) out.tags = tagDict.slice();
 
   // formats: 新 ID 採番 (v4/v5 共通)。formatGroups がこの ID を参照する。
   let formats = null;
@@ -104,7 +108,7 @@ export function setOnSettingsApplied(fn) { onAppliedHandler = fn; }
 // formats と formatGroups はセットで置換 (groups は format ID を参照するため不可分)。
 const APPLIED_FIELDS = ["formats", "formatGroups", "clearTargets", "tags"];
 
-function applySettings(safe, ctrl) {
+async function applySettings(safe, ctrl) {
   if (!safe) {
     alert(t("qrSettings.parse.failed"));
     return;
@@ -119,12 +123,21 @@ function applySettings(safe, ctrl) {
   const ok = confirm(t("qrSettings.import.confirm", { summary: summaryText }));
   if (!ok) return;
 
+  const prev = settings; // 保存失敗時のロールバック用
   const next = { ...settings };
   for (const k of APPLIED_FIELDS) {
     if (safe[k] !== undefined) next[k] = safe[k];
   }
   setSettings(next);
-  saveSettings();
+  // fail-closed: 保存が確認できてから閉じる/成功表示。失敗は in-memory を戻して中断。
+  try {
+    await saveSettingsOrThrow();
+  } catch (e) {
+    console.error("qr settings import: save failed:", e);
+    setSettings(prev);
+    alert(t("qr.recv.save.failed"));
+    return;
+  }
   ctrl.close();
   if (onAppliedHandler) onAppliedHandler();
   alert(t("qrSettings.imported.alert"));

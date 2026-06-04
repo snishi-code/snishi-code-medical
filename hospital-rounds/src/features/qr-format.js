@@ -67,7 +67,7 @@ export function decodeFormatPayload(payload) {
 
 // 受信したフォーマットを適用 (常に新規追加。ID 新発番、同名は (2)/(3)... に rename、
 // 未登録タグは無視)。
-function applyReceivedFormat(safe, ctrl) {
+async function applyReceivedFormat(safe, ctrl) {
   if (!safe) {
     alert(t("qrFormat.parse.failed"));
     return;
@@ -113,8 +113,16 @@ function applyReceivedFormat(safe, ctrl) {
     items,
   };
 
-  // 保存は adapter に委譲。store の実態を qr-format.js は知らない
-  _adapter.addFormat(newFmt);
+  // 保存は adapter に委譲。store の実態を qr-format.js は知らない。
+  // fail-closed: adapter.addFormat は保存を await し、失敗時は throw + ロールバック
+  // する契約 (main.js)。保存が確認できてから閉じる/成功表示。
+  try {
+    await _adapter.addFormat(newFmt);
+  } catch (e) {
+    console.error("qr format import: save failed:", e);
+    alert(t("qr.recv.save.failed"));
+    return;
+  }
   // 受信元 (統一ルーター) の overlay を閉じる
   ctrl.close();
   if (_onAppliedHandler) _onAppliedHandler(newFmt);

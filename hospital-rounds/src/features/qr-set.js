@@ -13,7 +13,7 @@
 // (Wire Format Authority 参照)。セットは formats 配列への 1-based index 参照。
 // ============================
 
-import { settings, saveSettings, newFormatId, newGroupId } from "../store.js";
+import { settings, saveSettingsOrThrow, newFormatId, newGroupId } from "../store.js";
 import { createQrFlow } from "./qr-flow.js";
 import {
   formatToWire, formatFromWire,
@@ -49,7 +49,9 @@ export function encodeSetPayload(group, allFormats, tagDict) {
     const i = refFormats.findIndex(f => f.id === id);
     return i >= 0 ? i + 1 : undefined;
   };
-  out.g = formatGroupToWire(group, idToIndex);
+  // FS は単体セット共有。受信側では常に非デフォルトで追加するので、wire に
+  // isDefault(d) は載せない (送信元のデフォルト状態を持ち込まない)。
+  out.g = formatGroupToWire({ ...group, isDefault: false }, idToIndex);
   return JSON.stringify(out);
 }
 
@@ -71,7 +73,7 @@ let _onAppliedHandler = null;
 export function setOnSetApplied(fn) { _onAppliedHandler = fn; }
 
 // 受信したセットを適用 (常に新規追加)。fail-closed: 保存後に完了表示。
-function applyReceivedSet(decoded, ctrl) {
+async function applyReceivedSet(decoded, ctrl) {
   if (!decoded || !decoded.group) {
     alert(t("qrSet.parse.failed"));
     return;
@@ -105,7 +107,16 @@ function applyReceivedSet(decoded, ctrl) {
   if (!Array.isArray(settings.formatGroups)) settings.formatGroups = [];
   settings.formats.push(...newFormats);
   settings.formatGroups.push(newGroup);
-  saveSettings();
+  // fail-closed: 保存が確認できてから閉じる/成功表示。失敗は追加分を戻して中断。
+  try {
+    await saveSettingsOrThrow();
+  } catch (e) {
+    console.error("qr set import: save failed:", e);
+    settings.formats = settings.formats.filter(f => !newFormats.includes(f));
+    settings.formatGroups = settings.formatGroups.filter(g => g !== newGroup);
+    alert(t("qr.recv.save.failed"));
+    return;
+  }
   ctrl.close();
   if (_onAppliedHandler) _onAppliedHandler(newGroup);
   alert(t("qrSet.imported.alert", { name: groupName }));

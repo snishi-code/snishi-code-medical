@@ -14,10 +14,11 @@ import {
 // ========================================================================
 // QR Wire Format Authority (最終仕様)
 //
-// このファイルはすべての QR 種 (HM/MM/SH/ST/FMT) が従う共通仕様を定義する。
-// 各 kind ファイル (qr-home.js / qr-shared.js / qr-settings.js / qr-format.js)
-// は本ファイルが export するヘルパーを **必ず経由** すること。独自の wire
-// format を定義しないこと。
+// このファイルはすべての QR 種 (HM/MM/SH/ST/FMT/FS) が従う共通仕様を定義する。
+//   FS = フォーマットセット (formatGroup 1 つ + 参照フォーマット一式)。
+// 各 kind ファイル (qr-home.js / qr-shared.js / qr-settings.js / qr-format.js /
+// qr-set.js) は本ファイルが export するヘルパーを **必ず経由** すること。独自の
+// wire format を定義しないこと。
 //
 // ── 設計 2 原則 ──
 //
@@ -36,12 +37,15 @@ import {
 //   トップレベル:
 //     v   = version (WIRE_V)
 //     td  = tag dictionary (string[]、1-based で参照される)
+//           ※ ST v5 は「設定全体」なので空でも常に載せる (受信側のタグを一致させる)
 //     p   = patients array (HM/MM/SH)
-//     f   = formats array (ST) / format object (FMT)
+//     f   = formats array (ST/FS) / format object (FMT)
+//     fg  = formatGroups array (ST v5) … 各要素は下記「フォーマットセット」
+//     g   = formatGroup object (FS) … 単一セット
 //     ct  = clearTargets (ST)
-//     tge = tagGroupingEnabled (ST)
-//     tgs = tagGroups array (ST)
-//     tga = tagGroupAssign as [[tag_idx, group_idx], ...] (ST)
+//     tge = tagGroupingEnabled (ST) ※撤去
+//     tgs = tagGroups array (ST)    ※撤去
+//     tga = tagGroupAssign          ※撤去
 //
 //   患者 (p[i]):
 //     r = room
@@ -68,7 +72,8 @@ import {
 //
 //   フォーマットセット = formatGroup (ST の fg[i] / FS の g):
 //     n  = name
-//     d  = isDefault (1 の時のみ。省略時 false。FS では常に省略)
+//     d  = isDefault (ST のみ。1 の時だけ出力、省略時 false。
+//          FS は単体共有で受信側は常に非デフォルト追加するため d を載せない)
 //     fi = formatIds       (同 payload の f 配列への 1-based index 配列)
 //     df = defaultFormatIds (同・fi の部分集合。規定文)
 //     xf = expandFormatIds  (同・fi の部分集合。展開=A)
@@ -89,11 +94,14 @@ import {
 //     - 新規フィールドの追加 (normalize 側が未知フィールドを温存する仕組み
 //       のおかげで forward compat)
 //
-// ── 圧縮 prefix の互換性 ──
+// ── transport prefix の互換性 (圧縮/暗号化は crypto-payload.js の pack/unpack) ──
 //
-//   "E1:" = AES-GCM のみ (deflate なし、v7.1.x)
+//   (prefix なし) = plain (圧縮も暗号もなし。患者カルテ貼付 QR・後方互換)
+//   "C1:" = deflate-raw(plain) のみ (非暗号、v8.11+。暗号 OFF の ST/FS/FMT で使用)
+//   "E1:" = AES-GCM のみ (deflate なし、v7.1.x。受信のみ)
 //   "E2:" = AES-GCM(deflate-raw(plain)) (v7.2.0+)
-//   送信側は最新のみ生成、受信側は過去全 prefix を読めること。
+//   送信側は最新のみ生成、受信側は過去全 prefix + plain を読めること。
+//   ※ transport 層 (pack/unpack) は chunk (encodePages/decodePage) の前段。
 //
 // ── 将来の開発者へ ──
 //
