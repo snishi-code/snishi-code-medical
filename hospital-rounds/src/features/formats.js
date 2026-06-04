@@ -32,6 +32,8 @@ import {
 import { makeTagPicker, getAllTags, getPatientTags, setPatientTags } from "./tags.js";
 import { openQrFormatOverlay } from "./qr-format.js";
 import { resolveActiveGroup } from "./format-groups.js";
+import { bindHandleDrag } from "./drag.js";
+import { icon } from "../icons.js";
 import { t, applyI18n } from "../i18n.js";
 
 // strip 右端のハンバーガー (パネルごとの「全フォーマット一覧 = お気に入りトグル popup」を開く)
@@ -814,6 +816,19 @@ function renderFormatEditForm() {
   if (itemsHost) renderFormatEditItems(itemsHost);
 }
 
+// 項目をドラッグで並び替えた時の確定処理。配列順をそのまま入れ替えて再描画する
+// (スキーマ変更なし。出力・展開は items 配列順に従うので順序がそのまま反映される)。
+function onFormatItemDrop(fromIdx, toIdx) {
+  if (!_currentEdit) return;
+  const items = _currentEdit.target.items;
+  if (fromIdx < 0 || fromIdx >= items.length) return;
+  if (toIdx < 0 || toIdx >= items.length || fromIdx === toIdx) return;
+  const [moved] = items.splice(fromIdx, 1);
+  items.splice(toIdx, 0, moved);
+  const host = document.getElementById("formatEditItems");
+  if (host) renderFormatEditItems(host);
+}
+
 function renderFormatEditItems(host) {
   host.textContent = "";
   const target = _currentEdit.target;
@@ -821,6 +836,18 @@ function renderFormatEditItems(host) {
     const item = target.items[i];
     const row = document.createElement("div");
     row.className = "formatEditItemRow";
+
+    // 0) ドラッグハンドル (左端)。見える掴み手から並び替え開始。入力欄に触れても
+    //    暴発しないよう、ドラッグ開始領域はこのハンドルに限定する。
+    const handle = document.createElement("span");
+    handle.className = "formatEditItemHandle";
+    handle.setAttribute("role", "button");
+    handle.setAttribute("tabindex", "0");
+    handle.title = t("format.reorderItem.title");
+    handle.setAttribute("aria-label", t("format.reorderItem.aria"));
+    handle.innerHTML = icon("reorder", 18);
+    bindHandleDrag(handle, row, () => i, onFormatItemDrop, "#formatEditItems .formatEditItemRow");
+    row.appendChild(handle);
 
     // 1) ラベル入力 (常に左)
     const label = document.createElement("input");

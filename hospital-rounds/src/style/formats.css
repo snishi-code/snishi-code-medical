@@ -324,8 +324,16 @@
       margin-bottom: 0;
     }
 
-    .formatEditTagsField > #formatEditTagsHost {
-      padding-top: 2px; /* 名前 input と縦位置を揃える微調整 */
+    /* タグピッカーの trigger 高さを名前 input に合わせ、行を flex-end で底揃えに
+       すると、上のラベル span も同高なので名前欄とアイコンの縦位置が揃う。
+       (旧: trigger が content-box で input より背高 → padding-top の微調整で
+        ごまかしていたが端末差でズレた。border-box + 同高 + margin 0 で根本解決。
+        ※ tagPickerTrigger 既定の margin-bottom:8px が field 下端を trigger より
+          8px 下げ、flex-end の底揃えを崩していたので 0 に上書きする。) */
+    .formatEditTagsField .tagPickerTrigger {
+      box-sizing: border-box;
+      min-height: 34px;
+      margin: 0;
     }
 
     /* タグピッカーの popup が右に飛び出さないように左寄せ */
@@ -388,15 +396,30 @@
       color: var(--text);
     }
 
-    /* 全行で列を揃えるため grid。列: ラベル | 様式 | 補助欄(単位/正常文) | 削除。
-       kind 以外は fr でレスポンシブ。kind は「分数 (a/b)」が入る固定幅。 */
+    /* 全行で列を揃えるため grid。列: ハンドル | ラベル | 様式 | 補助欄(単位/正常文) | 削除。
+       kind 以外は fr でレスポンシブ。kind は「分数 (a/b)」が入る固定幅。
+       ハンドル・削除は密な行 UI のため 44px 未満の専用サイズ (意図的な狭幅例外)。 */
     .formatEditItemRow {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1.3fr) 32px;
+      grid-template-columns: 22px minmax(0, 1fr) 96px minmax(0, 1.3fr) 32px;
       align-items: center;
       gap: 6px;
       margin-bottom: 6px;
     }
+
+    /* ドラッグハンドル (項目並び替え)。掴む場所を明示し、ここからのみドラッグ開始。 */
+    .formatEditItemHandle {
+      align-self: stretch;
+      min-height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted, #9ca3af);
+      cursor: grab;
+      touch-action: none;   /* ドラッグ中にスクロールへ奪われない */
+      user-select: none;
+    }
+    .formatEditItemHandle:active { cursor: grabbing; }
 
     .formatEditItemLabel,
     .formatEditItemUnit,

@@ -3,7 +3,7 @@
 import { settings, saveSettings } from "../store.js";
 import { DEFAULT_TAGS, clone } from "../constants.js";
 import { renameTagAt, deleteTagAt, moveTag, makeAddTagWidget } from "../features/tags.js";
-import { bindLongPressAndDrag } from "../features/drag.js";
+import { bindHandleDrag } from "../features/drag.js";
 import { startNewFormat, startEditFormat, deleteFormatById } from "../features/formats.js";
 import { getAllFormatGroups, startNewFormatGroup, startEditFormatGroup, deleteFormatGroupById } from "../features/format-groups.js";
 import { listBundles, renameBundle, deleteBundle, getActiveWorkspaceId,
@@ -236,7 +236,14 @@ function renderToggleIcon(iconEl, on) {
 // openGroupMembershipPicker) は撤去。再実装は git tag hospital-rounds-v7.6.1 を参照
 
 // ============================
-// Tag list (chip-based UI with tap-to-edit, long-press to delete/drag)
+// Tag list (設定画面のタグ「管理」UI)
+//
+// ホーム/患者画面はタグを「選択」、設定画面はタグを「編集・削除・並び替え」する。
+// 役割が違うので操作も分ける:
+//   - 並び替え … 見えるドラッグハンドル (左端) から (長押し発見性問題の解消)
+//   - 編集     … ラベルをタップ (またはラベル = 編集の明示)
+//   - 削除     … 明示の削除ボタン (右端) + 確認ダイアログ
+//                (破壊操作を長押しだけに隠さない。アクセシビリティ確保)
 // ============================
 
 let _draftTagIndex = -1; // index of empty draft tag being added
@@ -245,24 +252,50 @@ function makeTagChip(idx) {
   const name = settings.tags[idx] || "";
   const wrap = document.createElement("div");
   wrap.className = "tagSettingChip";
+
+  // 並び替えハンドル (左端)。掴む場所を明示し、ここからのみドラッグ開始。
+  const handle = document.createElement("span");
+  handle.className = "tagSettingHandle";
+  handle.setAttribute("role", "button");
+  handle.setAttribute("tabindex", "0");
+  handle.title = t("settings.tag.reorder.title");
+  handle.setAttribute("aria-label", t("settings.tag.reorder.aria"));
+  handle.innerHTML = icon("reorder", 16);
+  wrap.appendChild(handle);
+
+  // ラベル: タップで編集
   const labelBtn = document.createElement("button");
   labelBtn.type = "button";
   labelBtn.className = "tagSettingChipLabel";
   labelBtn.textContent = name || t("settings.tagGroup.name.empty");
+  labelBtn.title = t("common.edit");
+  labelBtn.addEventListener("click", () => openInlineTagEditor(wrap, idx));
   wrap.appendChild(labelBtn);
 
-  bindLongPressAndDrag(
-    labelBtn,
+  // 明示の削除ボタン (右端)。必ず確認を挟む。
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "tagSettingDel";
+  del.title = t("common.delete");
+  del.setAttribute("aria-label", t("settings.tag.delete.aria", { name: name || t("settings.tagGroup.name.empty") }));
+  del.innerHTML = icon("delete", 14);
+  del.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (confirm(t("settings.tag.delete.confirm", { name }))) {
+      deleteTagAt(idx);
+      renderTagsList();
+      if (_renderPatientUIFn) _renderPatientUIFn();
+    }
+  });
+  wrap.appendChild(del);
+
+  // 並び替え: 見えるハンドルからドラッグ (chip 全体が ghost / 並び替え対象)
+  bindHandleDrag(
+    handle,
+    wrap,
     () => idx,
     (fromIdx, toIdx) => { moveTag(fromIdx, toIdx); renderTagsList(); if (_renderPatientUIFn) _renderPatientUIFn(); },
-    () => {
-      if (confirm(t("settings.tag.delete.confirm", { name }))) {
-        deleteTagAt(idx);
-        renderTagsList();
-        if (_renderPatientUIFn) _renderPatientUIFn();
-      }
-    },
-    () => openInlineTagEditor(wrap, idx)
+    ".tagSettingList .tagSettingChip"
   );
 
   return wrap;
