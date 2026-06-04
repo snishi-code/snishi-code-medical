@@ -22,6 +22,7 @@
 import { settings, appState, selectedNo, saveSettings, markUpdated, scheduleSave } from "../store.js";
 import { FORMAT_PANELS } from "../constants.js";
 import { flushGroupExpandedValues } from "./formats.js";
+import { openQrSetOverlay } from "./qr-set.js";
 import { t } from "../i18n.js";
 
 function newGroupId() {
@@ -398,10 +399,21 @@ export function initFormatGroups(callbacks) {
   const editOverlay = document.getElementById("formatGroupEditOverlay");
   const editCancel = document.getElementById("formatGroupEditCancelBtn");
   const editSave = document.getElementById("formatGroupEditSaveBtn");
+  const editQrShare = document.getElementById("formatGroupEditQrShareBtn");
   if (editCancel) editCancel.addEventListener("click", closeEditModal);
   if (editSave) editSave.addEventListener("click", saveEdit);
   if (editOverlay) editOverlay.addEventListener("click", (e) => {
     if (e.target === editOverlay) closeEditModal();
+  });
+  // QR 共有: 編集中のセット (= _currentEdit.target) をそのまま QR 化 (未保存でも可)。
+  // 名前が空のままは弾く。参照 formats は settings.formats から id 解決される。
+  if (editQrShare) editQrShare.addEventListener("click", () => {
+    if (!_currentEdit) return;
+    const nameInp = document.getElementById("formatGroupEditName");
+    const name = String(nameInp?.value || "").trim();
+    if (!name) { alert(t("formatGroup.name.required")); return; }
+    _currentEdit.target.name = name;
+    openQrSetOverlay(_currentEdit.target);
   });
 
   // 患者画面ヘッダーの「束」ボタン → ピッカーを開く

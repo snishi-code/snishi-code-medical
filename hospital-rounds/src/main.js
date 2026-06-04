@@ -33,6 +33,8 @@ import { setDataChangeHandler, initActionMenu } from "./features/drag.js";
 import { initFormats, setOnTextChanged as setOnFormatTextChanged, setOnExpandedInput, setFormatStoreAdapter } from "./features/formats.js";
 import { initMovePatient } from "./features/move-patient.js";
 import { initQrFormat, closeQrFormatOverlay, setOnFormatApplied, setFormatStoreAdapter as setQrFormatStoreAdapter } from "./features/qr-format.js";
+import { initQrSet, closeQrSetOverlay, setOnSetApplied } from "./features/qr-set.js";
+import { initQrReceive, openQrReceiveOverlay } from "./features/qr-receive.js";
 import { getAllTags as _getAllTagsForQr } from "./features/tags.js";
 import { initFormatGroups } from "./features/format-groups.js";
 import { t, applyI18n } from "./i18n.js";
@@ -245,17 +247,33 @@ setOnFormatApplied(() => {
   doRenderDetail();
 });
 
+// セット QR (FS): 送信フロー初期化 + 受信適用後の再描画 (セットは strip チップに影響)。
+initQrSet();
+setOnSetApplied(() => {
+  renderSettings();
+  refreshPatientUI();
+});
+
+// 統一 QR 受信ルーター: 各 createQrFlow が init で receiver を登録済みなので、
+// ここでオーバーレイを配線するだけ。設定「QR から追加」で開く。
+initQrReceive();
+document.getElementById("qrReceiveOpenBtn")?.addEventListener("click", openQrReceiveOverlay);
+
 initFormatGroups({
   renderDetail: doRenderDetail,
 });
 
-// QR フォーマット overlay の close ボタン + overlay 外クリックで閉じる配線。
-// × ボタンには data-close-popup も付いているのでグローバルハンドラが overlay
-// を閉じるが、closeQrFormatOverlay は flow.close() / setFormatToShare(null) の
-// 追加クリーンアップが要るので個別 listener も残す (両 listener は冪等)。
+// QR 送信オーバーレイ (フォーマット / セット) の close 配線。
+// × には data-close-popup も付くのでグローバルハンドラが overlay を閉じるが、
+// closeQrFormatOverlay / closeQrSetOverlay は flow.close() 等の追加 cleanup が要るので
+// 個別 listener も残す (両 listener は冪等)。
 document.getElementById("qrFormatCloseBtn")?.addEventListener("click", closeQrFormatOverlay);
 document.getElementById("qrFormatOverlay")?.addEventListener("click", (e) => {
   if (e.target.id === "qrFormatOverlay") closeQrFormatOverlay();
+});
+document.getElementById("qrSetCloseBtn")?.addEventListener("click", closeQrSetOverlay);
+document.getElementById("qrSetOverlay")?.addEventListener("click", (e) => {
+  if (e.target.id === "qrSetOverlay") closeQrSetOverlay();
 });
 
 // ============================
@@ -294,7 +312,8 @@ initSharedQr();
 initMemoQr();
 initHomeQr();
 initSettingsQr();
-setOnSettingsApplied(() => refreshPatientUI());
+// ST 受信適用後: 設定画面 (フォーマット/セット一覧) と患者 UI の両方を再描画。
+setOnSettingsApplied(() => { renderSettings(); refreshPatientUI(); });
 
 // v8.7+: 部屋番号順は自動 (各 view の描画時に ensureRoomOrder)。手動ソートボタンは撤去。
 
@@ -348,8 +367,9 @@ function reloadRecvCards() { for (const c of _recvCards) c.reload(); }
 wireRecvCard({ cardId: "memoPasteCard", areaId: "memoPasteArea", closeBtnId: "memoPasteCloseBtn", clearBtnId: "memoPasteClearBtn", openBtnId: "memoRecvOpenBtn", stateKey: "recvMemo" });
 wireRecvCard({ cardId: "sharedPasteCard", areaId: "sharedPasteArea", closeBtnId: "sharedPasteCloseBtn", clearBtnId: "sharedPasteClearBtn", openBtnId: "sharedRecvOpenBtn", stateKey: "recvShared" });
 
-// Paste-card camera handles continuation scans (text accumulates in the area).
-wireScanButton("sharedPasteScanBtn", "sharedPasteArea");
+// 受信ボックスは「復号済みの整形テキスト」の保管場所。生 QR を読む導線は
+// 各 QR カードのテキスト受信パネル (createQrFlow) に一本化したので、受信ボックス
+// 直下の生 QR カメラ (旧 sharedPasteScanBtn) は撤去した。
 wireScanButton("adminImportScanBtn", "adminImportArea");
 
 // ============================

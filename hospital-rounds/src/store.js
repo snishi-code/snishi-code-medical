@@ -33,12 +33,13 @@ import {
 // Settings defaults & normalization
 // ============================
 
-function newFormatId() {
+// 受信 (qr-settings / qr-set) でも ID 採番を共有するため export。
+export function newFormatId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return "fmt_" + crypto.randomUUID();
   return "fmt_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
-function newGroupId() {
+export function newGroupId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return "grp_" + crypto.randomUUID().slice(0, 8);
   return "grp_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
@@ -59,7 +60,7 @@ function makeDefaultFormats() {
 // 既定フォーマットグループを、生成済み formats 配列の ID で組み立てる。
 // defaults.json は formatIndexes / defaultFormatIndexes で formats を index 参照
 // しているので (ID は実行時生成)、ここで index → 生成 ID に解決する。
-function makeDefaultFormatGroups(formats) {
+export function makeDefaultFormatGroups(formats) {
   const seeds = Array.isArray(DEFAULT_FORMAT_GROUPS) ? DEFAULT_FORMAT_GROUPS : [];
   const groups = seeds.map(g => {
     const idxToId = (i) => (formats[i] ? formats[i].id : null);
@@ -77,7 +78,7 @@ function makeDefaultFormatGroups(formats) {
 
 // formatGroups の不変条件: 1 つ以上あるなら「ちょうど 1 つ」が isDefault=true。
 // 0 個 / 複数 true なら先頭を default に昇格 (残りは false)。空配列はそのまま返す。
-function ensureOneDefaultGroup(groups) {
+export function ensureOneDefaultGroup(groups) {
   if (!Array.isArray(groups) || !groups.length) return groups || [];
   const firstDefault = groups.findIndex(g => g.isDefault);
   const keep = firstDefault >= 0 ? firstDefault : 0;

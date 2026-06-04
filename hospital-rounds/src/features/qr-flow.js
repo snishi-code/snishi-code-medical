@@ -3,7 +3,8 @@
 import { qrcodegen } from "../libs/qrcodegen.js";
 import { scanQRStream, isScannerSupported } from "./qr-scan.js";
 import { encodePages, decodePage, newBatchId } from "./qr-protocol.js";
-import { encryptPayload, decryptPayload, isEncrypted } from "./crypto-payload.js";
+import { packPayload, unpackPayload } from "./crypto-payload.js";
+import { registerReceiver } from "./qr-receive.js";
 import { logEvent, EVENT } from "./eventlog.js";
 import { t } from "../i18n.js";
 
@@ -116,13 +117,16 @@ export function createQrFlow(cfg) {
 
   async function regenerateAndRender() {
     let payload = cfg.encodePayload();
-    if (payload && typeof cfg.shouldEncrypt === "function" && cfg.shouldEncrypt()) {
+    if (payload) {
+      const encrypt = typeof cfg.shouldEncrypt === "function" && cfg.shouldEncrypt();
       try {
-        payload = await encryptPayload(payload);
+        // transport 層: 暗号化 ON → E2 / OFF でも cfg.compress なら C1 / それ以外 plain
+        payload = await packPayload(payload, { encrypt, compress: !!cfg.compress });
       } catch (e) {
-        console.error("encryptPayload failed:", e);
-        // 暗号化失敗時は安全側に倒し payload を破棄 (= QR を出さない)
-        payload = "";
+        console.error("packPayload failed:", e);
+        // 暗号化が要るのに失敗した時は安全側に倒し payload を破棄 (= QR を出さない)。
+        // 圧縮失敗は packPayload 内で plain fallback 済みなのでここには来ない。
+        if (encrypt) payload = "";
       }
     }
     qrPages = payload
@@ -152,65 +156,176 @@ export function createQrFlow(cfg) {
     regenerateAndRender();
   }
 
+  // ============================
+  // 受信解析 (カメラ・テキスト共通)
+  //
+  // 1 ページ分の生 QR テキストを 1 つ取り込む。decodePage → kind 判定 →
+  // バッチ集約までを担い、status は ctrl.setStatus(text) で呼び出し側
+  // (カメラ overlay / テキスト欄) に出す。全ページ揃ったら payload を
+  // 組み立てて返す (復号・decodePayload・onApply は applyPayload が担当)。
+  //
+  // 戻り値 { done, payload, consumed }:
+  //   done     … 全ページ揃った (payload に連結結果)
+  //   consumed … 正規の 1 ページとして取り込んだ (= 入力欄をクリアしてよい)。
+  //              形式不一致・kind 違いは consumed=false で入力を残す。
+  // ============================
+  function ingestPage(text, ctrl) {
+    const decoded = decodePage(text);
+    if (!decoded) {
+      ctrl.setStatus(t("qr.recv.unknownFormat"));
+      return { done: false, consumed: false };
+    }
+    if (decoded.kind !== cfg.kind) {
+      ctrl.setStatus(t("qr.recv.wrongKind", { label: cfg.kindLabel, got: decoded.kind }));
+      return { done: false, consumed: false };
+    }
+    if (recvBatchId && recvBatchId !== decoded.batchId) {
+      resetRecv();
+      ctrl.setStatus(t("qr.recv.newBatch"));
+    }
+    if (!recvBatchId) {
+      recvBatchId = decoded.batchId;
+      recvTotal = decoded.totalPages;
+    }
+    if (recvPages.has(decoded.pageNum)) {
+      ctrl.setStatus(t("qr.recv.duplicate", { got: recvPages.size, total: recvTotal }));
+      return { done: false, consumed: true };
+    }
+    recvPages.set(decoded.pageNum, decoded.content);
+    try { navigator.vibrate?.(80); } catch (_) {}
+    if (recvPages.size === recvTotal) {
+      const total = recvTotal;
+      const full = [];
+      for (let i = 1; i <= total; i++) full.push(recvPages.get(i));
+      const payload = full.join("");
+      resetRecv();
+      ctrl.setStatus(t("qr.recv.complete", { total }));
+      return { done: true, consumed: true, payload };
+    }
+    ctrl.setStatus(t("qr.recv.progress", { got: recvPages.size, total: recvTotal }));
+    return { done: false, consumed: true };
+  }
+
+  // 揃った payload を unpack (復号/展開) → decodePayload → onApply。失敗時は alert
+  // で中断 (fail-closed: 握って成功扱いにしない)。
+  async function applyPayload(payload, ctrl) {
+    let plain;
+    try {
+      plain = await unpackPayload(payload);
+    } catch (e) {
+      alert(t("qr.recv.decrypt.failed", { message: e.message || e }));
+      return;
+    }
+    let decodedPayload;
+    try {
+      decodedPayload = cfg.decodePayload(plain);
+    } catch (e) {
+      alert(t("qr.recv.parse.failed", { message: e.message || e }));
+      return;
+    }
+    cfg.onApply(decodedPayload, ctrl);
+  }
+
+  // 受信レジストリ用: 1 ページ取り込む。揃ったら apply 用の thunk を同梱して返す
+  // (apply を即実行しないのは、カメラ経路でスキャナを閉じてから alert を出すため)。
+  // 統一受信ルーター (qr-receive.js)・カード内テキスト欄・カメラの全経路が通る。
+  function receivePage(text, ctrl) {
+    const r = ingestPage(text, ctrl);
+    if (r.done) return { ...r, apply: () => applyPayload(r.payload, ctrl) };
+    return r;
+  }
+
   function startScan() {
     const session = scanQRStream({
       onScan: (text, ctrl) => {
-        const decoded = decodePage(text);
-        if (!decoded) {
-          ctrl.setStatus(t("qr.recv.unknownFormat"));
-          return;
-        }
-        if (decoded.kind !== cfg.kind) {
-          ctrl.setStatus(t("qr.recv.wrongKind", { label: cfg.kindLabel, got: decoded.kind }));
-          return;
-        }
-        if (recvBatchId && recvBatchId !== decoded.batchId) {
-          resetRecv();
-          ctrl.setStatus(t("qr.recv.newBatch"));
-        }
-        if (!recvBatchId) {
-          recvBatchId = decoded.batchId;
-          recvTotal = decoded.totalPages;
-        }
-        if (recvPages.has(decoded.pageNum)) {
-          ctrl.setStatus(t("qr.recv.duplicate", { got: recvPages.size, total: recvTotal }));
-          return;
-        }
-        recvPages.set(decoded.pageNum, decoded.content);
-        try { navigator.vibrate?.(80); } catch (_) {}
-        if (recvPages.size === recvTotal) {
-          const full = [];
-          for (let i = 1; i <= recvTotal; i++) full.push(recvPages.get(i));
-          const payload = full.join("");
-          resetRecv();
-          ctrl.setStatus(t("qr.recv.complete", { total: recvTotal }));
+        const r = receivePage(text, { setStatus: ctrl.setStatus, close });
+        if (r.done) {
           // スキャナが閉じてから apply（alert がスキャナの裏に隠れないように）
-          setTimeout(async () => {
-            // 暗号化されている場合は復号してから decodePayload へ
-            let plain = payload;
-            if (isEncrypted(plain)) {
-              try {
-                plain = await decryptPayload(plain);
-              } catch (e) {
-                alert(t("qr.recv.decrypt.failed", { message: e.message || e }));
-                return;
-              }
-            }
-            let decodedPayload;
-            try {
-              decodedPayload = cfg.decodePayload(plain);
-            } catch (e) {
-              alert(t("qr.recv.parse.failed", { message: e.message || e }));
-              return;
-            }
-            cfg.onApply(decodedPayload, { close });
-          }, 100);
+          setTimeout(r.apply, 100);
           return { stop: true };
         }
-        ctrl.setStatus(t("qr.recv.progress", { got: recvPages.size, total: recvTotal }));
       },
     });
     if (!session) alert(t("qr.scanner.open.failed"));
+  }
+
+  // ============================
+  // テキスト受信パネル (カメラ非対応端末 / HID キーボードウェッジ型リーダー
+  // / 手貼り付け用)。createQrFlow が動的に注入する。生 QR テキストを 1 ページ
+  // ずつ取り込み、多ページは順に貼り付けて読ませる (進捗は ingestPage の status
+  // をそのまま流用)。永続受信ボックス (recvMemo/recvShared) とは別物で、ここは
+  // 「生 QR の一時入力欄」。
+  // ============================
+  function wireTextRecv() {
+    const wrap = document.getElementById(cfg.ids.wrapId);
+    if (!wrap || wrap.querySelector(".qrTextRecv")) return;
+
+    const panel = document.createElement("div");
+    panel.className = "qrTextRecv";
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "secondary qrTextRecvToggle";
+    toggle.textContent = t("qr.recv.text.toggle");
+
+    const body = document.createElement("div");
+    body.className = "qrTextRecvBody";
+    body.hidden = true;
+
+    const hint = document.createElement("div");
+    hint.className = "qrTextRecvHint";
+    hint.textContent = t("qr.recv.text.hint");
+
+    const area = document.createElement("textarea");
+    area.className = "qrTextRecvArea";
+    area.rows = 3;
+    area.placeholder = t("qr.recv.text.placeholder");
+
+    const actions = document.createElement("div");
+    actions.className = "qrTextRecvActions";
+
+    const status = document.createElement("span");
+    status.className = "qrTextRecvStatus";
+    status.setAttribute("aria-live", "polite");
+
+    const readBtn = document.createElement("button");
+    readBtn.type = "button";
+    readBtn.className = "primary qrTextRecvRead";
+    readBtn.textContent = t("qr.recv.text.read");
+
+    actions.appendChild(status);
+    actions.appendChild(readBtn);
+    body.appendChild(hint);
+    body.appendChild(area);
+    body.appendChild(actions);
+    panel.appendChild(toggle);
+    panel.appendChild(body);
+    wrap.appendChild(panel);
+
+    const ctrl = { setStatus: (s) => { status.textContent = String(s || ""); }, close };
+
+    toggle.addEventListener("click", () => {
+      const opening = body.hidden;
+      body.hidden = !opening;
+      toggle.classList.toggle("open", opening);
+      if (opening) {
+        // 開いたら現在の受信進捗を反映 (カメラと state を共有)
+        if (recvBatchId) ctrl.setStatus(t("qr.recv.progress", { got: recvPages.size, total: recvTotal }));
+        else ctrl.setStatus("");
+        area.focus();
+      }
+    });
+
+    function readOnce() {
+      const raw = (area.value || "").trim();
+      if (!raw) { ctrl.setStatus(t("qr.recv.text.empty")); return; }
+      const r = receivePage(raw, ctrl);
+      if (r.consumed) area.value = "";
+      if (r.done) r.apply();
+      else area.focus();
+    }
+
+    readBtn.addEventListener("click", readOnce);
   }
 
   function init() {
@@ -229,14 +344,29 @@ export function createQrFlow(cfg) {
       if (qrPageIndex < qrPages.length - 1) { qrPageIndex++; renderQrPage(); }
     });
 
+    // inlineReceive=false (ST/FS/FMT) はカード内の受信 UI を出さない。受信は統一
+    // ルーター (qr-receive.js) に集約。送信カードは「表示専用」になる。
+    // 既定 (HM/MM/SH) は従来どおりカード内にカメラ + テキスト受信欄を持つ。
+    const inlineReceive = cfg.inlineReceive !== false;
     const scanBtn = document.getElementById(cfg.ids.scanBtnId);
     if (scanBtn) {
-      if (!isScannerSupported()) {
-        scanBtn.disabled = true;
-        scanBtn.title = t("qr.scanner.unsupported");
+      if (!inlineReceive) {
+        scanBtn.style.display = "none";
+      } else {
+        if (!isScannerSupported()) {
+          scanBtn.disabled = true;
+          scanBtn.title = t("qr.scanner.unsupported");
+        }
+        scanBtn.addEventListener("click", startScan);
       }
-      scanBtn.addEventListener("click", startScan);
     }
+    if (inlineReceive) {
+      // カメラの有無に関わらずテキスト受信欄を用意 (リーダー / 貼り付け / カメラ非対応端末)
+      wireTextRecv();
+    }
+
+    // 受信レジストリへ登録 (統一ルーター・カード内テキスト欄が共通で使う)
+    registerReceiver(cfg.kind, { kindLabel: cfg.kindLabel, receivePage });
   }
 
   return { init, isActive, refresh, close, open };

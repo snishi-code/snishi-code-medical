@@ -185,11 +185,6 @@
         </div>
         <div class="cardBody">
           <div class="movePatientHint" data-i18n="recv.hint"></div>
-          <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-            <button class="iconBtn" id="sharedPasteScanBtn" type="button" data-i18n-title="qr.scan.tooltip" data-i18n-aria="qr.scan.tooltip" title="カメラで QR を読む" aria-label="カメラで QR を読む">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            </button>
-          </div>
           <textarea id="sharedPasteArea" style="min-height: 160px;"></textarea>
           <div class="recvActions" style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">
             <button class="secondary" id="sharedPasteClearBtn" type="button" data-i18n="recv.clear">消去する</button>
@@ -258,6 +253,18 @@
       </div>
 
       <div class="viewScroll">
+      <!-- QR から追加 (統一受信)。設定全体 / セット / フォーマット のどの QR でも
+           ここから読み取って自動で振り分ける。送信は各 QR 表示・各編集の「QR共有」から。 -->
+      <div class="card">
+        <div class="cardHead">
+          <div class="label" data-i18n="qrReceive.section">QR から追加</div>
+        </div>
+        <div class="cardBody">
+          <div class="qrTextRecvHint" data-i18n="qrReceive.hint">他の端末で共有された QR（設定全体 / セット / フォーマット）を読み取って追加します。</div>
+          <button class="secondary" id="qrReceiveOpenBtn" type="button" data-i18n="qrReceive.open" style="margin-top:8px;">QR から追加</button>
+        </div>
+      </div>
+
       <div class="card">
         <div class="cardHead">
           <div class="label">S</div>
@@ -723,6 +730,9 @@
         <div class="formatEditItemsHead" data-i18n="formatGroup.edit.formatsLabel">含めるフォーマット</div>
         <div id="formatGroupEditFormats"></div>
         <div class="formatEditActions">
+          <button class="iconBtn formatEditQrBtn" id="formatGroupEditQrShareBtn" type="button" data-i18n-title="qrSet.share.title" data-i18n-aria="qrSet.share.title" title="このセットを QR で共有" aria-label="このセットを QR で共有">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
+          </button>
           <div style="flex:1 1 auto;"></div>
           <button class="secondary" id="formatGroupEditCancelBtn" type="button" data-i18n="common.cancel">キャンセル</button>
           <button class="primary" id="formatGroupEditSaveBtn" type="button" data-i18n="common.save">保存</button>
@@ -735,6 +745,11 @@
          show ボタンはオーバーレイ open 時に自動 active 化されるため隠す。 -->
     <div class="popupMenuOverlay" id="qrFormatOverlay">
       <div class="popupMenu qrFormatMenu">
+        <!-- 背景タップでも閉じられるが、出口を明示するため右上に × (44px)。
+             id 経由 listener (closeQrFormatOverlay) で flow.close 等の追加 cleanup も行う。 -->
+        <button class="popupCloseX" id="qrFormatCloseBtn" data-close-popup type="button" data-i18n-aria="common.close" data-i18n-title="common.close" aria-label="閉じる" title="閉じる">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
         <div class="popupTitle" data-i18n="qrFormat.title">フォーマット QR</div>
         <div class="card qrWrap" id="qrFormatWrap">
           <div class="cardHead">
@@ -755,6 +770,56 @@
         </div>
         <!-- show ボタンは createQrFlow が要求するが、このオーバーレイでは常時 active なので非表示 -->
         <button id="qrFormatShowBtn" type="button" style="display:none;"></button>
+      </div>
+    </div>
+
+    <!-- セット (フォーマットセット) を QR で共有 (送信専用)。
+         qr-set.js が createQrFlow に下の DOM ID 一式を渡す。受信は統一ルーターへ。
+         scan ボタンは inlineReceive:false で自動的に隠れる (表示専用)。 -->
+    <div class="popupMenuOverlay" id="qrSetOverlay">
+      <div class="popupMenu qrFormatMenu">
+        <button class="popupCloseX" id="qrSetCloseBtn" data-close-popup type="button" data-i18n-aria="common.close" data-i18n-title="common.close" aria-label="閉じる" title="閉じる">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <div class="popupTitle" data-i18n="qrSet.title">セット QR</div>
+        <div class="card qrWrap" id="qrSetWrap">
+          <div class="cardHead">
+            <span class="qrHint"><span class="mono" id="qrSetPageMeta"></span></span>
+            <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+              <button class="iconBtn" id="qrSetPrevBtn" type="button" data-i18n-title="qr.prev" data-i18n-aria="qr.prev" title="前" aria-label="前">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <button class="iconBtn" id="qrSetNextBtn" type="button" data-i18n-title="qr.next" data-i18n-aria="qr.next" title="次" aria-label="次">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+              <button class="iconBtn" id="qrSetScanBtn" type="button" style="display:none;" aria-hidden="true" tabindex="-1"></button>
+            </div>
+          </div>
+          <canvas id="qrSetCanvas" width="800" height="800"></canvas>
+        </div>
+        <button id="qrSetShowBtn" type="button" style="display:none;"></button>
+      </div>
+    </div>
+
+    <!-- 統一 QR 受信 (設定全体 / セット / フォーマット を kind 判定で自動振り分け)。
+         qr-receive.js が配線。カメラ + リーダー/貼り付け入力欄。 -->
+    <div class="popupMenuOverlay" id="qrReceiveOverlay">
+      <div class="popupMenu qrFormatMenu">
+        <button class="popupCloseX" id="qrReceiveCloseBtn" data-close-popup type="button" data-i18n-aria="common.close" data-i18n-title="common.close" aria-label="閉じる" title="閉じる">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <div class="popupTitle" data-i18n="qrReceive.title">QR から追加</div>
+        <div class="qrReceiveBody">
+          <div class="qrTextRecvHint" data-i18n="qrReceive.overlayHint">カメラで読み取るか、QR リーダー・コピーした QR の中身を下に貼り付けて「QR として読む」を押してください。設定全体 / セット / フォーマット を自動で見分けます。複数ページのときは 1 つずつ読み込みます。</div>
+          <button class="secondary qrReceiveScanBtn" id="qrReceiveScanBtn" type="button" data-i18n="qr.scan">
+            カメラで QR を読む
+          </button>
+          <textarea class="qrTextRecvArea" id="qrReceiveArea" rows="3" data-i18n-placeholder="qr.recv.text.placeholder" placeholder="RND_… で始まる QR の中身"></textarea>
+          <div class="qrTextRecvActions">
+            <span class="qrTextRecvStatus" id="qrReceiveStatus" aria-live="polite"></span>
+            <button class="primary" id="qrReceiveReadBtn" type="button" data-i18n="qr.recv.text.read">QR として読む</button>
+          </div>
+        </div>
       </div>
     </div>
 

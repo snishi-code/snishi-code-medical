@@ -49,12 +49,13 @@ export const DEFAULT_TAGS = APP_DEFAULTS.tags;
 // QR 種別 (kind コード) と設定キー (settings.qrEncryption / qrRedistribution)。
 // 患者画面 QR (clinical text → 電子カルテ貼付) は外部ツールで読む前提のため
 // このマトリクスに含まれない (常に平文・常に再配布可)。
-export const QR_KINDS = Object.freeze(["HM", "MM", "SH", "ST", "FMT"]);
+// FS = フォーマットセット (formatGroup 1 つ + 参照フォーマット一式)
+export const QR_KINDS = Object.freeze(["HM", "MM", "SH", "ST", "FMT", "FS"]);
 // それぞれ「暗号化のデフォルト」「再配布のデフォルト」。設定 UI から変更可。
 //   redistribution: "restricted" = 受信したデータを再配布できない (= origin=external を export 時に除外)
 //                   "free"       = 制限なし
 export const DEFAULT_QR_ENCRYPTION = Object.freeze({
-  HM: true, MM: true, SH: true, ST: true, FMT: true,
+  HM: true, MM: true, SH: true, ST: true, FMT: true, FS: true,
 });
 export const DEFAULT_QR_REDISTRIBUTION = Object.freeze({
   HM:  "restricted",
@@ -62,6 +63,7 @@ export const DEFAULT_QR_REDISTRIBUTION = Object.freeze({
   SH:  "free",
   ST:  "free",
   FMT: "free",
+  FS:  "free",
 });
 
 // Tag filter modes
