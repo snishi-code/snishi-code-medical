@@ -5,16 +5,12 @@ import { STATUS } from "../constants.js";
 import { openActionMenu } from "../features/drag.js";
 import { makeSharedTagFilterPicker, patientMatchesSharedFilter, getStatusMark } from "../features/tags.js";
 import { formatPatientLabel, ensureRoomOrder } from "../features/room.js";
-import { bindTapOrLongPress } from "./detail.js";
+import { bindTapOrLongPress } from "../features/touch.js";
+import { statusClass } from "../features/status-ui.js";
 import { t } from "../i18n.js";
 
-export function statusClass(status) {
-  if (status === STATUS.YELLOW) return "status-yellow";
-  if (status === STATUS.GREEN) return "status-green";
-  if (status === STATUS.GRAY) return "status-gray";
-  if (status === STATUS.BLUE) return "status-blue";
-  return "";
-}
+// statusClass (status-ui.js) / bindTapOrLongPress (touch.js) は共通ヘルパへ移設し、
+// detail.js ↔ home.js の循環 import を解消した。
 
 function countGreen() {
   let c = 0;

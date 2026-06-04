@@ -669,6 +669,255 @@ await test("qr-patient-list v3 round-trip via encodePatientList + decodePatientL
 });
 
 // ============================
+// 13) QR transport 層 (pack/unpack: plain / C1 / E2)
+// ============================
+section("QR transport (crypto-payload pack/unpack)");
+
+await test("packPayload plain (encrypt=false, compress=false) is prefixless + round-trip", async () => {
+  const cp = await import("../src/features/crypto-payload.js");
+  const plain = '{"v":5,"hello":"world"}';
+  const packed = await cp.packPayload(plain, {});
+  assert.equal(packed, plain, "no prefix when neither encrypt nor compress");
+  assert.equal(await cp.unpackPayload(packed), plain);
+});
+
+await test("packPayload compress → C1 and unpack round-trip", async () => {
+  const cp = await import("../src/features/crypto-payload.js");
+  const plain = "あいうえお".repeat(80); // 圧縮で確実に縮む
+  const packed = await cp.packPayload(plain, { compress: true });
+  assert.ok(packed.startsWith("C1:"), "compressible payload gets C1 prefix");
+  assert.ok(!cp.isEncrypted(packed), "C1 is not encrypted");
+  assert.ok(packed.length < plain.length, `C1 (${packed.length}) shorter than plain (${plain.length})`);
+  assert.equal(await cp.unpackPayload(packed), plain, "C1 round-trip recovers plaintext");
+});
+
+await test("packPayload compress falls back to plain when C1 would be longer", async () => {
+  const cp = await import("../src/features/crypto-payload.js");
+  const plain = "hi"; // 短すぎて C1+base64 の方が長い
+  const packed = await cp.packPayload(plain, { compress: true });
+  assert.equal(packed, plain, "tiny payload stays plain (no wasteful C1)");
+});
+
+await test("packPayload encrypt → E2 and unpack round-trip", async () => {
+  const cp = await import("../src/features/crypto-payload.js");
+  const plain = '{"v":5,"secret":"テスト"}';
+  const packed = await cp.packPayload(plain, { encrypt: true });
+  assert.ok(packed.startsWith("E2:"), "encrypt yields E2");
+  assert.ok(cp.isEncrypted(packed));
+  assert.equal(await cp.unpackPayload(packed), plain, "E2 round-trip");
+});
+
+await test("unpackPayload reads plain / C1 / E2 uniformly", async () => {
+  const cp = await import("../src/features/crypto-payload.js");
+  const plain = "RND? いろは".repeat(20);
+  assert.equal(await cp.unpackPayload(plain), plain, "plain passthrough");
+  assert.equal(await cp.unpackPayload(await cp.packPayload(plain, { compress: true })), plain);
+  assert.equal(await cp.unpackPayload(await cp.packPayload(plain, { encrypt: true })), plain);
+});
+
+// ============================
+// 14) formatGroup wire + ST v5 / FS / FMT round-trip
+// ============================
+section("QR formatGroup wire + ST v5 / FS / FMT");
+
+await test("formatGroupToWire / formatGroupFromWire round-trip (index refs, out-of-range dropped)", async () => {
+  const p = await import("../src/features/qr-protocol.js");
+  const formats = [{ id: "a" }, { id: "b" }, { id: "c" }];
+  const group = {
+    id: "g1", name: "発熱", isDefault: true,
+    formatIds: ["a", "c", "zzz"],       // zzz は formats に無い → 除外
+    defaultFormatIds: ["a"],
+    expandFormatIds: ["c"],
+  };
+  const idToIndex = (id) => { const i = formats.findIndex(f => f.id === id); return i >= 0 ? i + 1 : undefined; };
+  const wire = p.formatGroupToWire(group, idToIndex);
+  assert.equal(wire.n, "発熱");
+  assert.equal(wire.d, 1, "isDefault → d:1");
+  assert.deepEqual(wire.fi, [1, 3], "1-based index refs, missing id dropped");
+  assert.deepEqual(wire.df, [1]);
+  assert.deepEqual(wire.xf, [3]);
+
+  // 復元: 新 formats 配列 (= 受信側の新 ID) に index 解決
+  const newFormats = [{ id: "x1" }, { id: "x2" }];   // wire は index 1,3 を参照
+  const restored = p.formatGroupFromWire(wire, newFormats);
+  assert.equal(restored.name, "発熱");
+  assert.equal(restored.isDefault, true);
+  // index 1 → x1 / index 3 → 範囲外 (newFormats[2] 無し) → 除外
+  assert.deepEqual(restored.formatIds, ["x1"], "out-of-range index dropped on decode");
+  assert.deepEqual(restored.defaultFormatIds, ["x1"]);
+  assert.deepEqual(restored.expandFormatIds, [], "xf referenced dropped format → removed");
+});
+
+await test("ST v5 encode/decode round-trip (formats + formatGroups)", async () => {
+  const store = await freshStore();
+  store.settings.tags = ["内科", "外科"];
+  const qs = await import("../src/features/qr-settings.js");
+
+  const payload = qs.encodeSettingsPayload();
+  const obj = JSON.parse(payload);
+  assert.equal(obj.v, 5, "ST WIRE_V is 5");
+  assert.ok(Array.isArray(obj.f) && obj.f.length, "formats carried");
+  assert.ok(Array.isArray(obj.fg) && obj.fg.length, "formatGroups carried");
+
+  const decoded = qs.decodeSettingsPayload(payload);
+  assert.equal(decoded.formats.length, store.settings.formats.length, "all formats");
+  assert.ok(decoded.formats.every(f => typeof f.id === "string" && f.id), "formats get ids");
+  assert.notEqual(decoded.formats[0].id, store.settings.formats[0].id, "fresh ids assigned");
+  assert.equal(decoded.formatGroups.length, store.settings.formatGroups.length, "all groups");
+  assert.equal(decoded.formatGroups.filter(g => g.isDefault).length, 1, "exactly one default");
+  // group refs resolve to decoded format ids
+  const idset = new Set(decoded.formats.map(f => f.id));
+  for (const g of decoded.formatGroups) {
+    for (const id of g.formatIds) assert.ok(idset.has(id), "group formatId resolves to a decoded format");
+  }
+});
+
+await test("ST v5 reflects empty tags (whole-settings semantics, not differential)", async () => {
+  const store = await freshStore();
+  store.settings.tags = []; // 送信元のタグは 0 個
+  const qs = await import("../src/features/qr-settings.js");
+  const payload = qs.encodeSettingsPayload();
+  const obj = JSON.parse(payload);
+  assert.ok(Array.isArray(obj.td) && obj.td.length === 0, "v5 always carries td, even empty");
+  const decoded = qs.decodeSettingsPayload(payload);
+  // 受信側に既存タグがあっても「設定全体」として空に揃う
+  assert.ok(Array.isArray(decoded.tags), "tags applied even when empty");
+  assert.equal(decoded.tags.length, 0, "empty tags reflected (clears receiver tags)");
+});
+
+await test("ST v4 payload (no formatGroups) is still readable + default set rebuilt", async () => {
+  const store = await freshStore();
+  store.settings.tags = ["内科"];
+  const proto = await import("../src/features/qr-protocol.js");
+  const qs = await import("../src/features/qr-settings.js");
+  const v4 = JSON.stringify({
+    v: 4,
+    td: ["内科"],
+    f: store.settings.formats.map(f => proto.formatToWire(f, ["内科"])),
+  });
+  const decoded = qs.decodeSettingsPayload(v4);
+  assert.ok(decoded.formats.length && decoded.formats.every(f => f.id), "v4 formats get ids");
+  assert.ok(decoded.formatGroups.length >= 1, "default set rebuilt for v4");
+  assert.equal(decoded.formatGroups.filter(g => g.isDefault).length, 1, "exactly one default");
+});
+
+await test("FS (set QR) encode/decode round-trip with referenced formats + rename refs", async () => {
+  const store = await freshStore();
+  store.settings.tags = ["内科"];
+  const qset = await import("../src/features/qr-set.js");
+  const f0 = store.settings.formats[0];
+  const f1 = store.settings.formats[1];
+  const group = {
+    id: "grp_src", name: "発熱セット", isDefault: false,
+    formatIds: [f0.id, f1.id], defaultFormatIds: [f0.id], expandFormatIds: [f1.id],
+  };
+  const payload = qset.encodeSetPayload(group, store.settings.formats, store.settings.tags);
+  const obj = JSON.parse(payload);
+  assert.equal(obj.v, 1, "FS WIRE_V is 1");
+  assert.equal(obj.f.length, 2, "only referenced formats carried");
+  assert.deepEqual(obj.g.fi, [1, 2], "group references formats by 1-based index");
+
+  const decoded = qset.decodeSetPayload(payload);
+  assert.equal(decoded.formats.length, 2);
+  assert.ok(decoded.formats.every(f => f.id), "decoded formats get fresh ids");
+  assert.notEqual(decoded.formats[0].id, f0.id, "fresh id");
+  assert.equal(decoded.group.name, "発熱セット");
+  assert.deepEqual(decoded.group.formatIds, decoded.formats.map(f => f.id), "group refs new ids in order");
+  assert.deepEqual(decoded.group.defaultFormatIds, [decoded.formats[0].id]);
+  assert.deepEqual(decoded.group.expandFormatIds, [decoded.formats[1].id]);
+});
+
+await test("FS never emits isDefault (d) — received set is always non-default", async () => {
+  const store = await freshStore();
+  const qset = await import("../src/features/qr-set.js");
+  const f0 = store.settings.formats[0];
+  // 送信元では default なセットでも、wire には d を載せない
+  const group = {
+    id: "g", name: "デフォルトを共有", isDefault: true,
+    formatIds: [f0.id], defaultFormatIds: [], expandFormatIds: [],
+  };
+  const obj = JSON.parse(qset.encodeSetPayload(group, store.settings.formats, store.settings.tags));
+  assert.equal(obj.g.d, undefined, "FS wire omits d even when source set is default");
+  const decoded = qset.decodeSetPayload(JSON.stringify(obj));
+  assert.equal(decoded.group.isDefault, false, "decoded FS set is non-default");
+});
+
+await test("FMT (format QR) encode/decode round-trip", async () => {
+  const qf = await import("../src/features/qr-format.js");
+  const fmt = {
+    id: "fmt_src", name: "FMTテスト", panel: "A", joiner: ", ", labelSep: " ",
+    titleWrap: "（）", tags: ["内科", "外科"],
+    items: [{ label: "BP", kind: "fraction", unit: "mmHg" }, { label: "発熱", kind: "text", normal: "なし" }],
+  };
+  const payload = qf.encodeFormatPayload(fmt);
+  const obj = JSON.parse(payload);
+  assert.equal(obj.v, 2, "FMT WIRE_V is 2");
+  const decoded = qf.decodeFormatPayload(payload);
+  assert.equal(decoded.name, "FMTテスト");
+  assert.equal(decoded.panel, "A");
+  assert.deepEqual(decoded.tags, ["内科", "外科"], "tags inline (null dict)");
+  assert.equal(decoded.items.length, 2);
+  assert.equal(decoded.items[0].kind, "fraction");
+  assert.equal(decoded.items[1].kind, "text");
+});
+
+// ============================
+// 15) raw text 受信経路 (encode → pack → pages → assemble → unpack → decode)
+//     + 750B/ページ上限
+// ============================
+section("QR raw-text receive pipeline + page size");
+
+await test("multi-page transport assembles back (out-of-order) + each page ≤ maxBytes", async () => {
+  const proto = await import("../src/features/qr-protocol.js");
+  const { utf8ByteLength } = await import("../src/payload.js");
+  const longPlain = JSON.stringify({ v: 5, blob: "あ".repeat(500) });
+  const pages = proto.encodePages({ kind: "ST", payload: longPlain, batchId: "m", maxBytes: 200 });
+  assert.ok(pages.length >= 2, "long payload spans multiple pages");
+  for (const pg of pages) assert.ok(utf8ByteLength(pg) <= 200, `page ${utf8ByteLength(pg)}B ≤ 200`);
+
+  const decoded = pages.map(proto.decodePage);
+  assert.ok(decoded.every(d => d && d.kind === "ST"));
+  // 順不同でも結合できる
+  const assembled = proto.assemblePages(decoded.slice().reverse());
+  assert.equal(assembled, longPlain, "assemblePages restores payload regardless of order");
+  // 1 ページ欠けたら null (fail-closed)
+  assert.equal(proto.assemblePages(decoded.slice(0, -1)), null, "missing page → null");
+});
+
+await test("single-page raw-text path: encode → pack(C1) → page → assemble → unpack → decode", async () => {
+  const proto = await import("../src/features/qr-protocol.js");
+  const cp = await import("../src/features/crypto-payload.js");
+  const qf = await import("../src/features/qr-format.js");
+  const fmt = { id: "x", name: "発熱", panel: "S", items: [] };
+  const plain = qf.encodeFormatPayload(fmt);
+  const packed = await cp.packPayload(plain, { compress: true });
+  const pages = proto.encodePages({ kind: "FMT", payload: packed, batchId: "s", maxBytes: 750 });
+  assert.equal(pages.length, 1, "small format fits a single page");
+  const assembled = proto.assemblePages(pages.map(proto.decodePage));
+  const unpacked = await cp.unpackPayload(assembled);
+  assert.equal(unpacked, plain, "unpack recovers payload");
+  const decoded = qf.decodeFormatPayload(unpacked);
+  assert.equal(decoded.name, "発熱", "decode reaches the format object (apply-ready)");
+});
+
+await test("ST v5 full pipeline (encrypt ON) stays ≤ 750B per page and round-trips", async () => {
+  const store = await freshStore();
+  const proto = await import("../src/features/qr-protocol.js");
+  const cp = await import("../src/features/crypto-payload.js");
+  const qs = await import("../src/features/qr-settings.js");
+  const { utf8ByteLength } = await import("../src/payload.js");
+  const plain = qs.encodeSettingsPayload();
+  const packed = await cp.packPayload(plain, { encrypt: true });
+  const pages = proto.encodePages({ kind: "ST", payload: packed, batchId: "e", maxBytes: 750 });
+  for (const pg of pages) assert.ok(utf8ByteLength(pg) <= 750, `page ≤ 750B (${utf8ByteLength(pg)})`);
+  const assembled = proto.assemblePages(pages.map(proto.decodePage));
+  const unpacked = await cp.unpackPayload(assembled);
+  const decoded = qs.decodeSettingsPayload(unpacked);
+  assert.equal(decoded.formats.length, store.settings.formats.length, "encrypted ST round-trips formats");
+  assert.equal(decoded.formatGroups.filter(g => g.isDefault).length, 1);
+});
+
+// ============================
 // 受信ボックス (recvMemo / recvShared) の永続化 — bundle meta 経由
 // v8.10.0 で追加。IDB 非依存の経路だけを検査する (storage は no-op)。
 // ============================

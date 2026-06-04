@@ -237,16 +237,19 @@ let _openPopup = null;
 // until the popup actually closes—otherwise the parent screen recreates the
 // picker and the popup snaps shut on every tap.
 let _pendingOnChange = null;
-function closeOpenPopup() {
-  if (_openPopup) {
-    _openPopup.style.display = "none";
-    _openPopup = null;
-  }
+function flushPendingOnChange() {
   if (_pendingOnChange) {
     const fn = _pendingOnChange;
     _pendingOnChange = null;
     try { fn(); } catch (e) { console.error(e); }
   }
+}
+function closeOpenPopup() {
+  if (_openPopup) {
+    _openPopup.style.display = "none";
+    _openPopup = null;
+  }
+  flushPendingOnChange();
 }
 // Node 環境 (テスト) には document が無いため defensive check
 if (typeof document !== "undefined") {
@@ -255,6 +258,54 @@ if (typeof document !== "undefined") {
     const wrap = _openPopup.closest(".tagPicker");
     if (wrap && !wrap.contains(e.target)) closeOpenPopup();
   });
+}
+
+// ----------------------------------------------------------------------------
+// 共通タグ選択シート (fullscreen presentation)
+//
+// スマホ・老眼・誤タップ対策として、小さい dropdown popup の代わりに「ほぼ全画面の
+// 大きなシート」でタグを選ばせる presentation。ホーム/設定/患者画面で同一の内部
+// レンダリング (renderPickerContent) を流し込むので、見た目・操作感が揃う。
+//
+// - 中身 (チップ・追加ウィジェット) は popover 版と同一。器だけ差し替える。
+// - 開閉は main.js のグローバルハンドラ任せ (背景タップ / × = data-close-popup)。
+//   ここでは閉じる listener を新規配線せず、class 変化を MutationObserver で観測して
+//   「閉じた時に保留中の onChange を flush する」フックだけを足す。
+// - 複数選択なので選択しても閉じない。背景タップ / × で閉じる。
+// ----------------------------------------------------------------------------
+let _sheetOnClose = null;
+let _sheetObserver = null;
+function ensureSheetObserver(overlay) {
+  if (_sheetObserver || typeof MutationObserver === "undefined") return;
+  _sheetObserver = new MutationObserver(() => {
+    if (!overlay.classList.contains("active") && _sheetOnClose) {
+      const fn = _sheetOnClose;
+      _sheetOnClose = null;
+      try { fn(); } catch (e) { console.error(e); }
+    }
+  });
+  _sheetObserver.observe(overlay, { attributes: true, attributeFilter: ["class"] });
+}
+// 小画面判定: auto presentation のときに fullscreen を選ぶ閾値。
+function isSmallViewport() {
+  return typeof window !== "undefined" && window.innerWidth <= 640;
+}
+// シートを開いて render(body) で中身を流し込む。開けたら true。
+// overlay が無い環境 (テスト等) では false を返し、呼び元は popover にフォールバック。
+function openTagSheet({ title, render, onClose }) {
+  if (typeof document === "undefined") return false;
+  const overlay = document.getElementById("tagSheetOverlay");
+  const body = document.getElementById("tagSheetBody");
+  const titleEl = document.getElementById("tagSheetTitle");
+  if (!overlay || !body) return false;
+  closeOpenPopup(); // 念のため inline popover を閉じる
+  ensureSheetObserver(overlay);
+  if (titleEl) titleEl.textContent = title || t("tag.sheet.title");
+  body.textContent = "";
+  render(body);
+  _sheetOnClose = onClose || null;
+  overlay.classList.add("active");
+  return true;
 }
 
 function escapeHtml(s) {
@@ -362,6 +413,104 @@ export function makeAddTagWidget({ onAdded } = {}) {
   return wrap;
 }
 
+// 共通: タグ/ステータス「選択チップ群 (+ 追加 +、任意でクリア)」を container に直接描く。
+//
+// makeTagPicker (popover / fullscreen シート) と 患者シート (inline) が、同じ見た目・同じ
+// 追加/選択/解除の挙動を共有するための単一ソース。患者画面だけ独自タグ UI を作らない。
+//
+// opts:
+//   getSelected(): string[]              現在の選択
+//   setSelected(next: string[])          選択を保存 (患者なら setPatientTags 等)
+//   entries(): {value,label,color?}[]    候補。color 付き = ステータス仮想タグ (記号 swatch)
+//   withClear?: bool                     上部に「選択をクリア」短文ボタンを出す (フィルタ用)
+//   clearLabel?: string                  クリアボタン文言 (省略時 tag.filter.clear.label)
+//   addWidget?: (onAdded)=>Element       追加ウィジェット差し替え (省略時 makeAddTagWidget)
+//   onSelectionMutated?: () => void      選択が変わった後 (toggle / clear)。
+//                                        popover/シートは defer、患者シートは即時 onChange。
+//   onAfterAdd?: () => void              タグ追加後 (container は再描画済み)。trigger 更新等。
+export function renderTagSelectionInto(container, opts) {
+  const {
+    getSelected, setSelected, entries,
+    withClear = false, clearLabel = null, addWidget = null,
+    onSelectionMutated = null, onAfterAdd = null,
+  } = opts;
+  const buildAdd = (onAddedCb) => (addWidget ? addWidget(onAddedCb) : makeAddTagWidget({ onAdded: onAddedCb }));
+  const rerender = () => renderTagSelectionInto(container, opts);
+
+  container.textContent = "";
+
+  if (withClear) {
+    const modeRow = document.createElement("div");
+    modeRow.className = "tagPickerModeRow";
+    const clr = document.createElement("button");
+    clr.type = "button";
+    clr.className = "tagPickerClearBtn";
+    clr.textContent = clearLabel || t("tag.filter.clear.label");
+    clr.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!getSelected().length) return;
+      setSelected([]);
+      rerender();
+      if (onSelectionMutated) onSelectionMutated();
+    });
+    modeRow.appendChild(clr);
+    container.appendChild(modeRow);
+  }
+
+  const list = (typeof entries === "function" ? entries() : entries) || [];
+  if (!list.length) {
+    // 既存タグが無い場合も空状態文言は出さず、設定画面と同じく「+」だけ並べる
+    container.appendChild(buildAdd(() => { rerender(); if (onAfterAdd) onAfterAdd(); }));
+    return;
+  }
+
+  // チップ・トグル: タップで選択 ON/OFF (選択中=青)。ステータスは色 swatch + 形マーク。
+  const current = new Set(getSelected());
+  const buildSelChip = (e) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    const sel = current.has(e.value);
+    chip.className = "tagSelChip" + (e.color ? " statusChip" : "") + (sel ? " selected" : "");
+    if (e.color) {
+      const sw = document.createElement("span");
+      sw.className = "tagSelChipSwatch";
+      const fg = e.color === "#ffffff" ? "#111" : "#fff";
+      sw.style.cssText = `background:${e.color};border-color:${e.borderColor || "rgba(0,0,0,.25)"};color:${fg};`;
+      sw.textContent = getStatusTagMark(e.value);
+      chip.appendChild(sw);
+    } else {
+      chip.textContent = e.label;
+    }
+    chip.title = e.label;
+    chip.setAttribute("aria-label", e.label);
+    chip.setAttribute("aria-pressed", sel ? "true" : "false");
+    chip.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const nowSel = chip.classList.toggle("selected");
+      chip.setAttribute("aria-pressed", nowSel ? "true" : "false");
+      const next = new Set(getSelected());
+      if (nowSel) next.add(e.value); else next.delete(e.value);
+      setSelected(Array.from(next));
+      if (onSelectionMutated) onSelectionMutated();
+    });
+    return chip;
+  };
+
+  const statusEntries = list.filter(e => e.color);
+  const tagEntries = list.filter(e => !e.color);
+  if (statusEntries.length) {
+    const srow = document.createElement("div");
+    srow.className = "tagPickerChipRow tagPickerStatusRow";
+    for (const e of statusEntries) srow.appendChild(buildSelChip(e));
+    container.appendChild(srow);
+  }
+  const trow = document.createElement("div");
+  trow.className = "tagPickerChipRow";
+  for (const e of tagEntries) trow.appendChild(buildSelChip(e));
+  trow.appendChild(buildAdd(() => { rerender(); if (onAfterAdd) onAfterAdd(); }));
+  container.appendChild(trow);
+}
+
 export function makeTagPicker(opts) {
   const {
     getSelected,
@@ -379,6 +528,11 @@ export function makeTagPicker(opts) {
                                //                  (checkbox はそのままお気に入りトグル)
     launcher = false,          // launcher モード: checkbox 無し。行全体タップで popup を
                                //                  閉じて onItemClick。getSelected/setSelected 不要
+    presentation = "popover",  // "popover" | "fullscreen" | "auto"。
+                               //   popover    = 従来の小さな dropdown (desktop 既定)
+                               //   fullscreen = 共通タグシート (ほぼ全画面)
+                               //   auto       = 小画面なら fullscreen、広ければ popover
+    sheetTitle = null,         // fullscreen シートのタイトル (省略時 tag.sheet.title)
   } = opts;
 
   // 追加ウィジェット (タグ用は makeAddTagWidget、フォーマット用は外から差し替え可能)
@@ -412,38 +566,25 @@ export function makeTagPicker(opts) {
     }
   }
 
-  function refreshPopup() {
-    popup.textContent = "";
-    // フィルタ用ピッカー: かつ/または のモードトグルは撤去 (AND 固定で直感的に)。
-    // 選択クリアのみ短文ボタンで残す。(v8.4)
-    if (withModeToggle) {
-      const modeRow = document.createElement("div");
-      modeRow.className = "tagPickerModeRow";
-      const clr = document.createElement("button");
-      clr.type = "button";
-      clr.className = "tagPickerClearBtn";
-      clr.textContent = t("tag.filter.clear.label");
-      clr.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!getSelected().length) return;
-        setSelected([]);
-        refreshPopup();
-        refreshTrigger();
-        if (onChange) _pendingOnChange = onChange;
-      });
-      modeRow.appendChild(clr);
-      popup.appendChild(modeRow);
-    }
-
-    const list = (typeof entries === "function" ? entries() : entries) || [];
-    if (!list.length) {
-      // 既存タグが無い場合も「タグ未登録」のような空状態文言は出さず、
-      // 設定画面と同じく「+」だけ並べる
-      popup.appendChild(buildAddWidget(() => { refreshPopup(); refreshTrigger(); }));
-      return;
-    }
-    // launcher モード: checkbox 無しの一覧。行全体タップで onItemClick。
+  // fullscreen シートに自分の中身を出している間 true。再描画 (rerender) と
+  // トリガー更新の向き先 (popup or シート body) を切り替えるフラグ。
+  let sheetMode = false;
+  function usesSheet() {
+    if (presentation === "fullscreen") return true;
+    if (presentation === "auto") return isSmallViewport();
+    return false;
+  }
+  // popover の inline popup と fullscreen シート body のどちらに対しても同じ中身を
+  // 描く単一レンダラ。器 (container) だけ差し替える。
+  function renderPickerContent(container) {
+    // launcher モード (= フォーマット呼び出し一覧): 選択でなく onItemClick なので別描画。
     if (launcher) {
+      container.textContent = "";
+      const list = (typeof entries === "function" ? entries() : entries) || [];
+      if (!list.length) {
+        container.appendChild(buildAddWidget(() => { rerender(); refreshTrigger(); }));
+        return;
+      }
       for (const e of list) {
         const row = document.createElement("button");
         row.type = "button";
@@ -457,59 +598,31 @@ export function makeTagPicker(opts) {
           closeOpenPopup();
           if (onItemClick) onItemClick(e);
         });
-        popup.appendChild(row);
+        container.appendChild(row);
       }
-      popup.appendChild(buildAddWidget(() => { refreshPopup(); refreshTrigger(); }));
+      container.appendChild(buildAddWidget(() => { rerender(); refreshTrigger(); }));
       return;
     }
-    // v8.11: チェックボックス縦並び → チップ・トグル。タップで選択 ON/OFF (選択中=青)。
-    // 設定画面のタグ chip と同じ pill 見た目で統一。ステータスは記号チップを横並びに。
-    const current = new Set(getSelected());
-    const buildSelChip = (e) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      const sel = current.has(e.value);
-      chip.className = "tagSelChip" + (e.color ? " statusChip" : "") + (sel ? " selected" : "");
-      if (e.color) {
-        // Status: 色 swatch に形マーク (色＋形の2軸で色覚対応)
-        const sw = document.createElement("span");
-        sw.className = "tagSelChipSwatch";
-        const fg = e.color === "#ffffff" ? "#111" : "#fff";
-        sw.style.cssText = `background:${e.color};border-color:${e.borderColor || "rgba(0,0,0,.25)"};color:${fg};`;
-        sw.textContent = getStatusTagMark(e.value);
-        chip.appendChild(sw);
-      } else {
-        chip.textContent = e.label;
-      }
-      chip.title = e.label;
-      chip.setAttribute("aria-label", e.label);
-      chip.setAttribute("aria-pressed", sel ? "true" : "false");
-      chip.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const nowSel = chip.classList.toggle("selected");
-        chip.setAttribute("aria-pressed", nowSel ? "true" : "false");
-        const next = new Set(getSelected());
-        if (nowSel) next.add(e.value); else next.delete(e.value);
-        setSelected(Array.from(next));
-        refreshTrigger();
-        if (onChange) _pendingOnChange = onChange;
-      });
-      return chip;
-    };
+    // 選択チップ (status / tag) は共通ヘルパへ委譲。患者シート inline と同一ソース。
+    // popover/シートでは「選択変更を閉じるまで defer」する (親再描画で popup が
+    // 閉じるのを防ぐ既存挙動)。追加・クリア後は trigger を更新する。
+    renderTagSelectionInto(container, {
+      getSelected, setSelected, entries,
+      withClear: withModeToggle,
+      addWidget,
+      onSelectionMutated: () => { refreshTrigger(); if (onChange) _pendingOnChange = onChange; },
+      onAfterAdd: () => { refreshTrigger(); },
+    });
+  }
 
-    const statusEntries = list.filter(e => e.color);
-    const tagEntries = list.filter(e => !e.color);
-    if (statusEntries.length) {
-      const srow = document.createElement("div");
-      srow.className = "tagPickerChipRow tagPickerStatusRow";
-      for (const e of statusEntries) srow.appendChild(buildSelChip(e));
-      popup.appendChild(srow);
+  // 現在開いている器を再描画する (タグ追加・クリア後)。
+  function rerender() {
+    if (sheetMode) {
+      const body = typeof document !== "undefined" ? document.getElementById("tagSheetBody") : null;
+      if (body) renderPickerContent(body);
+    } else {
+      renderPickerContent(popup);
     }
-    const trow = document.createElement("div");
-    trow.className = "tagPickerChipRow";
-    for (const e of tagEntries) trow.appendChild(buildSelChip(e));
-    trow.appendChild(buildAddWidget(() => { refreshPopup(); refreshTrigger(); }));
-    popup.appendChild(trow);
   }
 
   // launcher (= フォーマット ☰) は overflow:hidden の card 内に置かれるため、
@@ -536,10 +649,22 @@ export function makeTagPicker(opts) {
 
   trigger.addEventListener("click", (e) => {
     e.stopPropagation();
+    // fullscreen: 共通シートを開く。開けたら終了 (popover は使わない)。
+    if (usesSheet()) {
+      sheetMode = true;
+      const opened = openTagSheet({
+        title: sheetTitle || t("tag.sheet.title"),
+        render: (body) => renderPickerContent(body),
+        // 閉じたら: シートモード解除 + トリガー更新 + 保留中の onChange を flush。
+        onClose: () => { sheetMode = false; refreshTrigger(); flushPendingOnChange(); },
+      });
+      if (opened) return;
+      sheetMode = false; // overlay 不在 (テスト等): popover にフォールバック
+    }
     const showing = popup.style.display !== "none";
     closeOpenPopup();
     if (!showing) {
-      refreshPopup();
+      renderPickerContent(popup);
       popup.style.display = "";
       if (launcher) positionLauncherPopup();
       _openPopup = popup;
@@ -564,18 +689,30 @@ export function makePatientTagPicker(patientIndex, onChange) {
     // 患者ピッカーは選択タグを外側 (inlineTagsRow) に出すので、トリガーは
     // アイコンのみ。チップが二重に出ないようにする。
     iconOnly: true,
+    // スマホでは全画面シートで選ばせる (患者シート内でも入れ子 popup にしない)。
+    presentation: "auto",
+    sheetTitle: t("tag.sheet.title"),
   });
 }
 
-// Shared filter picker: user tags + status virtual tags + AND/OR toggle (when not grouped)
+// Shared filter picker: ユーザータグのみ (ステータス仮想タグは混ぜない)。
+//
+// ステータスは「患者の現在状態」でユーザー作成タグとは概念が異なり、ホームでは患者カード
+// の色＋形マークで既に視認できる。タグ一覧に混ぜると選択画面が重くなり、「タグ選択を
+// クリア」でステータス絞り込みまで消えるのも意味が分かりにくい。よって通常のタグピッカー
+// からは外す。ステータスでの絞り込みが要る場合は将来、専用の小さなフィルター UI
+// (getAllFilterEntries / patientMatchesSharedFilter は status 込みのまま温存) を別途設ける。
 export function makeSharedTagFilterPicker(onChange) {
   return makeTagPicker({
     getSelected: getSharedTagFilter,
     setSelected: setSharedTagFilter,
-    entries: getAllFilterEntries,
+    entries: () => getAllTags().map(name => ({ value: name, label: name })),
     onChange,
     withModeToggle: true,
     grouped: true,
     forPatient: false,
+    // ホーム/メモ/共有のフィルタもスマホでは全画面シートで統一。
+    presentation: "auto",
+    sheetTitle: t("tag.sheet.filterTitle"),
   });
 }

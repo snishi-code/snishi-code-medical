@@ -14,10 +14,11 @@ import {
 // ========================================================================
 // QR Wire Format Authority (最終仕様)
 //
-// このファイルはすべての QR 種 (HM/MM/SH/ST/FMT) が従う共通仕様を定義する。
-// 各 kind ファイル (qr-home.js / qr-shared.js / qr-settings.js / qr-format.js)
-// は本ファイルが export するヘルパーを **必ず経由** すること。独自の wire
-// format を定義しないこと。
+// このファイルはすべての QR 種 (HM/MM/SH/ST/FMT/FS) が従う共通仕様を定義する。
+//   FS = フォーマットセット (formatGroup 1 つ + 参照フォーマット一式)。
+// 各 kind ファイル (qr-home.js / qr-shared.js / qr-settings.js / qr-format.js /
+// qr-set.js) は本ファイルが export するヘルパーを **必ず経由** すること。独自の
+// wire format を定義しないこと。
 //
 // ── 設計 2 原則 ──
 //
@@ -36,12 +37,15 @@ import {
 //   トップレベル:
 //     v   = version (WIRE_V)
 //     td  = tag dictionary (string[]、1-based で参照される)
+//           ※ ST v5 は「設定全体」なので空でも常に載せる (受信側のタグを一致させる)
 //     p   = patients array (HM/MM/SH)
-//     f   = formats array (ST) / format object (FMT)
+//     f   = formats array (ST/FS) / format object (FMT)
+//     fg  = formatGroups array (ST v5) … 各要素は下記「フォーマットセット」
+//     g   = formatGroup object (FS) … 単一セット
 //     ct  = clearTargets (ST)
-//     tge = tagGroupingEnabled (ST)
-//     tgs = tagGroups array (ST)
-//     tga = tagGroupAssign as [[tag_idx, group_idx], ...] (ST)
+//     tge = tagGroupingEnabled (ST) ※撤去
+//     tgs = tagGroups array (ST)    ※撤去
+//     tga = tagGroupAssign          ※撤去
 //
 //   患者 (p[i]):
 //     r = room
@@ -66,10 +70,18 @@ import {
 //     u  = unit         (空は省略)
 //     nm = normal       (空は省略)
 //
-//   タググループ (tgs[i]):
-//     n = name
-//     m = mode index (MODE_BY_INDEX への 0-based 参照)
-//     注: id は wire に含めない (受信側で新発番)
+//   フォーマットセット = formatGroup (ST の fg[i] / FS の g):
+//     n  = name
+//     d  = isDefault (ST のみ。1 の時だけ出力、省略時 false。
+//          FS は単体共有で受信側は常に非デフォルト追加するため d を載せない)
+//     fi = formatIds       (同 payload の f 配列への 1-based index 配列)
+//     df = defaultFormatIds (同・fi の部分集合。規定文)
+//     xf = expandFormatIds  (同・fi の部分集合。展開=A)
+//     注: id は wire に含めない (受信側で新発番)。原則① に従い ID 直書きせず
+//         f 配列への index 参照にする (フォーマット順が変わっても壊れない)。
+//
+//   タググループ (tgs[i]) ※撤去済:
+//     n = name / m = mode index (MODE_BY_INDEX)
 //
 // ── 互換性ルール (WIRE_V bump 判定) ──
 //
@@ -82,11 +94,14 @@ import {
 //     - 新規フィールドの追加 (normalize 側が未知フィールドを温存する仕組み
 //       のおかげで forward compat)
 //
-// ── 圧縮 prefix の互換性 ──
+// ── transport prefix の互換性 (圧縮/暗号化は crypto-payload.js の pack/unpack) ──
 //
-//   "E1:" = AES-GCM のみ (deflate なし、v7.1.x)
+//   (prefix なし) = plain (圧縮も暗号もなし。患者カルテ貼付 QR・後方互換)
+//   "C1:" = deflate-raw(plain) のみ (非暗号、v8.11+。暗号 OFF の ST/FS/FMT で使用)
+//   "E1:" = AES-GCM のみ (deflate なし、v7.1.x。受信のみ)
 //   "E2:" = AES-GCM(deflate-raw(plain)) (v7.2.0+)
-//   送信側は最新のみ生成、受信側は過去全 prefix を読めること。
+//   送信側は最新のみ生成、受信側は過去全 prefix + plain を読めること。
+//   ※ transport 層 (pack/unpack) は chunk (encodePages/decodePage) の前段。
 //
 // ── 将来の開発者へ ──
 //
@@ -237,6 +252,67 @@ function itemFromWire(w) {
   if (typeof w?.u === "string") o.unit = w.u;
   if (typeof w?.nm === "string") o.normal = w.nm;
   return o;
+}
+
+// ============================
+// FormatGroup (セット) ↔ wire (原則 ①: ID 直書きせず f 配列への index 参照)
+// ============================
+//   formatGroupToWire(group, idToIndex):
+//     idToIndex … format ID → 同 payload の f 配列での 1-based index を返す関数。
+//                 解決できない (= payload に含めない format を参照している) ID は除外。
+//   formatGroupFromWire(wire, formatsArr):
+//     formatsArr … この payload で復元済みの formats 配列 (新 ID 採番済み)。
+//                  wire の 1-based index を formatsArr[i-1].id に解決。範囲外は除外。
+
+export function formatGroupToWire(group, idToIndex) {
+  const g = group || {};
+  const resolve = (ids) => (Array.isArray(ids) ? ids : [])
+    .map(id => idToIndex(id))
+    .filter(i => typeof i === "number" && i >= 1);
+  const o = { n: String(g.name || "") };
+  if (g.isDefault) o.d = 1;
+  const fi = resolve(g.formatIds);
+  if (fi.length) o.fi = fi;
+  const df = resolve(g.defaultFormatIds);
+  if (df.length) o.df = df;
+  const xf = resolve(g.expandFormatIds);
+  if (xf.length) o.xf = xf;
+  return o;
+}
+
+export function formatGroupFromWire(wire, formatsArr) {
+  const w = wire || {};
+  const arr = Array.isArray(formatsArr) ? formatsArr : [];
+  const resolve = (idxs) => (Array.isArray(idxs) ? idxs : [])
+    .map(i => arr[i - 1]?.id)
+    .filter(Boolean);
+  const formatIds = resolve(w.fi);
+  const inFormat = new Set(formatIds);
+  // df/xf は formatIds の部分集合に正規化 (store.normalizeSettings と同じ不変条件)
+  const defaultFormatIds = resolve(w.df).filter(id => inFormat.has(id));
+  const expandFormatIds = resolve(w.xf).filter(id => inFormat.has(id));
+  return {
+    name: String(w.n || ""),
+    isDefault: !!w.d,
+    formatIds,
+    defaultFormatIds,
+    expandFormatIds,
+  };
+}
+
+// 同名衝突回避: base が existing(配列/Set) に既にあれば "base (2)", "(3)"... を返す。
+// FMT / FS / ST 受信の rename で共用。
+export function uniqueName(base, existing) {
+  const baseName = String(base || "").trim();
+  const has = existing instanceof Set
+    ? (n) => existing.has(n)
+    : (n) => Array.isArray(existing) && existing.includes(n);
+  if (!has(baseName)) return baseName;
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${baseName} (${n})`;
+    if (!has(candidate)) return candidate;
+  }
+  return `${baseName} (${Date.now().toString(36)})`;
 }
 
 // ============================
@@ -406,4 +482,27 @@ export function decodePage(text) {
     totalPages: parseInt(m[4], 10),
     content: m[5],
   };
+}
+
+// decodePage 結果の配列 → 連結した transport payload 文字列。
+// pageNum 昇順に content を "" 連結する (encodePages は境界 \n を content 側に
+// 保持しているので "" 連結で元に戻る)。全ページ揃っていない / totalPages 不一致は
+// null を返す (fail-closed: 欠けたまま復号させない)。順不同・重複入力も許容。
+export function assemblePages(decodedPages) {
+  if (!Array.isArray(decodedPages) || decodedPages.length === 0) return null;
+  const byNum = new Map();
+  let total = null;
+  for (const d of decodedPages) {
+    if (!d || typeof d.pageNum !== "number") return null;
+    if (total == null) total = d.totalPages;
+    else if (total !== d.totalPages) return null; // バッチ混在
+    byNum.set(d.pageNum, d.content);
+  }
+  if (total == null || byNum.size !== total) return null;
+  const out = [];
+  for (let i = 1; i <= total; i++) {
+    if (!byNum.has(i)) return null;
+    out.push(byNum.get(i));
+  }
+  return out.join("");
 }

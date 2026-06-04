@@ -22,7 +22,7 @@
 
 import { DEFAULT_LABEL_SEP_TEXT, DEFAULT_LABEL_SEP_OTHER } from "../constants.js";
 import { createQrFlow } from "./qr-flow.js";
-import { formatToWire, formatFromWire } from "./qr-protocol.js";
+import { formatToWire, formatFromWire, uniqueName } from "./qr-protocol.js";
 import { t } from "../i18n.js";
 
 const WIRE_V = 2;
@@ -47,17 +47,15 @@ function newFmtId() {
   return "fmt_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
-function encodePayload() {
-  if (!_formatToShare) return "";
-  // 単独フォーマットなので tag dict 化はしない (tagDict=null で文字列のまま)
-  const obj = {
-    v: WIRE_V,
-    f: formatToWire(_formatToShare, null),
-  };
-  return JSON.stringify(obj);
+// format → v2 payload 文字列 (テスト容易化のため export)。
+// 単独フォーマットなので tag dict 化はしない (tagDict=null で文字列のまま)。
+export function encodeFormatPayload(format) {
+  if (!format) return "";
+  return JSON.stringify({ v: WIRE_V, f: formatToWire(format, null) });
 }
 
-function decodePayload(payload) {
+// v2 payload 文字列 → format オブジェクト (純粋・export)。
+export function decodeFormatPayload(payload) {
   const obj = JSON.parse(String(payload || ""));
   if (!obj || typeof obj !== "object") throw new Error(t("qrFormat.invalid"));
   if (obj.v !== WIRE_V) throw new Error(t("qrFormat.versionMismatch", { a: obj.v, b: WIRE_V }));
@@ -69,22 +67,16 @@ function decodePayload(payload) {
 
 // 受信したフォーマットを適用 (常に新規追加。ID 新発番、同名は (2)/(3)... に rename、
 // 未登録タグは無視)。
-function applyReceivedFormat(safe, ctrl) {
+async function applyReceivedFormat(safe, ctrl) {
   if (!safe) {
     alert(t("qrFormat.parse.failed"));
     return;
   }
   const all = _adapter.getExistingFormats() || [];
 
-  // 同名 → 自動 rename
+  // 同名 → 自動 rename (共通 util)
   const baseName = String(safe.name || t("qrFormat.untitled")).trim();
-  let finalName = baseName;
-  if (all.some(f => f.name === finalName)) {
-    for (let n = 2; n < 1000; n++) {
-      const candidate = `${baseName} (${n})`;
-      if (!all.some(f => f.name === candidate)) { finalName = candidate; break; }
-    }
-  }
+  const finalName = uniqueName(baseName, all.map(f => f.name));
 
   // 未登録タグを除外
   const knownTags = new Set(_adapter.getKnownTags() || []);
@@ -121,8 +113,17 @@ function applyReceivedFormat(safe, ctrl) {
     items,
   };
 
-  // 保存は adapter に委譲。store の実態を qr-format.js は知らない
-  _adapter.addFormat(newFmt);
+  // 保存は adapter に委譲。store の実態を qr-format.js は知らない。
+  // fail-closed: adapter.addFormat は保存を await し、失敗時は throw + ロールバック
+  // する契約 (main.js)。保存が確認できてから閉じる/成功表示。
+  try {
+    await _adapter.addFormat(newFmt);
+  } catch (e) {
+    console.error("qr format import: save failed:", e);
+    alert(t("qr.recv.save.failed"));
+    return;
+  }
+  // 受信元 (統一ルーター) の overlay を閉じる
   ctrl.close();
   if (_onAppliedHandler) _onAppliedHandler(newFmt);
   alert(t("qrFormat.imported.alert", { name: finalName }));
@@ -144,9 +145,12 @@ const flow = createQrFlow({
     showBtnId: "qrFormatShowBtn",
     scanBtnId: "qrFormatScanBtn",
   },
-  encodePayload,
-  decodePayload,
+  encodePayload: () => encodeFormatPayload(_formatToShare),
+  decodePayload: decodeFormatPayload,
   onApply: applyReceivedFormat,
+  // 受信は統一ルーターへ。送信オーバーレイは表示専用。暗号 OFF でも圧縮。
+  inlineReceive: false,
+  compress: true,
   shouldEncrypt: () => !!(_adapter.shouldEncrypt && _adapter.shouldEncrypt()),
 });
 
@@ -162,6 +166,9 @@ export function openQrFormatOverlay(format) {
   // QR card 自体を「show」状態にして強制的に描画する
   flow.open();
 }
+
+// 受信は統一ルーター (qr-receive.js) に集約したため、旧 openQrFormatReceiveOverlay
+// は撤去。フォーマット QR の受信は設定の「QR から追加」から行う。
 
 export function closeQrFormatOverlay() {
   const overlay = document.getElementById("qrFormatOverlay");

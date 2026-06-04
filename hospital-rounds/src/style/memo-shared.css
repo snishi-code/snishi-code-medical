@@ -17,6 +17,15 @@
       margin-top: 4px;
     }
 
+    /* ホームの患者グリッドは nested scroll をやめ body/window scroll に寄せる。
+       .detailTop は position: sticky なので 診察開始 等は上部に残ったまま、
+       グリッドだけがフル viewport でスクロールする → 老眼・現場でも一度の自然な
+       スワイプで最下部の患者まで到達できる (内側に小さなスクロール枠を作らない)。 */
+    #homeView .viewScroll {
+      max-height: none;
+      overflow: visible;
+    }
+
     /* Memo list */
     .memoScroll {
       max-height: calc(100vh - 148px);

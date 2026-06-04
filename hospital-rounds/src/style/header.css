@@ -99,15 +99,8 @@
       color: var(--text);
     }
 
-    /* 現在ビューに対応するヘッダーボタンを淡い青でハイライト。
-       iconBtn.editActive と同じトーンに揃える。 */
-    html[data-view="memo"]     #headerMemoBtn,
-    html[data-view="shared"]   #headerSharedBtn,
-    html[data-view="settings"] #headerSettingsBtn {
-      background: var(--blue-light);
-      border-color: var(--blue-border);
-      color: var(--blue);
-    }
+    /* メモ/共有/設定 はヘッダーの ≡ メニューに集約したため、ビュー対応の
+       ヘッダーボタンのハイライト (旧 #headerMemoBtn 等) は撤去した。 */
 
     /* ── QR スキャナ・オーバーレイ ── */
     .qrScanOverlay {

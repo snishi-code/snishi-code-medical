@@ -340,3 +340,77 @@
       border-color: rgba(37, 99, 235, 0.6);
       background: var(--blue-light);
     }
+
+    /* ============================
+       共通タグ選択シート (fullscreen presentation)
+       ============================
+       スマホ・老眼・誤タップ対策の「ほぼ全画面」タグ選択。患者シート等の上にも重ねる
+       ため、通常 popup (z-index 10000) より前面に出す。中身は popover 版と同じ
+       .tagPickerChipRow / .tagSelChip を流用しつつ、シート内ではタップ領域を大きくする。 */
+    .tagSheetOverlay {
+      z-index: 10001;
+    }
+    .popupMenu.tagSheetMenu {
+      width: min(94vw, 460px);
+      max-width: 460px;
+      max-height: 85vh;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      padding-top: 18px;
+    }
+    .popupMenu.tagSheetMenu .popupTitle {
+      margin-bottom: 10px;
+      /* × (44px) と重ならないよう左右に余白 */
+      padding-left: 40px;
+      padding-right: 40px;
+    }
+    .tagSheetBody {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      /* popupMenu の幅いっぱいでチップを折り返す */
+      min-height: 0;
+    }
+    /* popups.css の `.popupMenu button { width:100%; margin-bottom:8px }` を打ち消す。
+       シート内のチップは pill として横並び折り返しにする (full-width 化させない)。
+       クリアボタン (.tagPickerClearBtn) は従来どおり横幅いっぱいで残す。 */
+    .tagSheetBody .tagSelChip,
+    .tagSheetBody .tagSettingAdd,
+    .tagSheetBody .tagPickerLauncherOpt {
+      width: auto;
+      margin-bottom: 0;
+    }
+    /* シート内はチップを大きめにして老眼・誤タップに強くする (44px 目安)。 */
+    .tagSheetBody .tagPickerChipRow {
+      gap: 10px;
+      padding: 6px 2px;
+    }
+    .tagSheetBody .tagSelChip {
+      padding: 10px 16px;
+      min-height: 44px;
+      font-size: 15px;
+    }
+    .tagSheetBody .tagSelChip.statusChip {
+      padding: 7px;
+      min-height: 44px;
+      min-width: 44px;
+      justify-content: center;
+    }
+    .tagSheetBody .tagSelChipSwatch {
+      width: 28px;
+      height: 28px;
+      font-size: 14px;
+    }
+    .tagSheetBody .tagSettingAdd {
+      width: 44px;
+      height: 44px;
+    }
+    .tagSheetBody .tagPickerStatusRow {
+      padding-bottom: 12px;
+      margin-bottom: 6px;
+    }
+    /* launcher 行 (= format) は通常シートでは使わないが、保険で広めに。 */
+    .tagSheetBody .tagPickerOpt {
+      font-size: 15px;
+      padding: 10px 8px;
+    }

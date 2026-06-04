@@ -272,6 +272,64 @@
       image-rendering: pixelated;
     }
 
+    /* QR テキスト受信パネル (カメラ非対応 / リーダー / 貼り付け用)。
+       createQrFlow が .qrWrap カード末尾に注入する。全 view + フォーマット
+       overlay で共通。 */
+    .qrTextRecv {
+      border-top: 1px solid var(--line);
+      padding: 10px;
+    }
+    .qrTextRecvToggle {
+      width: 100%;
+    }
+    .qrTextRecvToggle.open {
+      margin-bottom: 10px;
+    }
+    .qrTextRecvBody[hidden] {
+      display: none;
+    }
+    .qrTextRecvHint {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+    .qrTextRecvArea {
+      width: 100%;
+      box-sizing: border-box;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+    }
+    .qrTextRecvActions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .qrTextRecvStatus {
+      flex: 1;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    .qrTextRecvRead {
+      flex: none;
+    }
+
+    /* 統一 QR 受信オーバーレイ (#qrReceiveOverlay) の本文 */
+    .qrReceiveBody {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .qrReceiveScanBtn {
+      width: 100%;
+    }
+    .qrReceiveBody .qrTextRecvActions {
+      margin-top: 0;
+    }
+
     .mono {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     }

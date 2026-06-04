@@ -75,6 +75,10 @@
       color: var(--text);
       cursor: pointer;
       user-select: none;
+      /* 指がボタン上で始まっても縦スクロールが始まるようにする。bindTapOrLongPress
+         は pointerdown で preventDefault しないので、ここで pan-y を許可しておけば
+         グリッドを覆う患者ボタン上から一度のスワイプで最下部まで到達できる。 */
+      touch-action: pan-y;
       /* 単語境界がない長い英数字 (AAAA…) でもボックスからはみ出さないよう
          任意位置で折り返す。CJK は自然に折り返すのでこの設定の影響を受けない。 */
       overflow-wrap: anywhere;
@@ -86,53 +90,49 @@
       transform: translateY(1px)
     }
 
-    /* 詳細画面ヘッダーの患者ボタン: グリッドの患者ボタンと同じ見た目だが
-       コンパクトサイズ。タップでステータス変更（黄→緑→灰→白）、
-       長押しで未設定（白）にリセット。 */
-    #detailNameBtn.patientBtn {
+    /* 詳細画面ヘッダーの患者メタボタン: グリッドの患者ボタンと同じ色/形マークだが
+       コンパクト。中身は [形マーク] 部屋+氏名 [タグ概要] を1行に収める。タップで
+       患者シートを開く。
+       優先順位: 最重要は患者名 (部屋+氏名)。幅が足りないときは「タグ」側を先に
+       削る (はみ出したタグはクリップ)。名前は削らず、名前だけで溢れる極端な時に
+       限り末尾を … 省略する。 */
+    .detailPatientMetaBtn {
       width: auto;
-      min-width: 60px;
-      max-width: 240px;
+      min-width: 0;
+      max-width: 100%;
       min-height: 40px;
-      padding: 6px 14px;
+      padding: 6px 14px 6px 22px;   /* 左に形マークの余白 */
       font-size: 15px;
-      flex-shrink: 0;
+      flex: 1;
+      justify-content: flex-start;
+      gap: 8px;
+      text-align: left;
+      overflow: hidden;
       touch-action: manipulation;
     }
-
-    /* 詳細画面ヘッダー行: 左から
-       [患者ボタン] [編集モードでは入力欄] [鉛筆] [タグアイコン] [インラインタグ...]
-       インラインタグだけが残りスペースで伸縮し、はみ出した分は ... で表示。 */
-    .detailHeaderRow {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: nowrap;
-      flex: 1;
+    .detailMetaLabel {
+      /* 名前は縮めない (flex-shrink:0)。名前だけで溢れる時のみ max-width で … 省略。 */
+      flex: 0 0 auto;
       min-width: 0;
+      max-width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .detailEditInputs {
+    .detailMetaTags {
+      /* タグは残り幅だけを取り、足りなければ先にクリップされる (名前を守る)。 */
       display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-shrink: 0;
-    }
-    .inlineTagsRow {
-      display: flex;
+      flex: 1 1 auto;
       gap: 4px;
       align-items: center;
-      flex: 1;
       min-width: 0;
-      overflow-x: auto;
-      overflow-y: hidden;
+      overflow: hidden;
       white-space: nowrap;
-      scrollbar-width: none;
     }
-    .inlineTagsRow::-webkit-scrollbar { display: none; }
-    .inlineTagChip {
+    .detailMetaTagChip {
       display: inline-flex;
       align-items: center;
-      padding: 3px 8px;
+      padding: 2px 8px;
       border-radius: 999px;
       background: #e0f2fe;
       border: 1px solid #bae6fd;
@@ -141,11 +141,18 @@
       font-weight: 700;
       line-height: 1;
       flex-shrink: 0;
-      user-select: none;
-      cursor: pointer;
-      touch-action: manipulation;
     }
-    .inlineTagChip:active { opacity: 0.7; }
+
+    /* 詳細画面ヘッダー行: [患者メタボタン] [転棟済バナー] を横並び。
+       メタボタンが残り幅を占め、内部でラベル+タグ概要を収める。 */
+    .detailHeaderRow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: nowrap;
+      flex: 1;
+      min-width: 0;
+    }
 
     .patientBtn.status-yellow {
       background: var(--status-yellow-bg);

@@ -126,10 +126,12 @@
       width: auto;
       box-sizing: border-box;
     }
-    #statusPickerList {
+    #statusPickerList,
+    .patientSheetStatusList {
       display: flex;
       flex-direction: row;
       align-items: stretch;
+      flex-wrap: wrap;
       gap: 8px;
       padding: 4px 0;
     }
@@ -149,6 +151,158 @@
     .statusPickerBox.selected {
       outline: 3px solid var(--focus, #2563eb);
       outline-offset: 2px;
+    }
+
+    /* ── メインメニュー (ヘッダー ≡)。メモ/共有/設定/説明 を縦並びの行ボタンで。 ── */
+    .popupMenu.mainMenu {
+      width: min(92vw, 360px);
+      max-width: 360px;
+      box-sizing: border-box;
+    }
+    .mainMenuList {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .mainMenuItem {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 48px;
+      padding: 12px 16px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+    }
+    .mainMenuItem .mainMenuIcon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: var(--muted);   /* アイコンは控えめ。hover で行ごと青に乗る */
+    }
+    .mainMenuItem:hover,
+    .mainMenuItem:focus-visible {
+      background: var(--blue-light);
+      border-color: var(--blue-border);
+      color: var(--blue);
+    }
+    .mainMenuItem:hover .mainMenuIcon,
+    .mainMenuItem:focus-visible .mainMenuIcon {
+      color: var(--blue);
+    }
+
+    /* ── 患者シート (詳細の患者メタボタン)。ステータス/部屋/氏名/タグ を常時表示。 ── */
+    .popupMenu.patientMetaMenu {
+      width: min(92vw, 420px);
+      max-width: 420px;
+      max-height: 88vh;        /* タグ選択を内包して縦に伸びるのでシート内スクロール */
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      box-sizing: border-box;
+    }
+    .patientSheetField {
+      margin: 12px 0;
+    }
+    .patientSheetField > .label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    /* ── 上部: 部屋番号 + 氏名 (コンパクトな患者情報)。頻繁に編集しないので主張を弱め、
+       横並び (狭幅は縦に折り返し)。右上の × (44px) と重ならないよう右に余白。 ── */
+    .patientSheetInfoRow {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      padding-right: 40px;
+      margin-bottom: 4px;
+    }
+    .patientSheetInfoCell {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+    .patientSheetRoomCell { flex: 0 0 96px; }
+    .patientSheetNameCell { flex: 1 1 160px; }
+    .patientSheetInfoLabel {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .patientSheetNameInput,
+    .patientSheetRoomInput {
+      width: 100%;
+      min-height: 40px;
+      box-sizing: border-box;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 16px;     /* iOS で 16px 未満だと focus 時にズームするのを防ぐ */
+      font-family: inherit;
+      color: inherit;
+      outline: none;
+    }
+    .patientSheetNameInput:focus,
+    .patientSheetRoomInput:focus {
+      border-color: var(--blue-border);
+    }
+
+    /* ── 中央: タグ欄。共通タグ選択 UI (renderTagSelectionInto) の中身を直接描画。
+       別 overlay を開かず 1 枚で完結。区切り線で上部の患者情報と分ける。 ── */
+    .patientSheetTagsField {
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+    /* popups.css の `.popupMenu button{width:100%; margin-bottom:8px}` を打ち消し、
+       チップを横並び折り返しの pill にする (full-width 化させない)。タップ領域は 44px。 */
+    .patientSheetTags .tagSelChip,
+    .patientSheetTags .tagSettingAdd {
+      width: auto;
+      margin-bottom: 0;
+    }
+    .patientSheetTags .tagPickerChipRow {
+      gap: 10px;
+      padding: 4px 0;
+    }
+    .patientSheetTags .tagSelChip {
+      padding: 10px 16px;
+      min-height: 44px;
+      font-size: 15px;
+    }
+    .patientSheetTags .tagSettingAdd {
+      width: 44px;
+      height: 44px;
+    }
+
+    /* ── 下部: ステータス選択バー。毎日何度も触るので親指の届く下部に固定 (sticky)。
+       タグが増えて縦スクロールしても常にシート下端に留まる。負マージンで popupMenu の
+       padding(16px) をはみ出して全幅にし、上に区切り線を引く。 ── */
+    .patientSheetStatusBar {
+      position: sticky;
+      bottom: 0;
+      background: #fff;
+      margin: 12px -16px -16px;
+      padding: 10px 16px 16px;
+      border-top: 1px solid var(--line);
+      z-index: 1;
+    }
+    .patientSheetStatusBar > .label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 8px;
     }
 
     /* WS picker (ヘッダー WS 名タップで開く軽量 popup。切替 + 新規のみ) */

@@ -412,9 +412,12 @@ function buildFractionRow(host, item, opts = {}) {
   const fracGroup = document.createElement("div");
   fracGroup.className = "formatInputFracGroup";
 
+  // fraction の左右は英数字・記号を許容する (例: "CTRX 1g/1")。よって text inputMode。
+  // 血圧 "120/53" のような数値用途も text キーボードで引き続き入力できる (壊さない)。
   const numer = document.createElement("input");
+  numer.type = "text";
   numer.className = "formatInputValue formatInputFracNumer";
-  setupNumericInput(numer, "decimal");
+  setupTextInput(numer);
   fracGroup.appendChild(numer);
 
   const slash = document.createElement("span");
@@ -423,8 +426,9 @@ function buildFractionRow(host, item, opts = {}) {
   fracGroup.appendChild(slash);
 
   const denom = document.createElement("input");
+  denom.type = "text";
   denom.className = "formatInputValue formatInputFracDenom";
-  setupNumericInput(denom, "decimal");
+  setupTextInput(denom);
   fracGroup.appendChild(denom);
 
   // 初期値 "a/b" を numer / denom に分解 (最初の "/" で分割)
@@ -740,7 +744,7 @@ function openFormatEditModal(target, panel, onSaved) {
       panel: panel || "O",
       joiner: "\n",
       labelSep: DEFAULT_LABEL_SEP_OTHER,
-      titleWrap: "（）", // 既定でタイトルを付ける (UI 非表示。データ構造は per-format で温存)
+      titleWrap: "", // 新規は既定でタイトル OFF (出力をすっきり; 必要なら編集でトグル ON)
       tags: [],
       items: [],
     },
@@ -772,6 +776,9 @@ function renderTagsHost() {
     iconOnly: true,
     grouped: true,
     forPatient: true,
+    // 設定 (フォーマット編集) のタグ選択も、ホーム/患者画面と同じ全画面シートで統一。
+    presentation: "auto",
+    sheetTitle: t("format.tags.title"),
   });
   // tagPicker 自体に title/aria を載せる
   const trigger = picker.querySelector(".tagPickerTrigger");
@@ -784,16 +791,25 @@ function renderTagsHost() {
 
 function renderFormatEditForm() {
   const nameInp = document.getElementById("formatEditName");
-  const joinerInp = document.getElementById("formatEditJoiner");
+  // 区切り (joiner): select は "newline"/"comma" の意味値。実値 "\n"/", " との変換はここで吸収。
+  const joinerSel = document.getElementById("formatEditJoiner");
   const labelSepInp = document.getElementById("formatEditLabelSep");
-  const titleWrapInp = document.getElementById("formatEditTitleWrap");
+  // タイトル表示 (titleWrap): checkbox。非空=ON。括弧種類自体はデータ層で温存。
+  const titleToggle = document.getElementById("formatEditTitleToggle");
   const itemsHost = document.getElementById("formatEditItems");
   if (!_currentEdit || !nameInp) return;
   const target = _currentEdit.target;
   nameInp.value = target.name;
-  if (joinerInp) joinerInp.value = target.joiner;
+  // 区切りの 2 択 (改行/コンマ) は既存の独自 joiner (例 " / "・"、") を壊さないため、
+  // ユーザーが select を明示変更した時だけ保存で上書きする (joinerDirty フラグ)。
+  // 表示は "\n"→改行、それ以外→コンマに寄せる (将来「その他」入力欄を足す余地を残す)。
+  _currentEdit.joinerDirty = false;
+  if (joinerSel) {
+    joinerSel.value = target.joiner === "\n" ? "newline" : "comma";
+    joinerSel.onchange = () => { if (_currentEdit) _currentEdit.joinerDirty = true; };
+  }
   if (labelSepInp) labelSepInp.value = typeof target.labelSep === "string" ? target.labelSep : "";
-  if (titleWrapInp) titleWrapInp.value = typeof target.titleWrap === "string" ? target.titleWrap : "";
+  if (titleToggle) titleToggle.checked = typeof target.titleWrap === "string" && target.titleWrap !== "";
   renderTagsHost();
   if (itemsHost) renderFormatEditItems(itemsHost);
 }
@@ -875,9 +891,9 @@ function renderFormatEditItems(host) {
 function saveFormatEdit() {
   if (!_currentEdit) { closeFormatEditModal(); return; }
   const nameInp = document.getElementById("formatEditName");
-  const joinerInp = document.getElementById("formatEditJoiner");
+  const joinerSel = document.getElementById("formatEditJoiner");
   const labelSepInp = document.getElementById("formatEditLabelSep");
-  const titleWrapInp = document.getElementById("formatEditTitleWrap");
+  const titleToggle = document.getElementById("formatEditTitleToggle");
 
   const target = _currentEdit.target;
   const name = String(nameInp?.value || "").trim();
@@ -895,10 +911,12 @@ function saveFormatEdit() {
 
   target.name = name;
   // panel はモーダル外で固定。
-  // 区切り / ラベル区切り / タイトル囲み は UI 非表示 (入力欄なし) なので、欄がある時
-  // だけ反映し、無い時は既存値 (defaults プリセット) を温存する。上書きでプリセットを
-  // 潰さないこと。
-  if (joinerInp) target.joiner = String(joinerInp.value);
+  // 区切り (joiner) と タイトル表示 (titleWrap) は UI 露出。ラベル区切り (labelSep) は
+  // 非表示 (欄なし) なので、欄がある時だけ反映し、無い時は既存値 (defaults プリセット)
+  // を温存する (上書きでプリセットを潰さない)。
+  // joiner は「ユーザーが select を触った時」だけ 2 択値で上書きする。触っていなければ
+  // 既存の独自 joiner (defaults プリセットや QR 取込由来の " / " 等) を温存する。
+  if (joinerSel && _currentEdit.joinerDirty) target.joiner = joinerSel.value === "newline" ? "\n" : ", ";
   else if (typeof target.joiner !== "string") target.joiner = ", ";
   if (labelSepInp) {
     target.labelSep = String(labelSepInp.value ?? "");
@@ -906,8 +924,16 @@ function saveFormatEdit() {
     const allText = target.items.every(it => it && it.kind === "text");
     target.labelSep = allText ? DEFAULT_LABEL_SEP_TEXT : DEFAULT_LABEL_SEP_OTHER;
   }
-  if (titleWrapInp) target.titleWrap = String(titleWrapInp.value);
-  else if (typeof target.titleWrap !== "string") target.titleWrap = "（）";
+  // ON の時、既存の括弧ペア (例 "[]") があれば温存し、無ければ既定の "（）"。OFF は空。
+  if (titleToggle) {
+    if (titleToggle.checked) {
+      if (typeof target.titleWrap !== "string" || target.titleWrap === "") target.titleWrap = "（）";
+    } else {
+      target.titleWrap = "";
+    }
+  } else if (typeof target.titleWrap !== "string") {
+    target.titleWrap = "";
+  }
   // tags: 削除済みタグを掃除 (UI で picker を介して付けたが、その後にタグ自体が消された場合に備えて)
   const knownTags = new Set(getAllTags());
   target.tags = (target.tags || []).filter(t => knownTags.has(t));
