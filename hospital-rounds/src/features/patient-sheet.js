@@ -11,13 +11,13 @@
 // にはせず、シートは開いたままにする (× / 背景で閉じる)。
 
 import { appState, markUpdated, scheduleSave } from "../store.js";
-import { getStatusOptions, makePatientTagPicker } from "./tags.js";
+import { getStatusOptions, renderTagSelectionInto, getPatientTags, setPatientTags, getAllTags } from "./tags.js";
 import { makeRoomInput } from "./room.js";
 import { t } from "../i18n.js";
 
-function field(labelKey, contentEl) {
+function field(labelKey, contentEl, extraClass) {
   const wrap = document.createElement("div");
-  wrap.className = "patientSheetField";
+  wrap.className = "patientSheetField" + (extraClass ? " " + extraClass : "");
   const label = document.createElement("div");
   label.className = "label";
   label.textContent = t(labelKey);
@@ -91,9 +91,20 @@ export function openPatientSheet(patientIdx, onChange) {
   });
   body.appendChild(field("patientSheet.name", nameInp));
 
-  // タグ: ホーム/メモ/共有 と同じ共通メタ構造 (makePatientTagPicker)。タグ
-  // アイコンをタップで標準のタグ選択 popup を開く。独自構造を作らず統一する。
-  body.appendChild(field("patientSheet.tags", makePatientTagPicker(patientIdx, onChange)));
+  // タグ: 別 overlay (tagSheetOverlay) を開かず、共通のタグ選択 UI の「中身」を
+  // このシート内へ直接描画する (二重ポップアップを避ける)。レンダリングは
+  // ホーム/メモ/共有のタグピッカーと同一の renderTagSelectionInto を使うので、
+  // 追加・選択・解除の挙動・見た目は完全に揃う。患者タグなのでステータス仮想タグは
+  // 出さず (entries はユーザータグのみ)、選択変更は即時に onChange へ反映する。
+  const tagBox = document.createElement("div");
+  tagBox.className = "patientSheetTags";
+  renderTagSelectionInto(tagBox, {
+    getSelected: () => getPatientTags(patientIdx),
+    setSelected: (tags) => setPatientTags(patientIdx, tags),
+    entries: () => getAllTags().map(name => ({ value: name, label: name })),
+    onSelectionMutated: () => { if (onChange) onChange(); },
+  });
+  body.appendChild(field("patientSheet.tags", tagBox, "patientSheetTagsField"));
 
   overlay.classList.add("active");
 }

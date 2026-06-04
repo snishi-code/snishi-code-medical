@@ -202,6 +202,9 @@
     .popupMenu.patientMetaMenu {
       width: min(92vw, 420px);
       max-width: 420px;
+      max-height: 88vh;        /* タグ選択を内包して縦に伸びるのでシート内スクロール */
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       box-sizing: border-box;
     }
     .patientSheetField {
@@ -233,6 +236,33 @@
     .patientSheetNameInput:focus,
     .patientSheetRoomInput:focus {
       border-color: var(--blue-border);
+    }
+
+    /* タグ欄: 共通タグ選択 UI (renderTagSelectionInto) の中身を直接描画。別 overlay を
+       開かず 1 枚で完結させる。区切り線で患者情報編集欄と分ける。 */
+    .patientSheetTagsField {
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+    /* popups.css の `.popupMenu button{width:100%; margin-bottom:8px}` を打ち消し、
+       チップを横並び折り返しの pill にする (full-width 化させない)。タップ領域は 44px。 */
+    .patientSheetTags .tagSelChip,
+    .patientSheetTags .tagSettingAdd {
+      width: auto;
+      margin-bottom: 0;
+    }
+    .patientSheetTags .tagPickerChipRow {
+      gap: 10px;
+      padding: 4px 0;
+    }
+    .patientSheetTags .tagSelChip {
+      padding: 10px 16px;
+      min-height: 44px;
+      font-size: 15px;
+    }
+    .patientSheetTags .tagSettingAdd {
+      width: 44px;
+      height: 44px;
     }
 
     /* WS picker (ヘッダー WS 名タップで開く軽量 popup。切替 + 新規のみ) */
