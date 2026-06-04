@@ -216,30 +216,51 @@
       color: var(--muted);
       margin-bottom: 6px;
     }
+
+    /* ── 上部: 部屋番号 + 氏名 (コンパクトな患者情報)。頻繁に編集しないので主張を弱め、
+       横並び (狭幅は縦に折り返し)。右上の × (44px) と重ならないよう右に余白。 ── */
+    .patientSheetInfoRow {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      padding-right: 40px;
+      margin-bottom: 4px;
+    }
+    .patientSheetInfoCell {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+    .patientSheetRoomCell { flex: 0 0 96px; }
+    .patientSheetNameCell { flex: 1 1 160px; }
+    .patientSheetInfoLabel {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+    }
     .patientSheetNameInput,
     .patientSheetRoomInput {
       width: 100%;
-      min-height: 44px;
+      min-height: 40px;
       box-sizing: border-box;
       border: 1px solid var(--line);
       background: #fff;
       border-radius: 10px;
-      padding: 10px 12px;
+      padding: 8px 12px;
       font-size: 16px;     /* iOS で 16px 未満だと focus 時にズームするのを防ぐ */
       font-family: inherit;
       color: inherit;
       outline: none;
-    }
-    .patientSheetRoomInput {
-      max-width: 140px;
     }
     .patientSheetNameInput:focus,
     .patientSheetRoomInput:focus {
       border-color: var(--blue-border);
     }
 
-    /* タグ欄: 共通タグ選択 UI (renderTagSelectionInto) の中身を直接描画。別 overlay を
-       開かず 1 枚で完結させる。区切り線で患者情報編集欄と分ける。 */
+    /* ── 中央: タグ欄。共通タグ選択 UI (renderTagSelectionInto) の中身を直接描画。
+       別 overlay を開かず 1 枚で完結。区切り線で上部の患者情報と分ける。 ── */
     .patientSheetTagsField {
       border-top: 1px solid var(--line);
       padding-top: 12px;
@@ -263,6 +284,25 @@
     .patientSheetTags .tagSettingAdd {
       width: 44px;
       height: 44px;
+    }
+
+    /* ── 下部: ステータス選択バー。毎日何度も触るので親指の届く下部に固定 (sticky)。
+       タグが増えて縦スクロールしても常にシート下端に留まる。負マージンで popupMenu の
+       padding(16px) をはみ出して全幅にし、上に区切り線を引く。 ── */
+    .patientSheetStatusBar {
+      position: sticky;
+      bottom: 0;
+      background: #fff;
+      margin: 12px -16px -16px;
+      padding: 10px 16px 16px;
+      border-top: 1px solid var(--line);
+      z-index: 1;
+    }
+    .patientSheetStatusBar > .label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 8px;
     }
 
     /* WS picker (ヘッダー WS 名タップで開く軽量 popup。切替 + 新規のみ) */

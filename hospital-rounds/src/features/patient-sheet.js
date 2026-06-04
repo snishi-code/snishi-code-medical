@@ -26,6 +26,19 @@ function field(labelKey, contentEl, extraClass) {
   return wrap;
 }
 
+// 上部の患者情報セル (部屋番号 / 氏名)。頻繁に編集しないので主張を弱めた小さい label +
+// input を <label> でまとめ、ラベルタップで input にフォーカスできるようにする。
+function infoCell(labelKey, inputEl, cellClass) {
+  const cell = document.createElement("label");
+  cell.className = "patientSheetInfoCell " + cellClass;
+  const lab = document.createElement("span");
+  lab.className = "patientSheetInfoLabel";
+  lab.textContent = t(labelKey);
+  cell.appendChild(lab);
+  cell.appendChild(inputEl);
+  return cell;
+}
+
 // ステータス選択 (色＋形マークの大ボックスを横一列)。openStatusPicker と同じ見た目
 // だが別オーバーレイを開かずシート内に常時表示する。選択後は再描画して selected を
 // 移すだけ (シートは開いたまま)。
@@ -69,15 +82,13 @@ export function openPatientSheet(patientIdx, onChange) {
 
   body.textContent = "";
 
-  // ステータス
-  body.appendChild(field("patientSheet.status", buildStatusList(p, patientIdx, onChange)));
+  // レイアウト方針 (スマホ・現場): 部屋番号/氏名は患者確認用だが頻繁に編集しないので
+  // 上部にコンパクトに。タグは中央。毎日何度も触るステータスは親指で押しやすい下部に
+  // まとめ、タグが増えてスクロールしても下部に固定 (sticky) して常に届くようにする。
 
-  // 部屋番号 (makeRoomInput は内部で保存。患者参照束縛で取り違え防止)
-  const roomInp = makeRoomInput(p, onChange);
+  // ── 上部: 部屋番号 + 氏名 (コンパクトな患者情報エリア) ──
+  const roomInp = makeRoomInput(p, onChange); // 内部で保存。患者参照束縛で取り違え防止
   roomInp.classList.add("patientSheetRoomInput");
-  body.appendChild(field("patientSheet.room", roomInp));
-
-  // 氏名
   const nameInp = document.createElement("input");
   nameInp.type = "text";
   nameInp.className = "patientSheetNameInput";
@@ -89,13 +100,17 @@ export function openPatientSheet(patientIdx, onChange) {
     scheduleSave();
     if (onChange) onChange();
   });
-  body.appendChild(field("patientSheet.name", nameInp));
+  const infoRow = document.createElement("div");
+  infoRow.className = "patientSheetInfoRow";
+  infoRow.appendChild(infoCell("patientSheet.room", roomInp, "patientSheetRoomCell"));
+  infoRow.appendChild(infoCell("patientSheet.name", nameInp, "patientSheetNameCell"));
+  body.appendChild(infoRow);
 
-  // タグ: 別 overlay (tagSheetOverlay) を開かず、共通のタグ選択 UI の「中身」を
-  // このシート内へ直接描画する (二重ポップアップを避ける)。レンダリングは
-  // ホーム/メモ/共有のタグピッカーと同一の renderTagSelectionInto を使うので、
-  // 追加・選択・解除の挙動・見た目は完全に揃う。患者タグなのでステータス仮想タグは
-  // 出さず (entries はユーザータグのみ)、選択変更は即時に onChange へ反映する。
+  // ── 中央: タグ ──
+  // 別 overlay (tagSheetOverlay) を開かず、共通のタグ選択 UI の「中身」をこのシート内へ
+  // 直接描画する (二重ポップアップを避ける)。ホーム/メモ/共有と同一の
+  // renderTagSelectionInto を使うので追加・選択・解除の挙動・見た目は揃う。患者タグなので
+  // ステータス仮想タグは出さず (entries はユーザータグのみ)、変更は即時 onChange 反映。
   const tagBox = document.createElement("div");
   tagBox.className = "patientSheetTags";
   renderTagSelectionInto(tagBox, {
@@ -105,6 +120,16 @@ export function openPatientSheet(patientIdx, onChange) {
     onSelectionMutated: () => { if (onChange) onChange(); },
   });
   body.appendChild(field("patientSheet.tags", tagBox, "patientSheetTagsField"));
+
+  // ── 下部: ステータス (sticky で常に親指の届く位置に) ──
+  const statusBar = document.createElement("div");
+  statusBar.className = "patientSheetStatusBar";
+  const statusLabel = document.createElement("div");
+  statusLabel.className = "label";
+  statusLabel.textContent = t("patientSheet.status");
+  statusBar.appendChild(statusLabel);
+  statusBar.appendChild(buildStatusList(p, patientIdx, onChange));
+  body.appendChild(statusBar);
 
   overlay.classList.add("active");
 }

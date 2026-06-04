@@ -695,12 +695,18 @@ export function makePatientTagPicker(patientIndex, onChange) {
   });
 }
 
-// Shared filter picker: user tags + status virtual tags + AND/OR toggle (when not grouped)
+// Shared filter picker: ユーザータグのみ (ステータス仮想タグは混ぜない)。
+//
+// ステータスは「患者の現在状態」でユーザー作成タグとは概念が異なり、ホームでは患者カード
+// の色＋形マークで既に視認できる。タグ一覧に混ぜると選択画面が重くなり、「タグ選択を
+// クリア」でステータス絞り込みまで消えるのも意味が分かりにくい。よって通常のタグピッカー
+// からは外す。ステータスでの絞り込みが要る場合は将来、専用の小さなフィルター UI
+// (getAllFilterEntries / patientMatchesSharedFilter は status 込みのまま温存) を別途設ける。
 export function makeSharedTagFilterPicker(onChange) {
   return makeTagPicker({
     getSelected: getSharedTagFilter,
     setSelected: setSharedTagFilter,
-    entries: getAllFilterEntries,
+    entries: () => getAllTags().map(name => ({ value: name, label: name })),
     onChange,
     withModeToggle: true,
     grouped: true,
