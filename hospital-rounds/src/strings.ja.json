@@ -83,6 +83,8 @@
   "tag.filter.mode.and": "AND（すべて満たす）",
   "tag.filter.mode.or": "OR（いずれか満たす）",
   "tag.filter.clear.label": "タグ選択をクリア",
+  "tag.sheet.title": "タグを選ぶ",
+  "tag.sheet.filterTitle": "タグで絞り込む",
   "status.picker.title": "ステータスを選択",
   "tag.filter.clear.aria": "選択をすべて解除",
   "tag.filter.clear.title": "選択をすべて解除",

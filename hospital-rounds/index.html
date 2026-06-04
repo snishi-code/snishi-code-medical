@@ -822,8 +822,26 @@
          が openPatientSheet で構築。× / 背景で閉じる。 -->
     <div class="popupMenuOverlay" id="patientMetaOverlay">
       <div class="popupMenu patientMetaMenu">
-        <!-- タイトル「患者」と × は不要 (背景タップで閉じるのがアプリ共通動作)。 -->
+        <!-- 背景タップでも閉じられるが、大きいシートには出口を明示するため右上に控えめな ×
+             (44px タップ領域)。キャンセル/保存ボタンは置かず編集は即時反映。 -->
+        <button class="popupCloseX" data-close-popup type="button" data-i18n-aria="common.close" data-i18n-title="common.close" aria-label="閉じる" title="閉じる">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
         <div id="patientMetaBody"></div>
+      </div>
+    </div>
+
+    <!-- 共通タグ選択シート (fullscreen presentation)。makeTagPicker が
+         presentation:"fullscreen"/"auto" のときここに中身を流し込む。ホーム/設定/患者画面で
+         同一構造を使い、見た目・操作感を揃える。複数選択なので選んでも閉じず、背景タップ /
+         右上 × で閉じる (閉じる挙動は main.js のグローバルハンドラ)。患者シートより上に重ねる。 -->
+    <div class="popupMenuOverlay tagSheetOverlay" id="tagSheetOverlay">
+      <div class="popupMenu tagSheetMenu">
+        <button class="popupCloseX" data-close-popup type="button" data-i18n-aria="common.close" data-i18n-title="common.close" aria-label="閉じる" title="閉じる">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <div class="popupTitle tagSheetTitle" id="tagSheetTitle" data-i18n="tag.sheet.title">タグを選ぶ</div>
+        <div class="tagSheetBody" id="tagSheetBody"></div>
       </div>
     </div>
   </main>

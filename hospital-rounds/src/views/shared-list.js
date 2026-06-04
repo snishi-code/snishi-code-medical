@@ -5,8 +5,8 @@ import { openActionMenu } from "../features/drag.js";
 import { makePatientTagPicker, makeSharedTagFilterPicker, patientMatchesSharedFilter } from "../features/tags.js";
 import { makeRoomInput, formatPatientLabel, ensureRoomOrder, setRoomOrderLocked } from "../features/room.js";
 import { refreshSharedQrIfActive } from "../features/qr-shared.js";
-import { statusClass } from "./home.js";
-import { bindTapOrLongPress } from "./detail.js";
+import { statusClass } from "../features/status-ui.js";
+import { bindTapOrLongPress } from "../features/touch.js";
 
 let _editMode = false;
 

@@ -14,58 +14,13 @@ import { t } from "../i18n.js";
 import { scanQR, isScannerSupported } from "../features/qr-scan.js";
 import { buildTimestampHeader } from "../features/qr-protocol.js";
 import { openPatientSheet } from "../features/patient-sheet.js";
-import { statusClass } from "./home.js";
+import { statusClass } from "../features/status-ui.js";
+import { bindTapOrLongPress } from "../features/touch.js";
+
+// statusClass (status-ui.js) / bindTapOrLongPress (touch.js) は共通ヘルパへ移設し、
+// detail.js ↔ home.js の循環 import を解消した。
 
 let qrVisible = false;
-
-// シンプルな「タップ vs 長押し」判定。長押し閾値 600ms。
-// スクロールを潰さないため pointerdown では preventDefault しない (要素を覆う
-// 患者ボタン上で指を置いても縦スクロールが始まるよう、CSS 側で touch-action:
-// pan-y を併用する)。開始座標から MOVE_CANCEL px 以上動いたら「スクロール意図」
-// とみなし、長押しもタップも発火させずに native scroll へ譲る。
-const MOVE_CANCEL = 10;
-export function bindTapOrLongPress(el, onTap, onLongPress, longMs = 600) {
-  let timer = null;
-  let longFired = false;
-  let started = false;
-  let startX = 0;
-  let startY = 0;
-
-  const start = (e) => {
-    started = true;
-    longFired = false;
-    startX = e.clientX;
-    startY = e.clientY;
-    timer = setTimeout(() => {
-      longFired = true;
-      onLongPress();
-    }, longMs);
-  };
-  const cancel = () => {
-    if (timer) { clearTimeout(timer); timer = null; }
-    started = false;
-  };
-  const move = (e) => {
-    if (!started) return;
-    if (Math.abs(e.clientX - startX) > MOVE_CANCEL ||
-        Math.abs(e.clientY - startY) > MOVE_CANCEL) {
-      // 指が動いた = スクロール。長押しタイマーを止めタップも抑止する。
-      cancel();
-    }
-  };
-  const finish = () => {
-    if (!started) return;
-    if (timer) { clearTimeout(timer); timer = null; }
-    if (!longFired) onTap();
-    started = false;
-  };
-
-  el.addEventListener("pointerdown", start);
-  el.addEventListener("pointermove", move);
-  el.addEventListener("pointerup", finish);
-  el.addEventListener("pointerleave", cancel);
-  el.addEventListener("pointercancel", cancel);
-}
 
 // ============================
 // QR generation helpers
