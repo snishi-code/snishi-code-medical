@@ -101,6 +101,15 @@ apex ↔ medical ↔ personal の絶対 URL は `site-links.js` の1箇所で管
 
 新規フィールド追加・enum 拡張・短キー rename 時は、**必ず `qr-protocol.js` 冒頭の「QR Wire Format Authority」コメント（互換性ルール一覧）と各 kind の `WIRE_V` 定数を読んでから**対応する（互換ルールの正本はそのコメント）。設計2原則: 可変領域は冒頭辞書 + index 参照 / コード固定値は wire に含めない。
 
+### QR の表示・送受信基盤（共通化の不変条件）
+
+全 kind（HM/MM/SH/ST/FMT/FS。FS=フォーマットセット）は同じ基盤に乗せる。新 kind 追加・QR 機能改修時はこれを崩さない（詳細実装の正本は各コードファイル。ここは守るべき構造だけ）。
+
+- **表示/カメラ/リーダー/ページ集約は `createQrFlow`（`features/qr-flow.js`）に集約**。kind 差分は cfg に閉じる。独自に QR 描画・スキャン・多ページ集約を書かない。
+- **受信は統一ルーター `features/qr-receive.js` 経由**（読んだ kind で振り分け）。各フローは `registerReceiver` で自分の kind を登録。送信カードは受信導線を持たせない（`inlineReceive:false`=表示専用）。カード内受信を持つのは患者系(HM/MM/SH)のみ。受信入口を kind ごとに増やさない。
+- **圧縮/暗号化は transport 層（`features/crypto-payload.js` の `packPayload`/`unpackPayload`）**。prefix で plain / `C1`(圧縮) / `E1`・`E2`(暗号) を明示。chunk(`encodePages`/`decodePage`) の前段。prefix の正本は crypto-payload.js と Authority コメント。
+- **QR 取込（設定/セット/フォーマットの追加・上書き）は fail-closed**: `saveSettingsOrThrow()` を await し、失敗は in-memory をロールバックして中断（成功表示・クローズへ進めない）。= 上記「データ操作は fail-closed」の QR 適用。
+
 ## アクセシビリティ
 
 - ステータス・選択状態を色だけで示さない（形・アイコン・テキスト併用）。
