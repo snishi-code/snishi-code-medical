@@ -349,6 +349,38 @@
       flex: 0 0 auto;
     }
 
+    /* 出力体裁の 1 行: 「タイトルを出す」トグル + 「区切り」セレクタ。
+       スマホ幅では確実にタップできるよう間隔広め。狭幅では折り返す。 */
+    .formatEditOutputRow {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin: 12px 0;
+    }
+
+    .formatEditOutputRow .formatEditCheckRow {
+      margin: 0;
+      flex: 1 1 auto;
+    }
+
+    .formatEditOutputRow .formatEditJoinerField {
+      margin-bottom: 0;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .formatEditOutputRow .formatEditJoinerField > span {
+      margin-bottom: 0;
+    }
+
+    .formatEditOutputRow .formatEditJoinerField select {
+      width: auto;
+      min-width: 88px;
+    }
+
     .formatEditItemsHead {
       font-size: 13px;
       font-weight: 700;
