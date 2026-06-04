@@ -75,6 +75,10 @@
       color: var(--text);
       cursor: pointer;
       user-select: none;
+      /* 指がボタン上で始まっても縦スクロールが始まるようにする。bindTapOrLongPress
+         は pointerdown で preventDefault しないので、ここで pan-y を許可しておけば
+         グリッドを覆う患者ボタン上から一度のスワイプで最下部まで到達できる。 */
+      touch-action: pan-y;
       /* 単語境界がない長い英数字 (AAAA…) でもボックスからはみ出さないよう
          任意位置で折り返す。CJK は自然に折り返すのでこの設定の影響を受けない。 */
       overflow-wrap: anywhere;
