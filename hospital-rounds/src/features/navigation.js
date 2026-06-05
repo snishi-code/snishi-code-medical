@@ -36,7 +36,7 @@ export function showView(which, pushState = true) {
   if (docsViewEl) docsViewEl.classList.toggle("active", which === "docs");
 
   // ヘッダーのナビボタンを CSS の attribute selector で active 表示する
-  // ためのフラグ。html[data-view="memo"] #headerMemoBtn { ... } などで使う
+  // ためのフラグ。html[data-view="memo"] のセレクタでビュー対応ボタンを装飾する等に使う
   document.documentElement.dataset.view = which;
 
   if (which !== "shared") {

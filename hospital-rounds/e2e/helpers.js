@@ -4,8 +4,8 @@ import { expect } from "@playwright/test";
 // E2E 操作契約ヘルパ (単一ソース)
 //
 // 各 spec が DOM ID を直接叩くと、UI 導線が変わるたびに全 spec が同じ壊れ方をする
-// (実際 v8.6 でヘッダーの memo/設定ボタンが ≡ メニューへ集約され、旧
-//  #headerMemoBtn / #headerSettingsBtn を待つ E2E が全滅 timeout した)。
+// (実際 v8.6 でヘッダーの memo/設定ボタンが ≡ メニューへ集約され、旧ヘッダーボタンを
+//  待つ E2E が全滅 timeout した)。
 // 「ホームへ行く」「メモへ行く」「ステータスを付ける」といった"動作"をここに集約し、
 // spec はこの動作 API だけを呼ぶ。導線が変わってもこのファイルだけ直せば済む。
 //
@@ -75,8 +75,8 @@ export async function openPatient(page, patientIdx = 0) {
 }
 
 // 詳細画面で患者シート (ステータス/部屋/氏名/タグ) を開く。
-// v8.x: ステータスはヘッダーの小さなスウォッチ (#detailStatusBtn) を廃し、患者メタ
-// ボタン → シート内に常時表示の statusPickerBox へ集約された。
+// v8.x: ステータスはヘッダーの小さなスウォッチを廃し、患者メタボタン → シート内に
+// 常時表示の statusPickerBox へ集約された。
 export async function openPatientSheet(page) {
   await page.locator("#detailPatientMetaBtn").click();
   await expect(page.locator("#patientMetaOverlay")).toHaveClass(/active/);
