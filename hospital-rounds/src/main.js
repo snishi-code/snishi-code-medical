@@ -2,17 +2,18 @@
 
 import "./style.css";
 
-import { STATUS } from "./constants.js";
+import { STATUS, clone } from "./constants.js";
 import { STORAGE_KEYS } from "./storage.js";
 import {
   appState, settings, selectedNo,
   setAppState, setSelectedNo,
-  saveNow, saveSettings, saveSettingsOrThrow,
+  saveSettings, saveSettingsOrThrow, persistActiveOrThrow,
   normalizeLoaded,
   requestStoragePersistence,
   initStore, flushSavePending, setOnWorkspaceChanged, setOnUserChanged,
   setMarkUpdatedHandler, setRecvContent,
 } from "./store.js";
+import { clearPanelClinicalInput } from "./features/format-values.js";
 
 import { renderHome, updateCountChip } from "./views/home.js";
 import { renderDetail, renderQrIfNeeded, initDetailEvents, initStatusButtons, initQrNavButtons } from "./views/detail.js";
@@ -405,15 +406,20 @@ document.getElementById("clearAllBtn")?.addEventListener("click", async () => {
   if (!confirm(t("home.start.confirm"))) return;
   // 破壊操作の直前: 現状を 1 枚スナップショット (await して clear 前の状態を確実に撮る)
   await captureSnapshot(REASON.CLEAR);
-  logEvent(EVENT.CLEAR);
   const ct = settings.clearTargets;
   const now = Date.now();
+  // fail-closed: 保存できなければ live state を元に戻して中断する (患者データの破壊は
+  // 保存が確認できてから「完了」扱いにする。CLAUDE.md「データ操作は fail-closed」)。
+  // 保存失敗時の rollback 用に、変更前の患者配列を deep copy で保持する。
+  const backup = appState.patients.map(p => clone(p));
   for (const p of appState.patients) {
     if (ct.memo) p.memo = "";
-    if (ct.s) p.s = "";
-    if (ct.o) p.oFree = "";
-    if (ct.a) p.a = { text: "" };
-    if (ct.p) p.p = { text: "" };
+    // S/O/A/P は panel 単位で「自由記述 + 同 panel 所属の展開フォーマット値」を
+    // 一括クリアする (settings.formats[].panel が正本。O だけの特別扱いはしない)。
+    if (ct.s) clearPanelClinicalInput(p, "S", settings.formats);
+    if (ct.o) clearPanelClinicalInput(p, "O", settings.formats);
+    if (ct.a) clearPanelClinicalInput(p, "A", settings.formats);
+    if (ct.p) clearPanelClinicalInput(p, "P", settings.formats);
     if (ct.shared) p.shared = "";
     if (p.status === STATUS.YELLOW && ct.statusYellow) p.status = STATUS.NONE;
     else if (p.status === STATUS.GREEN && ct.statusGreen) p.status = STATUS.NONE;
@@ -421,7 +427,16 @@ document.getElementById("clearAllBtn")?.addEventListener("click", async () => {
     else if (p.status === STATUS.BLUE && ct.statusBlue) p.status = STATUS.NONE;
     p.updatedAt = now;
   }
-  saveNow();
+  try {
+    await persistActiveOrThrow();
+  } catch (e) {
+    console.error("clear: save failed, rolling back:", e);
+    appState.patients = backup; // live state を破壊前へ戻す
+    refreshPatientUI();
+    alert(t("save.failed"));
+    return; // event log / 成功表示へ進めない (fail-closed)
+  }
+  logEvent(EVENT.CLEAR);
   // 個別 view を列挙すると memo/shared を開いた状態で更新が漏れる。中央の
   // refreshPatientUI() に集約する (CLAUDE.md「状態更新後の再描画」)。
   refreshPatientUI();

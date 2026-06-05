@@ -33,6 +33,10 @@ import { makeTagPicker, getAllTags, getPatientTags, setPatientTags } from "./tag
 import { openQrFormatOverlay } from "./qr-format.js";
 import { resolveActiveGroup } from "./format-groups.js";
 import { bindHandleDrag } from "./drag.js";
+import {
+  readNumericEntry, combineLabelValueMemo, composeFormatFromValues,
+  getPanelText, setPanelText, appendTextToPanelData,
+} from "./format-values.js";
 import { icon } from "../icons.js";
 import { t, applyI18n } from "../i18n.js";
 
@@ -40,7 +44,8 @@ import { t, applyI18n } from "../i18n.js";
 const FORMAT_PICKER_HAMBURGER_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`;
 
 const PANEL_TEXTAREA_ID = { S: "sText", O: "oFreeText", A: "aText", P: "pText" };
-const PANEL_FIELD_KEY   = { S: "s",     O: "oFree",    A: "a",     P: "p"    };
+// パネル本文の読み書き (getPanelText/setPanelText/appendTextToPanelData) と
+// パネル別 formatId 解決は format-values.js (DOM 非依存) に集約。
 
 function newFmtId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return "fmt_" + crypto.randomUUID();
@@ -325,11 +330,15 @@ function openFormatInputModal(format, panel) {
   }
 
   overlay.classList.add("active");
-  // 最初の入力欄にフォーカス
-  setTimeout(() => {
-    const first = body.querySelector("input, textarea");
-    if (first) first.focus();
-  }, 50);
+  // text-only フォーマット (身体所見など) は自動フォーカスしない。正常文を「ぽちぽち
+  // 押すだけ」の運用でキーボードが暴発しないようにする。number/mixed は最初の数値欄に
+  // フォーカスして入力をすぐ始められるようにする (数値入力は手で打つのが前提)。
+  if (!allText) {
+    setTimeout(() => {
+      const first = body.querySelector("input, textarea");
+      if (first) first.focus();
+    }, 50);
+  }
 }
 
 // ============================
@@ -366,8 +375,21 @@ function setupTextInput(inp) {
   });
 }
 
+// 短文注記欄 (grid 4 列目)。number/fraction の値の隣に「O2 2L」「RA」等の
+// 文脈注記を 1 行で入れる。値とは別フィールドだが患者ごとの入力値。
+function buildNoteInput(initial) {
+  const noteInp = document.createElement("input");
+  noteInp.type = "text";
+  noteInp.className = "formatInputMemo";
+  noteInp.placeholder = t("format.placeholder.memo");
+  setupTextInput(noteInp);
+  if (initial) noteInp.value = String(initial);
+  return noteInp;
+}
+
 // opts: { value, onInput } — value は初期値、onInput(現在値) は入力毎コールバック
 // (インライン展開 A の formatValues バインド用)。省略時は従来のモーダル挙動。
+// number/fraction の value は { value, note } オブジェクト (旧文字列も読める)。
 function buildNumberRow(host, item, opts = {}) {
   const row = document.createElement("div");
   row.className = "formatInputRow number";
@@ -377,11 +399,12 @@ function buildNumberRow(host, item, opts = {}) {
   label.textContent = item.label;
   row.appendChild(label);
 
+  const { value, note } = readNumericEntry(opts.value);
+
   const val = document.createElement("input");
   val.className = "formatInputValue";
   setupNumericInput(val, "decimal");
-  if (opts.value != null) val.value = String(opts.value);
-  if (opts.onInput) val.addEventListener("input", () => opts.onInput(val.value));
+  if (opts.value != null) val.value = value;
   row.appendChild(val);
 
   // unit セルは常に出す (空 unit でも grid 列を揃える)
@@ -390,14 +413,18 @@ function buildNumberRow(host, item, opts = {}) {
   unit.textContent = item.unit || "";
   row.appendChild(unit);
 
-  // v6.10+ : 備考欄を撤去。grid 4 列との整合のため空 placeholder cell を 1 つ出す
-  // (display:contents の row が cell 数を揃えないと次の行が前行に流れ込んでズレる)
-  const memoPlaceholder = document.createElement("span");
-  memoPlaceholder.className = "formatInputMemoPlaceholder";
-  row.appendChild(memoPlaceholder);
+  // 短文注記 (grid 4 列目)。例: SpO2 の酸素投与量。
+  const noteInp = buildNoteInput(opts.value != null ? note : "");
+  row.appendChild(noteInp);
+
+  if (opts.onInput) {
+    const emit = () => opts.onInput({ value: val.value, note: noteInp.value });
+    val.addEventListener("input", emit);
+    noteInp.addEventListener("input", emit);
+  }
 
   host.appendChild(row);
-  return { item, kind: "number", val };
+  return { item, kind: "number", val, note: noteInp };
 }
 
 function buildFractionRow(host, item, opts = {}) {
@@ -433,17 +460,13 @@ function buildFractionRow(host, item, opts = {}) {
   setupTextInput(denom);
   fracGroup.appendChild(denom);
 
-  // 初期値 "a/b" を numer / denom に分解 (最初の "/" で分割)
+  // 初期値 "a/b" を numer / denom に分解 (最初の "/" で分割)。note は別欄。
+  const { value: fracValue, note } = readNumericEntry(opts.value);
   if (opts.value != null) {
-    const s = String(opts.value);
+    const s = fracValue;
     const slash = s.indexOf("/");
     if (slash >= 0) { numer.value = s.slice(0, slash); denom.value = s.slice(slash + 1); }
     else numer.value = s;
-  }
-  if (opts.onInput) {
-    const emit = () => opts.onInput(`${numer.value}/${denom.value}`);
-    numer.addEventListener("input", emit);
-    denom.addEventListener("input", emit);
   }
 
   row.appendChild(fracGroup);
@@ -453,13 +476,19 @@ function buildFractionRow(host, item, opts = {}) {
   unit.textContent = item.unit || "";
   row.appendChild(unit);
 
-  // v6.10+ : 備考欄を撤去。grid 4 列との整合のため空 placeholder cell を 1 つ出す
-  const memoPlaceholder = document.createElement("span");
-  memoPlaceholder.className = "formatInputMemoPlaceholder";
-  row.appendChild(memoPlaceholder);
+  // 短文注記 (grid 4 列目)。例: 抗菌薬の "5/20-" の脇に補足など。
+  const noteInp = buildNoteInput(opts.value != null ? note : "");
+  row.appendChild(noteInp);
+
+  if (opts.onInput) {
+    const emit = () => opts.onInput({ value: `${numer.value}/${denom.value}`, note: noteInp.value });
+    numer.addEventListener("input", emit);
+    denom.addEventListener("input", emit);
+    noteInp.addEventListener("input", emit);
+  }
 
   host.appendChild(row);
-  return { item, kind: "fraction", numer, denom };
+  return { item, kind: "fraction", numer, denom, note: noteInp };
 }
 
 function buildTextRow(host, item, opts = {}) {
@@ -487,9 +516,10 @@ function buildTextRow(host, item, opts = {}) {
   // チェックマーク SVG (lucide: check)
   normalBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
   if (!item.normal) normalBtn.disabled = true;
+  // 正常文を流し込むだけ (focus はしない)。連打してもキーボードが出ず画面が
+  // 飛ばないよう、val.focus() を呼ばない (「ぽちぽち正常を押す」体験を壊さない)。
   normalBtn.addEventListener("click", () => {
     val.value = item.normal || "";
-    val.focus();
     if (opts.onInput) opts.onInput(val.value);
   });
   row.appendChild(normalBtn);
@@ -505,20 +535,6 @@ export function closeFormatInputModal() {
   _currentInput = null;
 }
 
-// 値 + memo を組み合わせて「ラベル <labelSep> 値」を作る
-// memo 付きの場合は末尾に半角スペース + memo を付ける (Labo / CT のような自然な並び)
-function combineLabelValueMemo(label, labelSep, value, memo) {
-  const lab = String(label || "").trim();
-  const val = String(value || "").trim();
-  const m = String(memo || "").trim();
-  // label が空なら値だけ出す (規定文「著変なし」など)
-  let body;
-  if (lab) body = `${lab}${labelSep}${val}`;
-  else body = val;
-  if (m) body += ` ${m}`;
-  return body;
-}
-
 // rowEls (build*Row が返す行参照) から展開テキストを組み立てる。モーダルとインライン
 // 展開の両方で共用。戻り値: { text, hasValue }。hasValue=実際に値が入った item があるか
 // (titleWrap だけのタイトル行は hasValue=false 扱い → インライン自動反映で空タブ抜けでは
@@ -529,16 +545,18 @@ function composeFormatText(format, rowEls) {
   for (const row of rowEls) {
     if (row.kind === "number") {
       const value = String(row.val.value || "").trim();
-      if (!value) continue;
+      if (!value) continue; // 値なし注記だけは出力しない
       const unit = row.item.unit || "";
-      parts.push(combineLabelValueMemo(row.item.label, labelSep, `${value}${unit}`, ""));
+      const note = row.note ? String(row.note.value || "").trim() : "";
+      parts.push(combineLabelValueMemo(row.item.label, labelSep, `${value}${unit}`, note));
     } else if (row.kind === "fraction") {
       // "120/53" / "/53" / "120/" を許容 (片側だけ入力可)。日付 "5/20" もここ
       const a = String(row.numer.value || "").trim();
       const b = String(row.denom.value || "").trim();
       if (!a && !b) continue;
       const unit = row.item.unit || "";
-      parts.push(combineLabelValueMemo(row.item.label, labelSep, `${a}/${b}${unit}`, ""));
+      const note = row.note ? String(row.note.value || "").trim() : "";
+      parts.push(combineLabelValueMemo(row.item.label, labelSep, `${a}/${b}${unit}`, note));
     } else {
       const value = String(row.val.value || "").trim();
       if (!value) continue;
@@ -546,42 +564,6 @@ function composeFormatText(format, rowEls) {
       parts.push(lab ? `${lab}${labelSep}${value}` : value);
     }
   }
-  const body = parts.join(format.joiner || ", ");
-  const titleWrap = typeof format.titleWrap === "string" ? format.titleWrap : "";
-  let text = body;
-  if (titleWrap) {
-    const L = titleWrap[0] || "";
-    const R = titleWrap[1] || "";
-    const titleLine = `${L}${format.name}${R}`;
-    text = body ? `${titleLine}\n${body}` : titleLine;
-  }
-  return { text, hasValue: parts.length > 0 };
-}
-
-// composeFormatText の「保存値 (formatValues[fid] = {itemIndex: 値}) から組み立てる」版。
-// 展開(A)フォーマットの出力・流し込みで使う。fraction 値は "a/b" 文字列。
-function composeFormatFromValues(format, values) {
-  const vals = (values && typeof values === "object") ? values : {};
-  const labelSep = typeof format.labelSep === "string" ? format.labelSep : DEFAULT_LABEL_SEP_OTHER;
-  const parts = [];
-  (format.items || []).forEach((item, i) => {
-    const kind = item.kind || DEFAULT_ITEM_KIND;
-    const raw = String(vals[i] ?? "");
-    if (kind === "number") {
-      const value = raw.trim();
-      if (!value) return;
-      parts.push(combineLabelValueMemo(item.label, labelSep, `${value}${item.unit || ""}`, ""));
-    } else if (kind === "fraction") {
-      // "a/b" 文字列。両側空 ("" or "/") はスキップ
-      if (!raw.replace("/", "").trim()) return;
-      parts.push(combineLabelValueMemo(item.label, labelSep, `${raw}${item.unit || ""}`, ""));
-    } else {
-      const value = raw.trim();
-      if (!value) return;
-      const lab = String(item.label || "").trim();
-      parts.push(lab ? `${lab}${labelSep}${value}` : value);
-    }
-  });
   const body = parts.join(format.joiner || ", ");
   const titleWrap = typeof format.titleWrap === "string" ? format.titleWrap : "";
   let text = body;
@@ -658,29 +640,6 @@ function ensureCaretTracker() {
     const p = appState.patients[selectedNo - 1];
     _lastFocusedPid = p ? p.pid : null;
   }, true);
-}
-
-// パネル本文テキストの読み書き。S/O は直接の文字列フィールド (p.s / p.oFree)、
-// A/P は {text} オブジェクト (p.a.text / p.p.text)。この差を吸収する。
-function getPanelText(p, panel) {
-  if (panel === "O") return String(p.oFree ?? "");
-  if (panel === "S") return String(p.s ?? "");
-  const key = PANEL_FIELD_KEY[panel]; // "a" | "p"
-  return String(p[key]?.text ?? "");
-}
-function setPanelText(p, panel, val) {
-  if (panel === "O") { p.oFree = val; return; }
-  if (panel === "S") { p.s = val; return; }
-  const key = PANEL_FIELD_KEY[panel];
-  if (!p[key] || typeof p[key] !== "object") p[key] = { text: "" };
-  p[key].text = val;
-}
-// データのみ末尾追加 (DOM 非依存)。グループ切替の流し込み用。
-function appendTextToPanelData(p, panel, text) {
-  if (!text) return;
-  const cur = getPanelText(p, panel);
-  const sep = cur && !cur.endsWith("\n") ? "\n" : "";
-  setPanelText(p, panel, cur + sep + text);
 }
 
 function appendToPanel(panel, text) {

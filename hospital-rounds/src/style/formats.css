@@ -114,10 +114,11 @@
       padding: 4px 0;
     }
 
-    /* mixed (= 異なる kind が混在 / または全 number/fraction/date): 4 列 grid で
-       行間を縦揃え (label / value / unit / memo)。number / fraction は memo セルを
-       空のままにする (v6.10+ で備考欄を撤去)。date のみ memo を出す (Labo/CT prefill)。
-       fraction は value セルの中で numer/slash/denom を flex で並べる。 */
+    /* mixed (= 異なる kind が混在 / または全 number/fraction): 4 列 grid で
+       行間を縦揃え (label / value / unit / 注記)。number / fraction は 4 列目に
+       短文注記 (.formatInputMemo, 例 SpO2 の "O2 2L") を出す。注記は患者ごとの
+       入力値でフォーマット定義ではない。fraction は value セルの中で
+       numer/slash/denom を flex で並べる。 */
     .formatInputBody.mixed {
       display: grid;
       grid-template-columns: max-content minmax(100px, 140px) max-content minmax(0, 1fr);
@@ -205,13 +206,15 @@
       min-width: 0;
     }
 
+    /* 短文注記欄 (number/fraction の値の隣)。実入力欄なので iOS の focus ズーム
+       防止のため 16px (他の入力欄と同じ)。 */
     .formatInputMemo {
       min-width: 0;
       width: 100%;
       padding: 6px 8px;
       border: 1px solid var(--line);
       border-radius: 6px;
-      font-size: 13px;
+      font-size: 16px;
       box-sizing: border-box;
     }
 

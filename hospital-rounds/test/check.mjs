@@ -240,6 +240,34 @@ await test("status NONE + oFree text is NOT empty", async () => {
   assert.equal(store.isPatientEmpty(p), false);
 });
 
+await test("status NONE + formatValues 文字列値 (旧形式) is NOT empty", async () => {
+  const store = await freshStore();
+  const p = store.makeDefaultPatient();
+  p.formatValues = { fmt_x: { 0: "96" } };
+  assert.equal(store.isPatientEmpty(p), false);
+});
+
+await test("status NONE + formatValues {value,note} (新形式) is NOT empty", async () => {
+  const store = await freshStore();
+  const p = store.makeDefaultPatient();
+  p.formatValues = { fmt_x: { 0: { value: "96", note: "O2 2L" } } };
+  assert.equal(store.isPatientEmpty(p), false);
+});
+
+await test("status NONE + formatValues 注記だけ (value 空) is NOT empty", async () => {
+  const store = await freshStore();
+  const p = store.makeDefaultPatient();
+  p.formatValues = { fmt_x: { 0: { value: "", note: "O2 2L" } } };
+  assert.equal(store.isPatientEmpty(p), false);
+});
+
+await test("status NONE + formatValues 全空オブジェクト {value:'',note:''} IS empty", async () => {
+  const store = await freshStore();
+  const p = store.makeDefaultPatient();
+  p.formatValues = { fmt_x: { 0: { value: "", note: "" } } };
+  assert.equal(store.isPatientEmpty(p), true);
+});
+
 await test("forward compat: unknown patient fields are preserved through normalize", async () => {
   // 将来追加されるかもしれないフィールド (例: priority) を仕込んだ bundle を
   // 読み込み、normalize 後も残っていることを確認 (現在の最新版が読んだ未知
@@ -349,6 +377,108 @@ await test("default formats include バイタル (number/fraction items) and 身
   assert.equal(phys.panel, "O");
   assert.ok(phys.items.every(it => it.kind === "text"), "phys items are all text");
   assert.equal(phys.labelSep, "：");
+});
+
+// ============================
+// 7b) format-values.js: 注記 / パネル単位クリア / 空判定 (DOM 非依存ヘルパ)
+// ============================
+section("format-values helpers");
+
+const fvUrl = pathToFileURL(join(srcDir, "features", "format-values.js")).href;
+const fv = await import(fvUrl);
+
+// バイタル相当のフォーマット (number=SpO2, fraction=BP, text=コメント)
+function vitalFormat() {
+  return {
+    id: "fmt_v", name: "バイタル", panel: "O", joiner: ", ", labelSep: " ", titleWrap: "",
+    items: [
+      { label: "SpO2", kind: "number", unit: "%" },
+      { label: "BP", kind: "fraction", unit: "" },
+      { label: "コメント", kind: "text", normal: "" },
+    ],
+  };
+}
+
+await test("readNumericEntry: 旧文字列も新オブジェクトも {value,note} に正規化", () => {
+  assert.deepEqual(fv.readNumericEntry("96"), { value: "96", note: "" });
+  assert.deepEqual(fv.readNumericEntry({ value: "96", note: "O2 2L" }), { value: "96", note: "O2 2L" });
+  assert.deepEqual(fv.readNumericEntry(undefined), { value: "", note: "" });
+  assert.deepEqual(fv.readNumericEntry({}), { value: "", note: "" });
+});
+
+await test("formatValueHasInput: 文字列/オブジェクト/空を正しく判定", () => {
+  assert.equal(fv.formatValueHasInput("96"), true);
+  assert.equal(fv.formatValueHasInput(""), false);
+  assert.equal(fv.formatValueHasInput("/"), false); // 空 fraction
+  assert.equal(fv.formatValueHasInput({ value: "96", note: "" }), true);
+  assert.equal(fv.formatValueHasInput({ value: "96", note: "O2 2L" }), true);
+  assert.equal(fv.formatValueHasInput({ value: "", note: "" }), false);
+  assert.equal(fv.formatValueHasInput({ value: "", note: "O2" }), true); // 注記だけでも入力あり
+});
+
+await test("composeFormatFromValues: number の注記が末尾に付く (SpO2 96% O2 2L)", () => {
+  const { text, hasValue } = fv.composeFormatFromValues(vitalFormat(), {
+    0: { value: "96", note: "O2 2L" },
+  });
+  assert.equal(hasValue, true);
+  assert.equal(text, "SpO2 96% O2 2L");
+});
+
+await test("composeFormatFromValues: 旧文字列値 (note 無し) も読める", () => {
+  const { text } = fv.composeFormatFromValues(vitalFormat(), { 0: "96" });
+  assert.equal(text, "SpO2 96%");
+});
+
+await test("composeFormatFromValues: 値が空で注記だけなら出力しない", () => {
+  const { text, hasValue } = fv.composeFormatFromValues(vitalFormat(), {
+    0: { value: "", note: "O2 2L" },
+  });
+  assert.equal(hasValue, false);
+  assert.equal(text, "");
+});
+
+await test("composeFormatFromValues: fraction の注記も末尾に付く", () => {
+  const { text } = fv.composeFormatFromValues(vitalFormat(), {
+    1: { value: "120/53", note: "右上肢" },
+  });
+  assert.equal(text, "BP 120/53 右上肢");
+});
+
+await test("formatIdsForPanel: panel が正本で formatId を解決", () => {
+  const formats = [
+    { id: "a", panel: "O" }, { id: "b", panel: "S" }, { id: "c", panel: "O" },
+  ];
+  assert.deepEqual(fv.formatIdsForPanel("O", formats).sort(), ["a", "c"]);
+  assert.deepEqual(fv.formatIdsForPanel("S", formats), ["b"]);
+  assert.deepEqual(fv.formatIdsForPanel("A", formats), []);
+});
+
+await test("clearPanelClinicalInput: 自由記述 + 同 panel の展開値を消し、他 panel は残す", () => {
+  const formats = [
+    { id: "fmtO", panel: "O" }, { id: "fmtS", panel: "S" },
+  ];
+  const p = {
+    s: "S自由記述", oFree: "O自由記述",
+    a: { text: "A自由記述" }, p: { text: "P自由記述" },
+    formatValues: {
+      fmtO: { 0: { value: "96", note: "O2 2L" } },
+      fmtS: { 0: "発熱" },
+    },
+  };
+  fv.clearPanelClinicalInput(p, "O", formats);
+  assert.equal(p.oFree, "", "O 自由記述が消える");
+  assert.equal(p.formatValues.fmtO, undefined, "O 所属の展開値が消える");
+  // 他 panel は無傷
+  assert.equal(p.s, "S自由記述");
+  assert.deepEqual(p.formatValues.fmtS, { 0: "発熱" });
+  assert.equal(p.a.text, "A自由記述");
+  assert.equal(p.p.text, "P自由記述");
+});
+
+await test("clearPanelClinicalInput: A panel は p.a.text を消す (オブジェクトは保つ)", () => {
+  const p = { a: { text: "所見あり" }, formatValues: {} };
+  fv.clearPanelClinicalInput(p, "A", []);
+  assert.deepEqual(p.a, { text: "" });
 });
 
 // ============================
