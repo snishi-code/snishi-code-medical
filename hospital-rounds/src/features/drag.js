@@ -129,8 +129,12 @@ export function bindLongPressAndDrag(el, getIndexFn, onDrop, onMenu, onTap, drag
 //   getIndexFn     : rowEl の現在 index (DOM 順 = データ配列順)
 //   onDrop(from,to): 並び替え確定コールバック
 //   dragSelector   : 兄弟行を列挙する CSS セレクタ (省略不可。view 自動推定に頼らない)
+//   opts.axis      : "y" = 縦1列リスト (横位置無視・ghost も縦固定。フォーマット項目)。
+//                    "2d"= 横並び/折り返しグリッド (X/Y 両方で最近傍。設定のタグ chip)。
+//                    既定は "2d" (汎用)。縦リストの呼出側だけ "y" を明示する。
 // ============================
-export function bindHandleDrag(handleEl, rowEl, getIndexFn, onDrop, dragSelector) {
+export function bindHandleDrag(handleEl, rowEl, getIndexFn, onDrop, dragSelector, opts = {}) {
+  const axis = opts.axis === "y" ? "y" : "2d";
   let active = false, dragging = false, startX = 0, startY = 0;
 
   const onMove = (e) => {
@@ -142,9 +146,9 @@ export function bindHandleDrag(handleEl, rowEl, getIndexFn, onDrop, dragSelector
       const dy = pt.clientY - startY;
       if (Math.sqrt(dx * dx + dy * dy) > 6) {
         dragging = true;
-        // axis:"y" = 縦リスト。横位置は無関係 (Y のみで最近傍判定)、ghost も縦移動だけに
-        // 固定する。左端ハンドルから縦に動かすだけで並び替わる (2D グリッドと別挙動)。
-        startCustomDrag(rowEl, getIndexFn(), pt.clientX, pt.clientY, dragSelector, { axis: "y" });
+        // axis を engine へ。"y" は Y のみ最近傍 + ghost 縦固定、"2d" は従来どおり
+        // X/Y 両方の最近傍 + ghost が指に追従 (折り返しタグ chip 用)。
+        startCustomDrag(rowEl, getIndexFn(), pt.clientX, pt.clientY, dragSelector, { axis });
       }
     }
     if (dragging) moveCustomDrag(pt.clientX, pt.clientY);

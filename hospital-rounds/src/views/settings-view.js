@@ -289,13 +289,15 @@ function makeTagChip(idx) {
   });
   wrap.appendChild(del);
 
-  // 並び替え: 見えるハンドルからドラッグ (chip 全体が ghost / 並び替え対象)
+  // 並び替え: 見えるハンドルからドラッグ (chip 全体が ghost / 並び替え対象)。
+  // タグ chip は横並び・折り返しなので axis:"2d" (X/Y 両方で最近傍判定)。
   bindHandleDrag(
     handle,
     wrap,
     () => idx,
     (fromIdx, toIdx) => { moveTag(fromIdx, toIdx); renderTagsList(); if (_renderPatientUIFn) _renderPatientUIFn(); },
-    ".tagSettingList .tagSettingChip"
+    ".tagSettingList .tagSettingChip",
+    { axis: "2d" }
   );
 
   return wrap;

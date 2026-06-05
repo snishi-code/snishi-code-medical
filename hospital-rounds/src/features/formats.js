@@ -846,7 +846,8 @@ function renderFormatEditItems(host) {
     handle.title = t("format.reorderItem.title");
     handle.setAttribute("aria-label", t("format.reorderItem.aria"));
     handle.innerHTML = icon("reorder", 18);
-    bindHandleDrag(handle, row, () => i, onFormatItemDrop, "#formatEditItems .formatEditItemRow");
+    // 縦1列リスト: axis:"y" (左端ハンドルから縦移動だけで並び替え)
+    bindHandleDrag(handle, row, () => i, onFormatItemDrop, "#formatEditItems .formatEditItemRow", { axis: "y" });
     row.appendChild(handle);
 
     // 1) ラベル入力 (常に左)
