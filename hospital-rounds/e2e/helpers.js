@@ -109,6 +109,40 @@ export async function addUser(page, name) {
   await inp.press("Enter");
 }
 
+// 受信ボックス (recvMemo / recvShared) が IDB に durable 保存されるまで待つ。
+// 保存は input → scheduleSave の 180ms debounce 経由なので、保存確定前に reload すると
+// (CI の低速 chromium では特に) beforeunload フラッシュが間に合わず値が消える。reload 前に
+// 「いずれかの病棟 bundle の meta に expected が書かれた」ことを IDB から直接確認する。
+// 病棟 bundle レコード形: { id, userId, label, title, updatedAt, bundle:{ sections:{ meta } } }。
+export async function waitRecvPersisted(page, expected, timeout = 6000) {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async (exp) => {
+          const db = await new Promise((res) => {
+            const r = indexedDB.open("hospital-rounds");
+            r.onsuccess = () => res(r.result);
+            r.onerror = () => res(null);
+          });
+          if (!db) return false;
+          return await new Promise((res) => {
+            const tx = db.transaction("bundles", "readonly");
+            const q = tx.objectStore("bundles").getAll();
+            q.onsuccess = () => {
+              const found = (q.result || []).some((rec) => {
+                const meta = rec && rec.bundle && rec.bundle.sections && rec.bundle.sections.meta;
+                return meta && (meta.recvMemo === exp || meta.recvShared === exp);
+              });
+              res(found);
+            };
+            q.onerror = () => res(false);
+          });
+        }, expected),
+      { timeout },
+    )
+    .toBe(true);
+}
+
 // __users__ レコードのユーザー数が count 以上になるまで待つ (取込完了の確実な目印)。
 export async function waitUserCount(page, count, timeout = 6000) {
   await expect
