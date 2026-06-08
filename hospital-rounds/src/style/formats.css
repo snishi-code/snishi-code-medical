@@ -136,9 +136,12 @@
       word-break: break-word;
     }
     .formatCardValue:hover { background: #f3f4f6; }
+    /* 空欄は文言を出さず、破線 + 薄い面で「まだ何も入っていない入力面」として控えめに
+       見せる (P5 P1)。min-height (44px) は base 側で確保済みなのでタップ面は保たれる。 */
     .formatCardValue.empty {
+      border-style: dashed;
+      background: #fafafa;
       color: var(--muted, #9ca3af);
-      font-style: italic;
     }
     /* ワンタップ正常チェック (text item)。押下済み (=normal と一致) は緑塗り。 */
     .formatCardNormalBtn {
@@ -731,8 +734,8 @@
       height: 18px;
       flex: 0 0 auto;
     }
-    /* 展開(A) / クイック(B) 二択セグメント。included フォーマットの表示方法を選ぶ */
-    /* 展開/クイック/規定文 の 3 択。等幅セルで正中分割 (歪み防止) */
+    /* 展開(A) / クイック(B) の 2 択セグメント。included フォーマットの表示方法を選ぶ。
+       等幅セルで正中分割 (歪み防止)。旧「規定文」は撤去 (P5)。 */
     .formatGroupModeSeg {
       flex: 0 0 auto;
       display: flex;

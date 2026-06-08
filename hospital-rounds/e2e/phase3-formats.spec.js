@@ -139,7 +139,7 @@ test("セット編集: あるパネルの最後の展開フォーマットを外
   // デフォルトセットの編集を開く
   await page.locator("#setFormatGroups .formatListRow.formatGroupDefaultRow .iconBtn").first().click();
   await expect(page.locator("#formatGroupEditOverlay")).toHaveClass(/active/);
-  // S「自覚症状」行の表示方法セグメント: [展開][クイック][規定文]
+  // S「自覚症状」行の表示方法セグメント: [展開][クイック] (規定文は P5 で撤去)
   const sRow = page.locator("#formatGroupEditFormats .formatGroupEditOpt", { hasText: "自覚症状" });
   const expandBtn = sRow.locator(".formatGroupModeBtn").nth(0);
   const quickBtn = sRow.locator(".formatGroupModeBtn").nth(1);

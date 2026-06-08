@@ -87,10 +87,13 @@ export function renderMemoScreen(renderHomeFn, opts, navigateToPatientFn) {
       row.appendChild(numBtn);
     }
 
-    const inp = document.createElement("input");
-    inp.type = "text";
+    // 本文は textarea。患者画面 (detailMemoText) と同じく改行をそのまま入力・表示し、
+    // 内容に応じて縦に伸びる (CSS field-sizing)。「見ている本文をそのまま編集する」感覚に
+    // 揃える (P5 P0)。詳細編集欄に文字数上限が無いので、ここでも上限を設けない (片側だけ
+    // 200 字で切れると両画面で挙動が食い違う)。
+    const inp = document.createElement("textarea");
     inp.autocomplete = "off";
-    inp.maxLength = 200;
+    inp.rows = 1;
     inp.value = String(p?.memo ?? "");
     inp.addEventListener("input", () => {
       p.memo = String(inp.value ?? "");

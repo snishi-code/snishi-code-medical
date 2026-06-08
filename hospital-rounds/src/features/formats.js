@@ -184,12 +184,20 @@ export function quickAccessFormatsForPanel(panel, group) {
   return out;
 }
 
-// パネルごとに 1 つ作る format ランチャー (☰)。グループ外 (C) も含む全フォーマットへの
-// 入口。タップで入力モーダルを開く (カーソル位置に挿入)。
+// パネルごとに 1 つ作る format ランチャー (☰)。既にカードとして見えている展開
+// フォーマットは候補から除外し (再選択の意味が薄く重複に見えるため)、まだカードに
+// 出ていないフォーマット (クイック chip / グループ外 C) への入口に絞る (P5 P1)。
+// 非展開フォーマットへの到達性は維持する。タップで入力モーダルを開く。
 function makeFormatPicker(panel, onChange) {
   return makeTagPicker({
     launcher: true,
-    entries: () => formatsForPanel(panel).map(f => ({ value: f.id, label: f.name })),
+    entries: () => {
+      const p = appState.patients[selectedNo - 1];
+      const shown = new Set(shownCardFormatsForPanel(panel, p).map(f => f.id));
+      return formatsForPanel(panel)
+        .filter(f => !shown.has(f.id))
+        .map(f => ({ value: f.id, label: f.name }));
+    },
     onChange,
     iconOnly: true,
     iconHtml: FORMAT_PICKER_HAMBURGER_SVG,
@@ -247,38 +255,48 @@ const EXPANDED_HOST_ID = { S: "sExpanded", O: "oExpanded", A: "aExpanded", P: "p
 // チェック(正常)アイコン (lucide: check)。
 const CHECK_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
+// 患者画面にカードとして並ぶフォーマットを順序付きで返す: 常時出す展開カード
+// (実効グループ + デフォルトフォールバック) + 値が入っている非展開フォーマット
+// (クイック/ランチャーで入力 → 「展開」されたもの)。renderExpandedFormats と ☰ ランチャー
+// の除外判定が同じ集合を参照するための単一ソース (P5 P1)。
+export function shownCardFormatsForPanel(panel, patient) {
+  if (!patient) return [];
+  const fv = (patient.formatValues && typeof patient.formatValues === "object") ? patient.formatValues : {};
+  const group = resolveActiveGroup(patient);
+  const expand = effectiveExpandedFormatsForPanel(panel, group);
+  const shown = new Set(expand.map(f => f.id));
+  const extras = formatsForPanel(panel)
+    .filter(f => !shown.has(f.id) && composeFormatFromValues(f, fv[f.id] || {}).hasValue);
+  return [...expand, ...extras];
+}
+
 export function renderExpandedFormats(panel, hostEl) {
   if (!hostEl) return;
   hostEl.textContent = "";
   const p = appState.patients[selectedNo - 1];
   if (!p) return;
   if (!p.formatValues || typeof p.formatValues !== "object") p.formatValues = {};
-  const fv = p.formatValues;
-  const group = resolveActiveGroup(p);
-  // 常時出す展開カード (実効グループ + デフォルトフォールバック)。
-  const expand = effectiveExpandedFormatsForPanel(panel, group);
-  const shown = new Set(expand.map(f => f.id));
-  // 値が入っている非展開フォーマット (クイック/ランチャーで入力 → 「展開」されたもの)。
-  const extras = formatsForPanel(panel)
-    .filter(f => !shown.has(f.id) && composeFormatFromValues(f, fv[f.id] || {}).hasValue);
-  for (const format of [...expand, ...extras]) hostEl.appendChild(buildExpandedWidget(format, p));
+  for (const format of shownCardFormatsForPanel(panel, p)) hostEl.appendChild(buildExpandedWidget(format, p));
 }
 
 // number/fraction/text 各 item の「カード上の値表示」テキストと空判定。
+// 空欄は「未入力」等の文言をカード本文に出さない (まだ何も入っていない入力面として
+// 薄く見せるだけ。CSS .formatCardValue.empty が破線プレースホルダ表示)。タップ可能性は
+// aria-label / title / 44px タップ面で担保する (P5 P1)。
 function cardItemDisplay(format, item, kind, stored) {
   if (kind === "number") {
     const { value, note } = readNumericEntry(stored);
     const v = value.trim();
-    if (!v) return { text: t("format.card.empty"), empty: true };
+    if (!v) return { text: "", empty: true };
     return { text: `${v}${item.unit || ""}${note.trim() ? " " + note.trim() : ""}`, empty: false };
   }
   if (kind === "fraction") {
     const { value, note } = readNumericEntry(stored);
-    if (!value.replace("/", "").trim()) return { text: t("format.card.empty"), empty: true };
+    if (!value.replace("/", "").trim()) return { text: "", empty: true };
     return { text: `${value}${item.unit || ""}${note.trim() ? " " + note.trim() : ""}`, empty: false };
   }
   const v = String(stored ?? "").trim();
-  if (!v) return { text: t("format.card.empty"), empty: true };
+  if (!v) return { text: "", empty: true };
   return { text: v, empty: false };
 }
 

@@ -88,9 +88,14 @@
 
     .memoRow textarea {
       resize: vertical;
-      /* 共有ページの textarea を メモページの input (border-box 33.5px) と同じ
-         初期高さに揃える (#9)。必要ならユーザーが縦ドラッグで伸ばせる。 */
-      min-height: 34px;
+      /* 本文 (プロブレムリスト/共有) は textarea。改行をそのまま表示し、内容に応じて
+         縦に伸びる (field-sizing)。未対応ブラウザは min-height + resize:vertical で
+         degrade。患者画面 (detailMemoText/detailSharedText) と同じ「見たまま編集」体験
+         に揃える (P5 P0)。長文は textarea の soft-wrap で行内に折り返り、はみ出さない。 */
+      min-height: 38px;
+      max-height: 40vh;
+      line-height: 1.4;
+      field-sizing: content;
       font-family: inherit;
     }
 
@@ -100,7 +105,10 @@
        edit モードの部屋/氏名/タグ インライン編集は従来どおり横並びを維持
        (既存の患者取り違え対策: 行ごとのオブジェクト参照束縛・ソートロックを壊さない)。 */
     @media (max-width: 640px) {
-      .memoRow.read {
+      /* read だけでなく edit も縦2段に積む:「患者見出し行 (部屋/氏名/タグ) + 本文」。
+         read/edit のレイアウト差を最小化し、編集に入っても本文が横に潰れない (P5 P0)。 */
+      .memoRow.read,
+      .memoRow.edit {
         flex-direction: column;
         align-items: stretch;
         gap: 8px;
@@ -112,8 +120,15 @@
         font-size: 17px;
       }
       .memoRow.read input,
-      .memoRow.read textarea {
+      .memoRow.read textarea,
+      .memoRow.edit textarea {
         width: 100%;
+      }
+      /* edit 時、氏名欄は見出し行が専有の1段になったぶん横幅を使えるようにする
+         (部屋/タグは固定、氏名が残り幅を取る)。「詰めすぎない」(P5 P0)。 */
+      .memoRow.edit .nameDoctorRow > input.memoNoInp {
+        flex: 1 1 auto;
+        width: auto;
       }
     }
 

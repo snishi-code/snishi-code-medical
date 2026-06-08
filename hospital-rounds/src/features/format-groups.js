@@ -319,24 +319,25 @@ function buildGroupFormatRow(f, panel) {
   row.appendChild(lab);
 
   if (included) {
-    // 表示方法を 3 択セグメントで選ぶ: 展開(A) / クイック(B) / 規定文。
-    //   展開   = expandFormatIds に入れる (本文上に入力欄)
-    //   クイック = どちらにも入れない (ヘッダーのチップ)
-    //   規定文  = defaultFormatIds に入れる (欄が空のとき出力に補完)
-    // 排他 (1 つの表示方法のみ)。規定文はパネル毎 1 つ制限を撤去 (複数可 = 全て補完)。
+    // 表示方法を 2 択セグメントで選ぶ: 展開(A) / クイック(B)。
+    //   展開   = expandFormatIds に入れる (本文上に常時カード = ワンタップ入力面)
+    //   クイック = どちらにも入れない (ヘッダーのチップ。タップで入力モーダル)
+    // 旧「規定文」(defaultFormatIds による空欄補完) は QR fallback 撤去で挙動が無く
+    // なったため日常導線から外した。データ層 (defaultFormatIds) と QR wire は forward-compat
+    // のため温存し、ここでは出さない。既存の規定文データはクイック扱いで表示し、表示方法を
+    // 触ると下の setMode が defaultFormatIds から外して整理する (P5 P1)。
     if (!Array.isArray(target.expandFormatIds)) target.expandFormatIds = [];
-    const mode = target.expandFormatIds.includes(f.id) ? "expand"
-               : target.defaultFormatIds.includes(f.id) ? "default" : "quick";
+    const mode = target.expandFormatIds.includes(f.id) ? "expand" : "quick";
     const setMode = (next) => {
-      // 修正1: そのパネルの「最後の展開フォーマット」を quick/規定文 へ落とすのは不可。
+      // 修正1: そのパネルの「最後の展開フォーマット」を quick へ落とすのは不可。
       if (next !== "expand" && isLastExpandInPanel(target, settings.formats, f.id, panel)) {
         alert(t("formatGroup.expand.lastBlocked", { panel: t("panel." + panel) }));
         return;
       }
       target.expandFormatIds = target.expandFormatIds.filter(x => x !== f.id);
+      // 旧「規定文」割当が残っていたら、表示方法を触ったタイミングで整理する。
       target.defaultFormatIds = target.defaultFormatIds.filter(x => x !== f.id);
       if (next === "expand") target.expandFormatIds.push(f.id);
-      else if (next === "default") target.defaultFormatIds.push(f.id);
       renderFormatsCheckList();
     };
     const seg = document.createElement("div");
@@ -344,7 +345,6 @@ function buildGroupFormatRow(f, panel) {
     for (const [key, label, title] of [
       ["expand", t("formatGroup.mode.expand"), t("formatGroup.mode.expand.title")],
       ["quick",  t("formatGroup.mode.quick"),  t("formatGroup.mode.quick.title")],
-      ["default", t("formatGroup.mode.default"), t("formatGroup.mode.default.title")],
     ]) {
       const b = document.createElement("button");
       b.type = "button";
