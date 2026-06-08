@@ -5,6 +5,14 @@ import { exitAllEdits } from "./edit-toggle.js";
 import { captureSnapshot, REASON } from "./snapshots.js";
 
 export function showView(which, pushState = true) {
+  // 画面遷移時は入力欄のフォーカスを外す。前画面 (別患者の SOAP/メモ等) の
+  // textarea/input にフォーカスが残ったまま遷移すると、遷移先でキーボードが勝手に
+  // 出たり画面が飛んだりする。患者を開いた直後に勝手に入力欄へフォーカスが入る
+  // 問題もこれで防ぐ (detail を開く共通経路はここを必ず通る)。
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")) {
+    try { ae.blur(); } catch (_) { /* noop */ }
+  }
   // ビューを切り替える前に、どこかで開いていた編集モードを必ず閉じる
   exitAllEdits();
   // 画面遷移直前の浅いアンドゥ用スナップショット (変化が無ければ snapshots 側で
@@ -28,7 +36,7 @@ export function showView(which, pushState = true) {
   if (docsViewEl) docsViewEl.classList.toggle("active", which === "docs");
 
   // ヘッダーのナビボタンを CSS の attribute selector で active 表示する
-  // ためのフラグ。html[data-view="memo"] #headerMemoBtn { ... } などで使う
+  // ためのフラグ。html[data-view="memo"] のセレクタでビュー対応ボタンを装飾する等に使う
   document.documentElement.dataset.view = which;
 
   if (which !== "shared") {

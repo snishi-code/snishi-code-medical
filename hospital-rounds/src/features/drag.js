@@ -116,15 +116,99 @@ export function bindLongPressAndDrag(el, getIndexFn, onDrop, onMenu, onTap, drag
   el.addEventListener("mousedown", down);
 }
 
+// ============================
+// ハンドル起点のドラッグ並び替え (長押し不要)
+//
+// bindLongPressAndDrag が「要素全体を長押し → ドラッグ」なのに対し、こちらは
+// 見える handle の pointerdown で即ドラッグを開始する。入力欄が同居する行
+// (フォーマット編集の項目・設定のタグ chip 等) で「掴む場所はハンドルに限定」し、
+// 入力中のドラッグ暴発を防ぐ用途。ghost / 最近傍判定は既存の低レベル関数
+// (startCustomDrag / moveCustomDrag / endCustomDrag) を流用する。
+//   handleEl       : ドラッグ開始トリガ (グリップ)
+//   rowEl          : ghost の元 + 並び替え対象の行要素 (handle の親行)
+//   getIndexFn     : rowEl の現在 index (DOM 順 = データ配列順)
+//   onDrop(from,to): 並び替え確定コールバック
+//   dragSelector   : 兄弟行を列挙する CSS セレクタ (省略不可。view 自動推定に頼らない)
+//   opts.axis      : "y" = 縦1列リスト (横位置無視・ghost も縦固定。フォーマット項目)。
+//                    "2d"= 横並び/折り返しグリッド (X/Y 両方で最近傍。設定のタグ chip)。
+//                    既定は "2d" (汎用)。縦リストの呼出側だけ "y" を明示する。
+// ============================
+export function bindHandleDrag(handleEl, rowEl, getIndexFn, onDrop, dragSelector, opts = {}) {
+  const axis = opts.axis === "y" ? "y" : "2d";
+  let active = false, dragging = false, startX = 0, startY = 0;
+
+  const onMove = (e) => {
+    if (!active) return;
+    const pt = e.touches ? e.touches[0] : e;
+    if (e.cancelable) e.preventDefault();
+    if (!dragging) {
+      const dx = pt.clientX - startX;
+      const dy = pt.clientY - startY;
+      if (Math.sqrt(dx * dx + dy * dy) > 6) {
+        dragging = true;
+        // axis を engine へ。"y" は Y のみ最近傍 + ghost 縦固定、"2d" は従来どおり
+        // X/Y 両方の最近傍 + ghost が指に追従 (折り返しタグ chip 用)。
+        startCustomDrag(rowEl, getIndexFn(), pt.clientX, pt.clientY, dragSelector, { axis });
+      }
+    }
+    if (dragging) moveCustomDrag(pt.clientX, pt.clientY);
+  };
+
+
+  const onUp = (e) => {
+    if (dragging) {
+      if (e.cancelable) e.preventDefault();
+      endCustomDrag(onDrop);
+    }
+    active = false;
+    dragging = false;
+    unbindDoc();
+  };
+
+  const bindDoc = () => {
+    document.addEventListener("touchmove", onMove, { passive: false });
+    document.addEventListener("touchend", onUp);
+    document.addEventListener("touchcancel", onUp);
+    document.addEventListener("mousemove", onMove, { passive: false });
+    document.addEventListener("mouseup", onUp);
+  };
+
+  const unbindDoc = () => {
+    document.removeEventListener("touchmove", onMove);
+    document.removeEventListener("touchend", onUp);
+    document.removeEventListener("touchcancel", onUp);
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+  };
+
+  const down = (e) => {
+    if (e.touches && e.touches.length > 1) return;
+    if (e.type === "mousedown" && e.button !== 0) return;
+    const pt = e.touches ? e.touches[0] : e;
+    startX = pt.clientX;
+    startY = pt.clientY;
+    active = true;
+    // handle はドラッグ専用領域なのでスクロール/テキスト選択を抑止して掴みを優先
+    if (e.cancelable) e.preventDefault();
+    bindDoc();
+  };
+
+  handleEl.addEventListener("touchstart", down, { passive: false });
+  handleEl.addEventListener("mousedown", down);
+}
+
 let dragGhost = null;
 let dragSourceIdx = -1;
 let dragOverIdx = -1;
 let dragElements = [];
+let dragAxis = null;    // "y" = 縦リスト (handle ドラッグ)。null = 2D グリッド (既定)
+let dragLockLeft = 0;   // 縦リスト時に ghost の X を固定する左座標 (横ジャンプ防止)
 
-function startCustomDrag(sourceEl, sourceIdx, clientX, clientY, dragSelector) {
+function startCustomDrag(sourceEl, sourceIdx, clientX, clientY, dragSelector, opts = {}) {
   dragSourceIdx = sourceIdx;
   dragOverIdx = sourceIdx;
   dragElements = [];
+  dragAxis = opts.axis === "y" ? "y" : null;
   let query = "";
   if (dragSelector) {
     query = dragSelector;
@@ -144,6 +228,7 @@ function startCustomDrag(sourceEl, sourceIdx, clientX, clientY, dragSelector) {
   }
 
   const rect = sourceEl.getBoundingClientRect();
+  dragLockLeft = rect.left;
   dragGhost = sourceEl.cloneNode(true);
   dragGhost.style.position = "fixed";
   dragGhost.style.left = rect.left + "px";
@@ -151,7 +236,9 @@ function startCustomDrag(sourceEl, sourceIdx, clientX, clientY, dragSelector) {
   dragGhost.style.width = rect.width + "px";
   dragGhost.style.height = rect.height + "px";
   dragGhost.style.margin = "0";
-  dragGhost.style.zIndex = "9999";
+  // モーダル overlay (z-index:10000) より前面に。9999 だと編集モーダル上のドラッグで
+  // ghost が背面に隠れて「ポップアップの裏を動く」ように見えていた。
+  dragGhost.style.zIndex = "10001";
   dragGhost.style.pointerEvents = "none";
   dragGhost.style.opacity = "0.8";
   dragGhost.style.boxShadow = "0 20px 40px rgba(0,0,0,0.2)";
@@ -164,7 +251,9 @@ function startCustomDrag(sourceEl, sourceIdx, clientX, clientY, dragSelector) {
 
 function moveCustomDrag(clientX, clientY) {
   if (!dragGhost) return;
-  dragGhost.style.left = (clientX - dragGhost.offsetWidth / 2) + "px";
+  // 縦リスト (axis:"y") は X を元の行位置に固定し Y だけ追従 = まっすぐ上下にスライド。
+  // 2D グリッドは従来どおり指の真下に ghost 中心を合わせる。
+  dragGhost.style.left = (dragAxis === "y" ? dragLockLeft : clientX - dragGhost.offsetWidth / 2) + "px";
   dragGhost.style.top = (clientY - dragGhost.offsetHeight / 2) + "px";
 
   let bestIdx = dragSourceIdx;
@@ -172,8 +261,12 @@ function moveCustomDrag(clientX, clientY) {
   for (const item of dragElements) {
     const cx = item.rect.left + item.rect.width / 2;
     const cy = item.rect.top + item.rect.height / 2;
-    const dist = Math.sqrt((cx - clientX) ** 2 + (cy - clientY) ** 2);
-    if (dist < minDist && dist < 100) {
+    // 縦リストは Y のみで最近傍を取る (横位置は無関係。左端ハンドルでも縦移動で効く)。
+    // 2D グリッドは中心点までのユークリッド距離 + 100px 上限で従来挙動を維持。
+    const dist = dragAxis === "y"
+      ? Math.abs(cy - clientY)
+      : Math.sqrt((cx - clientX) ** 2 + (cy - clientY) ** 2);
+    if (dist < minDist && (dragAxis === "y" || dist < 100)) {
       minDist = dist;
       bestIdx = item.idx;
     }
@@ -203,6 +296,7 @@ function endCustomDrag(onDrop) {
   dragSourceIdx = -1;
   dragOverIdx = -1;
   dragElements = [];
+  dragAxis = null;
 }
 
 export function onPatientDrop(fromIdx, toIdx) {

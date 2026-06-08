@@ -10,6 +10,7 @@ import {
   clone,
 } from "./constants.js";
 import { projectBundle, parseBundle, getSection, SECTION } from "./bundle.js";
+import { formatValueHasInput } from "./features/format-values.js";
 import { t } from "./i18n.js";
 import { showToast } from "./toast.js";
 import {
@@ -296,11 +297,12 @@ export function isPatientEmpty(p) {
   if (p.oFree) return false;
   if (p.a && p.a.text) return false;
   if (p.p && p.p.text) return false;
-  // 展開(A)フォーマットに入力値があれば空ではない
+  // 展開(A)フォーマットに入力値があれば空ではない (値は文字列でも { value, note }
+  // オブジェクトでも formatValueHasInput が正しく判定する)
   if (p.formatValues && typeof p.formatValues === "object") {
     for (const fid of Object.keys(p.formatValues)) {
       const vals = p.formatValues[fid];
-      if (vals && typeof vals === "object" && Object.values(vals).some(v => String(v ?? "").replace("/", "").trim())) return false;
+      if (vals && typeof vals === "object" && Object.values(vals).some(formatValueHasInput)) return false;
     }
   }
   // 「移動済」マーカーが立っているスロットは履歴として残してあるので空ではない
