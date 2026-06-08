@@ -1,6 +1,6 @@
 "use strict";
 
-import { appState, settings } from "./store.js";
+import { appState } from "./store.js";
 import { resolveActiveGroup } from "./features/format-groups.js";
 import { composeExpandedForPanel } from "./features/formats.js";
 
@@ -29,33 +29,8 @@ export function utf8ByteLength(text) {
   return unescape(encodeURIComponent(String(text ?? ""))).length;
 }
 
-// 1 つの規定文フォーマットを text 化する (normal を持つ text item を結合)。
-function renderOneDefault(def) {
-  const labelSep = typeof def.labelSep === "string" ? def.labelSep : "：";
-  const parts = [];
-  for (const item of (def.items || [])) {
-    if ((item.kind || "text") !== "text") continue; // normal を持つのは text のみ
-    const label = String(item.label ?? "").trim();
-    const normal = String(item.normal ?? "").trim();
-    if (!normal) continue;
-    parts.push(label ? `${label}${labelSep}${normal}` : normal);
-  }
-  return parts.join(def.joiner || ", ");
-}
-
-// 実効グループが対象パネルに指定した「規定文」フォーマットの中身を text として描画する。
-// 空欄パネルの fallback テキスト生成。グループの defaultFormatIds を参照 (パネル内に
-// 複数あれば全て補完 = 改行結合)。未指定なら空文字。
-function renderDefaultForPanel(panel, group) {
-  if (!group) return "";
-  const fmts = (settings && Array.isArray(settings.formats)) ? settings.formats : [];
-  const defIds = Array.isArray(group.defaultFormatIds) ? group.defaultFormatIds : [];
-  // group 内の順序を保つため defaultFormatIds 順に取り出す
-  const defs = defIds.map(id => fmts.find(f => f.id === id)).filter(f => f && f.panel === panel);
-  return defs.map(renderOneDefault).filter(Boolean).join("\n");
-}
-
 // パネルの自由記述テキスト (S/O は直接フィールド、A/P は {text})。
+// 既存患者の自由記述 (s / oFree / a.text / p.text) を消さず QR にも残すための互換読み取り。
 function panelFreeText(p, panel) {
   if (panel === "O") return multiLineText(p?.oFree ?? "");
   if (panel === "S") return multiLineText(p?.s ?? "");
@@ -64,15 +39,17 @@ function panelFreeText(p, panel) {
   return "";
 }
 
-// パネル出力 = 展開(A)フォーマットの値 + 自由記述。両方空なら規定文 fallback。
+// パネル出力 = 展開(A)フォーマットの入力値 (formatValues) + 既存自由記述。
+// Phase 3: 未タップ欄に既定文を自動補完する fallback は撤去した。出力される文は原則
+// 「ユーザーがタップ/入力したもの」だけにし、A 層が「未入力なのに入力済み」と誤認するのを
+// 避ける (空欄パネルは QR でも空)。
 function buildPanelOut(p, panel, group) {
   const aText = composeExpandedForPanel(panel, group, p?.formatValues || {});
   const free = panelFreeText(p, panel);
   const parts = [];
   if (aText && aText.trim()) parts.push(aText.trim());
   if (free) parts.push(free);
-  if (parts.length) return parts.join("\n");
-  return renderDefaultForPanel(panel, group);
+  return parts.join("\n");
 }
 
 export function buildSoapParts(no) {

@@ -32,17 +32,50 @@
         { "label": "食事",     "kind": "text", "normal": "摂取良好" },
         { "label": "排泄",     "kind": "text", "normal": "尿・便ともに特記なし" }
       ]
+    },
+    {
+      "name": "自覚症状",
+      "panel": "S",
+      "joiner": ", ",
+      "labelSep": "：",
+      "titleWrap": "",
+      "tags": [],
+      "items": [
+        { "label": "", "kind": "text", "normal": "特に新しい訴えなし" }
+      ]
+    },
+    {
+      "name": "評価",
+      "panel": "A",
+      "joiner": ", ",
+      "labelSep": "：",
+      "titleWrap": "",
+      "tags": [],
+      "items": [
+        { "label": "", "kind": "text", "normal": "全身状態は安定" }
+      ]
+    },
+    {
+      "name": "方針",
+      "panel": "P",
+      "joiner": ", ",
+      "labelSep": "：",
+      "titleWrap": "",
+      "tags": [],
+      "items": [
+        { "label": "", "kind": "text", "normal": "現治療を継続" }
+      ]
     }
   ],
 
-  "_formatGroups_comment": "起動時に必ず 1 つ存在するデフォルトグループ。formatIndexes は上の formats 配列への index 参照 (ID は実行時生成のため index で束ねる)。defaultFormatIndexes は空欄補完に使う規定文 (パネル毎 最大 1)。expandFormatIndexes は本文上に展開(A)するフォーマット (残りはチップ=B)。",
+  "_formatGroups_comment": "起動時に必ず 1 つ存在するデフォルトグループ。formatIndexes は上の formats 配列への index 参照 (ID は実行時生成のため index で束ねる)。Phase 3: 各パネル (S/O/A/P) の既定フォーマットを expandFormatIndexes に入れ、患者画面に常時タップ可能なカードとして出す。defaultFormatIndexes (旧: 空欄補完の規定文) は QR fallback 撤去に伴い未使用 (空のまま)。",
   "formatGroups": [
     {
       "name": "標準",
       "isDefault": true,
-      "formatIndexes": [0, 1],
+      "formatIndexes": [0, 1, 2, 3, 4],
       "defaultFormatIndexes": [],
-      "expandFormatIndexes": [0]
+      "expandFormatIndexes": [0, 1, 2, 3, 4]
     }
   ],
 

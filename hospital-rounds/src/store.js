@@ -161,6 +161,34 @@ function normalizeFormat(raw) {
   return { id, name, panel, joiner, labelSep, titleWrap, tags, items };
 }
 
+// Phase 3: タップ中心入力のため、各パネル (S/O/A/P) に「既定フォーマットカード」を
+// 最低 1 つ常設する。既存設定で欠けているパネルだけ DEFAULT_FORMATS から補い、デフォルト
+// グループの formatIds + expandFormatIds に加える (= 患者画面に常時タップ可能なカードとして
+// 出す)。非破壊・冪等: 既にそのパネルのフォーマットがあれば触らない (ユーザーのカスタムを
+// 壊さない)。新規ユーザーは defaults.json で 5 つ揃っているのでここは no-op。
+function backfillPanelDefaults(out) {
+  const formats = Array.isArray(out.formats) ? out.formats : (out.formats = []);
+  const groups = Array.isArray(out.formatGroups) ? out.formatGroups : [];
+  const def = groups.find(g => g.isDefault) || groups[0] || null;
+  const havePanels = new Set(formats.map(f => f && f.panel));
+  const seeds = Array.isArray(DEFAULT_FORMATS) ? DEFAULT_FORMATS : [];
+  for (const panel of FORMAT_PANELS) {
+    if (havePanels.has(panel)) continue;
+    const seed = seeds.find(f => f.panel === panel);
+    if (!seed) continue;
+    const created = normalizeFormat({ ...seed, id: newFormatId() });
+    if (!created) continue;
+    formats.push(created);
+    havePanels.add(panel);
+    if (def) {
+      if (!Array.isArray(def.formatIds)) def.formatIds = [];
+      if (!Array.isArray(def.expandFormatIds)) def.expandFormatIds = [];
+      if (!def.formatIds.includes(created.id)) def.formatIds.push(created.id);
+      if (!def.expandFormatIds.includes(created.id)) def.expandFormatIds.push(created.id);
+    }
+  }
+}
+
 function normalizeSettings(raw) {
   const out = defaultSettings();
   if (!raw || typeof raw !== "object") return out;
@@ -233,6 +261,9 @@ function normalizeSettings(raw) {
       if (v === "restricted" || v === "free") out.qrRedistribution[k] = v;
     }
   }
+  // Phase 3: 各パネルに既定フォーマットカードを常設する補完 (formats + formatGroups が
+  // 確定した後に実行)。
+  backfillPanelDefaults(out);
   return out;
 }
 
@@ -265,6 +296,13 @@ export function makeDefaultPatient() {
     //   transferredTo: 移動先ワークスペースの label (表示用)。
     transferredAt: 0,
     transferredTo: "",
+    // 削除済み病棟 (Trash) への退避マーカー (Phase 2 患者ライフサイクル)。
+    //   deletedAt: 退避した時刻 (ms epoch)。0 = 未削除。30日超で自動 purge。
+    //   deletedFromWorkspaceId / deletedFromWorkspaceLabel: 復元先の既定 (退避元病棟)。
+    // 転棟 (transferred*) とは別物: 削除退避は元病棟に (移) を残さず Trash へ移す。
+    deletedAt: 0,
+    deletedFromWorkspaceId: "",
+    deletedFromWorkspaceLabel: "",
     // この患者で active なフォーマットグループ ID。null = 通常 (= 全 pin チップ
     // が見える)。設定されている場合、各パネルの strip はそのグループに属する
     // フォーマットだけを表示する (= 患者固有の「お気に入り切替」)。
@@ -307,6 +345,8 @@ export function isPatientEmpty(p) {
   }
   // 「移動済」マーカーが立っているスロットは履歴として残してあるので空ではない
   if (p.transferredAt) return false;
+  // 「削除済み退避」マーカーが立っているスロット (Trash 内) も空ではない
+  if (p.deletedAt) return false;
   return true;
 }
 
@@ -342,6 +382,9 @@ function normalizePatientArray(arr) {
       updatedAt: (r && typeof r.updatedAt === "number") ? r.updatedAt : 0,
       transferredAt: (r && typeof r.transferredAt === "number") ? r.transferredAt : 0,
       transferredTo: (r && typeof r.transferredTo === "string") ? r.transferredTo : "",
+      deletedAt: (r && typeof r.deletedAt === "number") ? r.deletedAt : 0,
+      deletedFromWorkspaceId: (r && typeof r.deletedFromWorkspaceId === "string") ? r.deletedFromWorkspaceId : "",
+      deletedFromWorkspaceLabel: (r && typeof r.deletedFromWorkspaceLabel === "string") ? r.deletedFromWorkspaceLabel : "",
       activeFormatGroupId: (r && typeof r.activeFormatGroupId === "string") ? r.activeFormatGroupId : "",
       formatValues: (r && r.formatValues && typeof r.formatValues === "object") ? r.formatValues : {},
       origin: (r && r.origin === "external") ? "external" : "",

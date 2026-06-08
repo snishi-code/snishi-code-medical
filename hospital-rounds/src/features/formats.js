@@ -396,6 +396,9 @@ function buildNumberRow(host, item, opts = {}) {
 
   const label = document.createElement("div");
   label.className = "formatInputLabel";
+  // ラベルが空の text item (規定文「特に新しい訴えなし」等) はラベル列の余白を残さず
+  // 入力本文を左詰めにする (Phase 3 task5)。
+  if (!String(item.label ?? "").trim()) label.classList.add("formatInputLabelEmpty");
   label.textContent = item.label;
   row.appendChild(label);
 
@@ -433,6 +436,9 @@ function buildFractionRow(host, item, opts = {}) {
 
   const label = document.createElement("div");
   label.className = "formatInputLabel";
+  // ラベルが空の text item (規定文「特に新しい訴えなし」等) はラベル列の余白を残さず
+  // 入力本文を左詰めにする (Phase 3 task5)。
+  if (!String(item.label ?? "").trim()) label.classList.add("formatInputLabelEmpty");
   label.textContent = item.label;
   row.appendChild(label);
 
@@ -497,6 +503,9 @@ function buildTextRow(host, item, opts = {}) {
 
   const label = document.createElement("div");
   label.className = "formatInputLabel";
+  // ラベルが空の text item (規定文「特に新しい訴えなし」等) はラベル列の余白を残さず
+  // 入力本文を左詰めにする (Phase 3 task5)。
+  if (!String(item.label ?? "").trim()) label.classList.add("formatInputLabelEmpty");
   label.textContent = item.label;
   row.appendChild(label);
 

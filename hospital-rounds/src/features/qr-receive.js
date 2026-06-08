@@ -3,14 +3,13 @@
 // ============================
 // 統一 QR 受信ルーター
 //
-// 設定の「QR から追加」1 箇所で、カメラ / QR リーダー / 貼り付け のいずれでも
-// QR を受け取り、読み取った kind (ST/FS/FMT) を見て該当フローの受信処理へ
-// 自動で振り分ける。各フロー (createQrFlow) が init 時に registerReceiver で
-// 自分の kind を登録する。
+// 設定の「QR から追加」1 箇所で、カメラ / 貼り付け のいずれでも QR を受け取り、
+// 読み取った kind (ST/FS/FMT) を見て該当フローの受信処理へ自動で振り分ける。
+// 各フロー (createQrFlow) が init 時に registerReceiver で自分の kind を登録する。
 //
-// HID キーボードウェッジ型リーダーは WebHID ではなく「フォーカス中の入力欄に
-// 文字列が入る」方式で対応 (隠し input への focus 固定=案B は不採用、視認できる
-// 入力欄に貼り付け/打鍵させる)。
+// テキスト受信はブラウザの専用 API ではなく「視認できる入力欄に QR の中身を
+// 貼り付ける」方式で受ける (隠し input への focus 固定=案B は不採用)。カメラが
+// 使えない端末や、別端末で読み取った QR の中身を渡したいときの受信口。
 //
 // 単ページは即適用、多ページは順に読み込み (進捗は各フローの ingest 表示を流用)。
 // ============================
@@ -89,7 +88,7 @@ export function initQrReceive() {
     close: closeQrReceiveOverlay,
   };
 
-  // テキスト / リーダー入力
+  // テキスト貼り付け入力
   const area = el("qrReceiveArea");
   const readBtn = el("qrReceiveReadBtn");
   if (readBtn) readBtn.addEventListener("click", () => {

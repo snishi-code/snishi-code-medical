@@ -121,3 +121,64 @@
       font-size: 12px;
       color: var(--text);
     }
+
+    /* 患者管理 (転棟/削除/復元/完全削除) — 詳細画面下部の見える導線。
+       長押しに頼らず、共有欄の下に常設する。削除系は赤系だが、ペール背景 + 濃枠で
+       画面を危険色で支配しない (年配ユーザーが怖がらない程度の控えめさ)。 */
+    .detailLifecycleActions {
+      margin-top: 14px;
+    }
+    .lifecycleNote {
+      margin-bottom: 8px;
+      padding: 8px 10px;
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #9a3412;
+    }
+    .lifecycleTitle {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .lifecycleBtnRow {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .lifecycleBtn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 44px;
+      padding: 10px 18px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .lifecycleBtn:active { transform: translateY(1px); }
+    .lifecycleBtn:disabled { opacity: 0.5; cursor: default; }
+    .lifecycleBtnIcon {
+      display: inline-flex;
+      align-items: center;
+    }
+    /* 転棟 / 復元 = 青系 (主要・前向き操作) */
+    .lifecycleMove,
+    .lifecycleRestore {
+      border-color: var(--blue-border);
+      background: var(--blue-light);
+      color: var(--blue);
+    }
+    /* 削除 / 完全削除 = 赤系のペール (危険だが控えめ) */
+    .lifecycleDelete {
+      border-color: #fecaca;
+      background: #fef2f2;
+      color: #b91c1c;
+    }

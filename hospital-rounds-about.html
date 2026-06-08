@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>回診 — snishi-code</title>
+  <link rel="stylesheet" href="/shared.css" />
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="header-left">
+      <a class="logo-mark" data-link="apex" aria-label="ホームへ">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="16 18 22 12 16 6"/>
+          <polyline points="8 6 2 12 8 18"/>
+        </svg>
+      </a>
+      <a class="site-name" data-link="apex">snishi-code</a>
+    </div>
+    <nav>
+      <a class="nav-link" data-link="apex">ホーム</a>
+      <a class="nav-link active" data-link="medical">医療</a>
+      <a class="nav-link" data-link="personal">個人</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="badge badge-blue">医療用ツール</div>
+    <h1>回診</h1>
+    <p>
+      病棟回診で、患者ごとの状態確認と簡易メモ作成をすばやく行うためのツールです。
+      患者一覧、回診状態、SOAP形式のメモを端末内で管理できます。
+    </p>
+  </section>
+
+  <p class="section-label">基本の使い方</p>
+  <div class="notice" style="margin-bottom:32px">
+    <div class="notice-title">タップだけで回診メモを作る</div>
+    <ul>
+      <li>患者を選び、状態をタップして、回診の進み具合をざっくり確認できます。</li>
+      <li>診察内容は SOAP 形式で簡単に残せます。必要な項目を選ぶだけでも最低限のメモを作れます。</li>
+      <li>文字入力が難しい場面では、定型フォーマットやステータス操作を中心に使えます。</li>
+    </ul>
+  </div>
+
+  <p class="section-label">使いこなすと便利なこと</p>
+  <div class="notice" style="margin-bottom:32px">
+    <div class="notice-title">現場に合わせて育てられます</div>
+    <ul>
+      <li>よく使う診察文や観察項目をフォーマットとして登録できます。</li>
+      <li>QRコードで設定や共有用テキストを受け渡しできます。</li>
+      <li>ホーム画面に追加すれば、PWAとしてオフラインでも使えます。</li>
+      <li>破壊的な操作の前にはスナップショットを残し、復元しやすくします。</li>
+    </ul>
+  </div>
+
+  <p class="section-label">アプリを起動</p>
+  <a class="app-card" href="/hospital-rounds/" style="max-width:420px; border-color:var(--blue-border); margin-bottom:56px">
+    <div class="app-icon app-icon-blue">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+      </svg>
+    </div>
+    <div>
+      <div class="app-name">回診アプリを開く</div>
+      <div class="app-desc">初めて使う場合は、開いたあとホーム画面に追加して使うことをおすすめします。</div>
+    </div>
+    <div class="app-footer">
+      <span class="tag tag-blue">PWA・端末内保存</span>
+      <span class="arrow">→</span>
+    </div>
+  </a>
+
+  <p class="section-label">データとセキュリティ</p>
+  <div class="notice" style="margin-bottom:32px">
+    <div class="notice-title">入力データは端末内に保存されます</div>
+    <ul>
+      <li>このアプリは外部サーバーへデータを送信しません。</li>
+      <li>QRコードはユーザー操作による受け渡し手段です。表示・読み取り内容を確認してから使ってください。</li>
+      <li>端末の紛失、故障、ブラウザデータ削除に備えて、必要なデータは定期的にバックアップしてください。</li>
+      <li>医療現場で使用する場合は、所属施設の情報管理ルールに従ってください。</li>
+    </ul>
+  </div>
+
+  <p class="section-label">ご利用にあたって</p>
+  <div class="notice">
+    <div class="notice-title">免責・ライセンス</div>
+    <ul>
+      <li>このツールは診療録や電子カルテの代替ではありません。ご利用は自己責任でお願いします。</li>
+      <li>Apache License 2.0 のもとで公開しています。著作権表示を保持していただければ、再配布・改変・商用利用が可能です。</li>
+      <li>重要な判断や正式な記録は、必ず施設の正規手順に従ってください。</li>
+    </ul>
+  </div>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <span>© 2026 snishi-code · Apache License 2.0</span>
+    <a data-link="github" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</footer>
+
+<script src="/site-links.js"></script>
+</body>
+</html>

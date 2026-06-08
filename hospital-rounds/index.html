@@ -505,7 +505,8 @@
         </div>
         <div class="cardBody">
           <div class="formatExpandedHost" id="sExpanded"></div>
-          <textarea id="sText"></textarea>
+          <div class="panelFreeLabel" data-i18n="panel.free.label">補足・メモ（任意）</div>
+          <textarea id="sText" class="panelFreeText"></textarea>
         </div>
       </div>
 
@@ -516,7 +517,8 @@
         </div>
         <div class="cardBody">
           <div class="formatExpandedHost" id="oExpanded"></div>
-          <textarea id="oFreeText" style="min-height:120px"></textarea>
+          <div class="panelFreeLabel" data-i18n="panel.free.label">補足・メモ（任意）</div>
+          <textarea id="oFreeText" class="panelFreeText"></textarea>
         </div>
       </div>
 
@@ -527,7 +529,8 @@
         </div>
         <div class="cardBody">
           <div class="formatExpandedHost" id="aExpanded"></div>
-          <textarea id="aText" style="min-height:90px"></textarea>
+          <div class="panelFreeLabel" data-i18n="panel.free.label">補足・メモ（任意）</div>
+          <textarea id="aText" class="panelFreeText"></textarea>
         </div>
       </div>
 
@@ -538,7 +541,8 @@
         </div>
         <div class="cardBody">
           <div class="formatExpandedHost" id="pExpanded"></div>
-          <textarea id="pText" style="min-height:90px"></textarea>
+          <div class="panelFreeLabel" data-i18n="panel.free.label">補足・メモ（任意）</div>
+          <textarea id="pText" class="panelFreeText"></textarea>
         </div>
       </div>
 
@@ -554,43 +558,16 @@
         </div>
       </div>
 
+      <!-- 患者管理 (見える導線): 通常病棟=転棟/削除, 削除済み病棟=転棟して復元/完全削除。
+           文脈別の中身は detail.js#renderLifecycleActions が描画・配線する。 -->
+      <div id="detailLifecycleActions" class="detailLifecycleActions"></div>
+
       <div class="qrHint" style="margin-top:10px">
         保存先 (IndexedDB): <span class="mono" id="storageKeyLabel"></span>
       </div>
       </div>
     </section>
 
-    <div class="popupMenuOverlay" id="actionMenuOverlay">
-      <div class="popupMenu actionMenu">
-        <div class="popupTitle" id="actionMenuTitle">患者の操作</div>
-        <!-- 3 列 2 行: [+1] [−1] [→1] / [+5] [−5] [→5] -->
-        <div class="actionGrid actionGrid3col">
-          <button class="actionGridBtn add" id="actionAdd1Btn" type="button" data-i18n-title="patientButton.action.add1.title" data-i18n-aria="patientButton.action.add1.aria" title="1人追加（下へ）" aria-label="1人追加（下へ）">
-            <span class="actionGridSign">+</span><span class="actionGridNum">1</span>
-          </button>
-          <button class="actionGridBtn del" id="actionDeleteBtn" type="button" data-i18n-title="patientButton.action.delete1.title" data-i18n-aria="patientButton.action.delete1.aria" title="1人削除" aria-label="1人削除">
-            <span class="actionGridSign">−</span><span class="actionGridNum">1</span>
-          </button>
-          <button class="actionGridBtn move" id="actionMove1Btn" type="button" data-i18n-title="patientButton.action.move1.title" data-i18n-aria="patientButton.action.move1.aria" title="1人を他ワークスペースへ移動" aria-label="1人を他ワークスペースへ移動">
-            <svg class="actionGridIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h13"/><path d="m13 6 6 6-6 6"/><path d="M21 4v16"/></svg>
-            <span class="actionGridNum">1</span>
-          </button>
-          <button class="actionGridBtn add" id="actionAdd5Btn" type="button" data-i18n-title="patientButton.action.add5.title" data-i18n-aria="patientButton.action.add5.aria" title="5人追加（下へ）" aria-label="5人追加（下へ）">
-            <span class="actionGridSign">+</span><span class="actionGridNum">5</span>
-          </button>
-          <button class="actionGridBtn del" id="actionDelete5Btn" type="button" data-i18n-title="patientButton.action.delete5.title" data-i18n-aria="patientButton.action.delete5.aria" title="5人削除（下へ）" aria-label="5人削除（下へ）">
-            <span class="actionGridSign">−</span><span class="actionGridNum">5</span>
-          </button>
-          <button class="actionGridBtn move" id="actionMove5Btn" type="button" data-i18n-title="patientButton.action.move5.title" data-i18n-aria="patientButton.action.move5.aria" title="5人を他ワークスペースへ移動" aria-label="5人を他ワークスペースへ移動">
-            <svg class="actionGridIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h13"/><path d="m13 6 6 6-6 6"/><path d="M21 4v16"/></svg>
-            <span class="actionGridNum">5</span>
-          </button>
-        </div>
-        <button class="actionMenuClose" id="actionCancelBtn" type="button" data-i18n-title="patientButton.action.close.title" data-i18n-aria="patientButton.action.close.aria" title="閉じる" aria-label="閉じる">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-    </div>
 
     <!-- フォーマット入力モーダル: numeric / text を 1 つで動的描画 -->
     <div class="popupMenuOverlay" id="formatInputOverlay">
@@ -802,7 +779,7 @@
     </div>
 
     <!-- 統一 QR 受信 (設定全体 / セット / フォーマット を kind 判定で自動振り分け)。
-         qr-receive.js が配線。カメラ + リーダー/貼り付け入力欄。 -->
+         qr-receive.js が配線。カメラ + 貼り付け入力欄。 -->
     <div class="popupMenuOverlay" id="qrReceiveOverlay">
       <div class="popupMenu qrFormatMenu">
         <button class="popupCloseX" id="qrReceiveCloseBtn" data-close-popup type="button" data-i18n-aria="common.close" data-i18n-title="common.close" aria-label="閉じる" title="閉じる">
@@ -810,7 +787,7 @@
         </button>
         <div class="popupTitle" data-i18n="qrReceive.title">QR から追加</div>
         <div class="qrReceiveBody">
-          <div class="qrTextRecvHint" data-i18n="qrReceive.overlayHint">カメラで読み取るか、QR リーダー・コピーした QR の中身を下に貼り付けて「QR として読む」を押してください。設定全体 / セット / フォーマット を自動で見分けます。複数ページのときは 1 つずつ読み込みます。</div>
+          <div class="qrTextRecvHint" data-i18n="qrReceive.overlayHint">カメラで読み取るか、コピーした QR の中身を下に貼り付けて「QR として読む」を押してください。設定全体 / セット / フォーマット を自動で見分けます。複数ページのときは 1 つずつ読み込みます。</div>
           <button class="secondary qrReceiveScanBtn" id="qrReceiveScanBtn" type="button" data-i18n="qr.scan">
             カメラで QR を読む
           </button>
@@ -826,7 +803,7 @@
     <!-- 患者を他ワークスペースへ移動: 移動先ピッカー -->
     <div class="popupMenuOverlay" id="movePatientOverlay">
       <div class="popupMenu movePatientMenu">
-        <div class="popupTitle" data-i18n="move.title">他のワークスペースへ移動</div>
+        <div class="popupTitle" id="movePatientTitle" data-i18n="move.title">他のワークスペースへ移動</div>
         <div class="movePatientHint" id="movePatientHint" data-i18n="move.hint">移動先のワークスペースを選んでください。元のワークスペースには「(移)」マークで履歴が残ります。</div>
         <div class="ioDbList" id="movePatientList"></div>
       </div>

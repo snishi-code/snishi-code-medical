@@ -272,7 +272,7 @@
       image-rendering: pixelated;
     }
 
-    /* QR テキスト受信パネル (カメラ非対応 / リーダー / 貼り付け用)。
+    /* QR テキスト受信パネル (カメラ非対応 / 貼り付け用)。
        createQrFlow が .qrWrap カード末尾に注入する。全 view + フォーマット
        overlay で共通。 */
     .qrTextRecv {

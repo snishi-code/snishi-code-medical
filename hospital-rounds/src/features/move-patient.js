@@ -17,7 +17,7 @@
 //   - これは admin 実装時にあらためて考える。今はローカル端末モードなので op は流さない
 // ============================
 
-import { appState, settings, selectedNo, markUpdated, scheduleSave, persistActiveOrThrow, makeDefaultPatient, createWorkspaceWithPatients } from "../store.js";
+import { appState, settings, selectedNo, markUpdated, scheduleSave, persistActiveOrThrow, makeDefaultPatient, isPatientEmpty, createWorkspaceWithPatients } from "../store.js";
 import { STATUS } from "../constants.js";
 import {
   listBundles, loadBundle, saveBundle, deleteBundle, getActiveWorkspaceId,
@@ -31,12 +31,22 @@ function newPatientId() {
   return makeDefaultPatient().pid;
 }
 
-// 現アクティブ以外のワークスペース一覧 (id / label / title / updatedAt)
+// Trash 病棟判定 (正本は patient-lifecycle.js#isTrashWorkspaceId)。patient-lifecycle が
+// この move-patient を import しているため、逆向き import で循環しないようローカル複製。
+const TRASH_WS_PREFIX = "__trash__::";
+function isTrashWsId(id) {
+  return typeof id === "string" && id.startsWith(TRASH_WS_PREFIX);
+}
+
+// 現アクティブ以外のワークスペース一覧 (id / label / title / updatedAt)。
+// 「削除済み」(Trash) は転棟先・復元先の候補から除外する (普通の転棟で Trash に入れない /
+// Trash から Trash へ復元させない)。Trash 操作は patient-lifecycle.js 専用 API で行う。
 export async function listOtherWorkspaces() {
   const activeId = getActiveWorkspaceId();
   const all = await listBundles();
   return all
     .filter(r => r.id !== activeId)
+    .filter(r => !isTrashWsId(r.id))
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 }
 
@@ -137,6 +147,9 @@ export async function movePatients(srcPatientIndices, destId, destLabel) {
   for (const idx of srcPatientIndices) {
     const p = appState.patients[idx];
     if (!p) continue;
+    // 空スロット (初期 50 患者など) は転棟しない。元病棟に (移) 履歴を残す意味が
+    // 無く、移動先に空の BLUE コピーが増えるだけ。UI でも抑止するがデータ層でも防御。
+    if (isPatientEmpty(p)) continue;
     if (isPatientTransferred(p)) continue;
     valid.push({ idx, src: p });
   }
@@ -181,6 +194,7 @@ export async function moveToNewWorkspace(srcPatientIndices, label) {
   for (const idx of srcPatientIndices) {
     const p = appState.patients[idx];
     if (!p) continue;
+    if (isPatientEmpty(p)) continue; // 空スロットは新規病棟へ移さない (データ層防御)
     if (isPatientTransferred(p)) continue;
     valid.push({ idx, src: p });
   }
@@ -228,16 +242,37 @@ export function decorateTransferredName(name, p) {
 
 let _onMoveDoneCb = null;
 let _targetIndices = [];   // 移動対象の patient index 配列。複数 = ホーム長押し「移動 ×5」
+// ピッカーの用途。"move" = 通常転棟 (movePatients)。"restore" = Trash からの復元
+// (呼び出し側が渡す onPick で実処理。movePatients は使わない = Trash に (移) を残さない)。
+let _pickMode = "move";
+let _onPickCb = null;
 
-// ピッカーを開く (1 患者 / 複数患者 兼用)。完了時に onMoveDone() を呼ぶ
+// ピッカーを開く (1 患者 / 複数患者 兼用)。完了時に onMoveDone() を呼ぶ。
 //   patientIndices: 数値 (1 患者) or 配列 (複数患者)
-export function openMovePatientModal(patientIndices, onMoveDone) {
+//   opts.mode: "restore" で復元モード。opts.onPick(wsId, label): 行クリック時の実処理。
+export function openMovePatientModal(patientIndices, onMoveDone, opts) {
   const overlay = document.getElementById("movePatientOverlay");
   if (!overlay) return;
   _onMoveDoneCb = onMoveDone || null;
   _targetIndices = Array.isArray(patientIndices) ? patientIndices.slice() : [patientIndices];
+  _pickMode = (opts && opts.mode === "restore") ? "restore" : "move";
+  _onPickCb = (opts && typeof opts.onPick === "function") ? opts.onPick : null;
+  applyModalChrome();
   renderMovePatientList();
   overlay.classList.add("active");
+}
+
+// モーダルの見出し/補足を用途別に差し替える (data-i18n 初期値の上書き)。
+function applyModalChrome() {
+  const title = document.getElementById("movePatientTitle");
+  const hint = document.getElementById("movePatientHint");
+  if (_pickMode === "restore") {
+    if (title) title.textContent = t("patient.restore");
+    if (hint) hint.textContent = t("trash.banner");
+  } else {
+    if (title) title.textContent = t("move.title");
+    if (hint) hint.textContent = t("move.hint");
+  }
 }
 
 function closeMovePatientModal() {
@@ -245,6 +280,8 @@ function closeMovePatientModal() {
   if (overlay) overlay.classList.remove("active");
   _onMoveDoneCb = null;
   _targetIndices = [];
+  _pickMode = "move";
+  _onPickCb = null;
 }
 
 // 「＋ 新規ワークスペースへ移動」行を作る。クリックで名前を尋ね、その患者だけを
@@ -291,8 +328,8 @@ async function renderMovePatientList() {
   const host = document.getElementById("movePatientList");
   if (!host) return;
   host.textContent = "";
-  // 先頭に「＋ 新規ワークスペースへ移動」を常に出す
-  host.appendChild(buildNewWorkspaceRow());
+  // 先頭に「＋ 新規ワークスペースへ移動」(復元モードでは既存病棟へのみ復元するので出さない)
+  if (_pickMode !== "restore") host.appendChild(buildNewWorkspaceRow());
   const others = await listOtherWorkspaces();
   if (!others.length) {
     // 既存 ws が無い場合でも「＋ 新規」は使えるので empty 文言は補助的に
@@ -319,6 +356,15 @@ async function renderMovePatientList() {
     row.addEventListener("click", async () => {
       const destName = ws.label || ws.title || t("io.ws.untitled");
       const indices = _targetIndices.slice();
+      // 復元モード: 実処理は呼び出し側 (detail.js) の onPick に委譲 (restore API を呼ぶ)。
+      if (_pickMode === "restore") {
+        const cb = _onPickCb;
+        const done = _onMoveDoneCb;
+        closeMovePatientModal();
+        if (cb) await cb(ws.id, destName);
+        if (done) done();
+        return;
+      }
       const isBulk = indices.length > 1;
       // confirm: 単一なら患者ラベル, 複数なら件数表記
       let confirmed;

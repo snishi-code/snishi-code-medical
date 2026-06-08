@@ -16,7 +16,7 @@ import {
 import { clearPanelClinicalInput } from "./features/format-values.js";
 
 import { renderHome, updateCountChip } from "./views/home.js";
-import { renderDetail, renderQrIfNeeded, initDetailEvents, initStatusButtons, initQrNavButtons } from "./views/detail.js";
+import { renderDetail, renderQrIfNeeded, initDetailEvents, initStatusButtons, initQrNavButtons, initLifecycleActions } from "./views/detail.js";
 import { renderMemoScreen, setMemoEditMode } from "./views/memo.js";
 import { renderSharedScreen, setSharedEditMode } from "./views/shared-list.js";
 import { renderSettings, initSettingsView } from "./views/settings-view.js";
@@ -30,9 +30,10 @@ import { initUserPicker } from "./features/user-picker.js";
 import { initEventLog, logEvent, EVENT } from "./features/eventlog.js";
 import { initSnapshots, captureSnapshot, REASON } from "./features/snapshots.js";
 import { DOCS_BUNDLE } from "./docs-bundle.js";
-import { setDataChangeHandler, initActionMenu } from "./features/drag.js";
+import { setDataChangeHandler } from "./features/drag.js";
 import { initFormats, setOnTextChanged as setOnFormatTextChanged, setOnExpandedInput, setFormatStoreAdapter } from "./features/formats.js";
 import { initMovePatient } from "./features/move-patient.js";
+import { purgeExpiredPatientLifecycleRecords } from "./features/patient-lifecycle.js";
 import { initQrFormat, closeQrFormatOverlay, setOnFormatApplied, setFormatStoreAdapter as setQrFormatStoreAdapter } from "./features/qr-format.js";
 import { initQrSet, closeQrSetOverlay, setOnSetApplied } from "./features/qr-set.js";
 import { initQrReceive, openQrReceiveOverlay } from "./features/qr-receive.js";
@@ -97,12 +98,26 @@ const { navToHome, navToMemo, navToShared, navToSettings } = createNavigators({
 
 const openDocsPage = createDocsOpener({ docsBundle: DOCS_BUNDLE });
 
+// 30日超の「削除済み」患者・通常病棟の (移) stub を自動完全削除する。起動後・病棟切替
+// 後・ユーザー切替後に呼ぶ (= Trash 表示時も切替経由でカバー)。アクティブ病棟が変化
+// したら再描画する (live と durable のズレ防止は purge 内、ここは表示反映のみ)。
+async function runAutoPurge() {
+  try {
+    const res = await purgeExpiredPatientLifecycleRecords();
+    if (res && res.activeChanged) refreshPatientUI();
+  } catch (e) {
+    console.warn("auto-purge failed:", e);
+  }
+}
+
 // ============================
 // Boot 2: Settings / Detail wiring
 // ============================
 initSettingsView(doRenderDetail, refreshPatientUI, refreshAppWsLabel);
 initDetailEvents(doRenderHome);
 initStatusButtons(doRenderHome);
+// 患者管理 (転棟/削除/復元/完全削除) の成功後はホームへ戻す (現患者が消えるため)。
+initLifecycleActions({ navigateHome: navToHome, refresh: refreshPatientUI });
 initQrNavButtons();
 
 // finishDataChange handler: ドラッグ並び替え・患者移動・削除などデータ変化のたびに
@@ -188,7 +203,6 @@ initImportExport({
   showView,
 });
 initNoAutofill();
-initActionMenu();
 
 // ============================
 // Boot 6: Formats / QR adapters
@@ -464,6 +478,8 @@ setOnWorkspaceChanged(() => {
   refreshAppWsLabel();
   reloadRecvCards(); // 受信ボックスは病棟単位なので切替で再読込
   logEvent(EVENT.WS_SWITCH);
+  // 切替先 (特に削除済み病棟) の期限切れ患者を自動 purge (表示時 purge を兼ねる)
+  runAutoPurge();
 });
 
 // ユーザー切替時に画面全体 + ヘッダー (ユーザー名/病棟) を再描画する (案B)。
@@ -474,6 +490,8 @@ setOnUserChanged(() => {
   refreshAppWsLabel();
   reloadRecvCards(); // 受信ボックスはユーザー/病棟単位なので切替で再読込
   logEvent(EVENT.USER_SWITCH);
+  // 切替先ユーザーの期限切れ患者 (Trash / (移)) を自動 purge
+  runAutoPurge();
 });
 
 // 患者編集 (ステータス変更・SOAP 等) の研究ログ。markUpdated は編集サイトから
@@ -547,6 +565,8 @@ requestStoragePersistence();
 // ============================
 // HTML 内の data-i18n* をすべて t() で埋める。動的 DOM は各 renderer で t() を使う。
 applyI18n();
+// 初回描画の前に自動 purge (起動後)。アクティブ病棟が変われば live appState を更新。
+await runAutoPurge();
 doRenderHome();
 setSelectedNo(1);
 doRenderDetail();

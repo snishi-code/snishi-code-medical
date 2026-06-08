@@ -1,13 +1,13 @@
 "use strict";
 
 import { appState, selectedNo, markUpdated, scheduleSave } from "../store.js";
-import { openActionMenu } from "../features/drag.js";
 import { makePatientTagPicker, makeSharedTagFilterPicker, patientMatchesSharedFilter } from "../features/tags.js";
 import { makeRoomInput, formatPatientLabel, ensureRoomOrder, setRoomOrderLocked } from "../features/room.js";
 import { refreshSharedQrIfActive } from "../features/qr-shared.js";
 import { statusClass } from "../features/status-ui.js";
 import { bindTapOrLongPress } from "../features/touch.js";
 import { makeAddPatientButton } from "../features/add-patient.js";
+import { isTrashActive, isPatientDeleted, makeTrashBanner } from "../features/patient-lifecycle.js";
 
 let _editMode = false;
 
@@ -36,9 +36,12 @@ export function renderSharedScreen(renderHomeFn, opts, navigateToPatientFn) {
   const len = appState.patients.length;
   const limit = opts && typeof opts.limit === "number" ? Math.max(0, Math.min(len, opts.limit)) : len;
   sharedListHost.textContent = "";
+  const trash = isTrashActive();
+  if (trash) sharedListHost.appendChild(makeTrashBanner());
   const frag = document.createDocumentFragment();
   for (let i = 1; i <= limit; i++) {
     const p = appState.patients[i - 1];
+    if (trash && !isPatientDeleted(p)) continue;
     if (!patientMatchesSharedFilter(p)) continue;
     const row = document.createElement("div");
     // read/edit の状態クラス: スマホ幅では read 時に「患者見出し + 共有本文」の2段表示へ
@@ -77,12 +80,8 @@ export function renderSharedScreen(renderHomeFn, opts, navigateToPatientFn) {
       const displayName = formatPatientLabel(p, String(i));
       numBtn.textContent = displayName;
       numBtn.title = displayName;
-      // タップ=患者へ / 長押し=操作メニュー (ドラッグ並べ替えは自動ソート化で撤去)
-      bindTapOrLongPress(
-        numBtn,
-        () => { if (navigateToPatientFn) navigateToPatientFn(i); },
-        () => openActionMenu(appState.patients.indexOf(p))
-      );
+      // タップ=患者へ。長押し操作メニューは Phase 2 で廃止 (詳細下部の見える導線へ)。
+      bindTapOrLongPress(numBtn, () => { if (navigateToPatientFn) navigateToPatientFn(i); });
       row.appendChild(numBtn);
     }
 
@@ -104,6 +103,6 @@ export function renderSharedScreen(renderHomeFn, opts, navigateToPatientFn) {
     frag.appendChild(row);
   }
   sharedListHost.appendChild(frag);
-  // 末尾に「患者を追加する」(長押し不要)。追加→患者シート。onChange は当 view 再描画。
-  sharedListHost.appendChild(makeAddPatientButton(rerender));
+  // 末尾に「患者を追加する」(長押し不要)。追加→患者シート。Trash では追加導線は出さない。
+  if (!trash) sharedListHost.appendChild(makeAddPatientButton(rerender));
 }
