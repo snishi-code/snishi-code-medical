@@ -161,11 +161,25 @@ function normalizeFormat(raw) {
   return { id, name, panel, joiner, labelSep, titleWrap, tags, items };
 }
 
+function appendDefaultFormatSeed(out, def, seed) {
+  const formats = Array.isArray(out.formats) ? out.formats : (out.formats = []);
+  const created = normalizeFormat({ ...seed, id: newFormatId() });
+  if (!created) return null;
+  formats.push(created);
+  if (def) {
+    if (!Array.isArray(def.formatIds)) def.formatIds = [];
+    if (!Array.isArray(def.expandFormatIds)) def.expandFormatIds = [];
+    if (!def.formatIds.includes(created.id)) def.formatIds.push(created.id);
+    if (!def.expandFormatIds.includes(created.id)) def.expandFormatIds.push(created.id);
+  }
+  return created;
+}
+
 // Phase 3: タップ中心入力のため、各パネル (S/O/A/P) に「既定フォーマットカード」を
 // 最低 1 つ常設する。既存設定で欠けているパネルだけ DEFAULT_FORMATS から補い、デフォルト
 // グループの formatIds + expandFormatIds に加える (= 患者画面に常時タップ可能なカードとして
-// 出す)。非破壊・冪等: 既にそのパネルのフォーマットがあれば触らない (ユーザーのカスタムを
-// 壊さない)。新規ユーザーは defaults.json で 5 つ揃っているのでここは no-op。
+// 出す)。さらに `_backfillAlways` 付き seed は、同名同パネルが無ければ既存設定にも追加する
+// (O 欄の S/A/P 相当のシンプルな受け皿など)。非破壊・冪等: 同名があれば触らない。
 function backfillPanelDefaults(out) {
   const formats = Array.isArray(out.formats) ? out.formats : (out.formats = []);
   const groups = Array.isArray(out.formatGroups) ? out.formatGroups : [];
@@ -176,20 +190,28 @@ function backfillPanelDefaults(out) {
     if (havePanels.has(panel)) continue;
     const seed = seeds.find(f => f.panel === panel);
     if (!seed) continue;
-    const created = normalizeFormat({ ...seed, id: newFormatId() });
+    const created = appendDefaultFormatSeed(out, def, seed);
     if (!created) continue;
-    formats.push(created);
     havePanels.add(panel);
-    if (def) {
-      if (!Array.isArray(def.formatIds)) def.formatIds = [];
-      if (!Array.isArray(def.expandFormatIds)) def.expandFormatIds = [];
-      if (!def.formatIds.includes(created.id)) def.formatIds.push(created.id);
-      if (!def.expandFormatIds.includes(created.id)) def.expandFormatIds.push(created.id);
-    }
+  }
+  for (const seed of seeds) {
+    if (!seed || !seed._backfillAlways) continue;
+    const name = String(seed.name || "").trim();
+    const panel = seed.panel;
+    if (!name || !FORMAT_PANELS.includes(panel)) continue;
+    const exists = formats.some(f => f && f.panel === panel && String(f.name || "").trim() === name);
+    if (!exists) appendDefaultFormatSeed(out, def, seed);
   }
 }
 
-function normalizeSettings(raw) {
+function hasBackfilledDefaultFormats(raw, normalized) {
+  const rawKeys = new Set((Array.isArray(raw?.formats) ? raw.formats : [])
+    .map(f => `${f?.panel || ""}\n${String(f?.name || "").trim()}`));
+  return (Array.isArray(normalized?.formats) ? normalized.formats : [])
+    .some(f => f && !rawKeys.has(`${f.panel || ""}\n${String(f.name || "").trim()}`));
+}
+
+export function normalizeSettings(raw) {
   const out = defaultSettings();
   if (!raw || typeof raw !== "object") return out;
   // 未知フィールド温存 (forward compatibility): 旧バージョンが新版で追加された
@@ -504,6 +526,10 @@ export function initStore(opts) {
     catch (e) { console.warn("initStore: load global settings failed:", e); }
     if (gs) {
       settings = normalizeSettings(gs);
+      if (hasBackfilledDefaultFormats(gs, settings)) {
+        try { await saveGlobalSettings(settings); }
+        catch (e) { console.warn("initStore: save normalized settings failed:", e); }
+      }
     } else {
       const seed = bundle ? getSection(bundle, SECTION.SETTINGS) : null;
       settings = normalizeSettings(seed || {});
@@ -679,6 +705,10 @@ export async function switchUser(targetUserId) {
   try { gs = await loadGlobalSettings(); } catch (_) {} // current=target に解決済み
   if (gs) {
     settings = normalizeSettings(gs);
+    if (hasBackfilledDefaultFormats(gs, settings)) {
+      try { await saveGlobalSettings(settings); }
+      catch (e) { console.warn("switchUser: save normalized settings failed:", e); }
+    }
   } else {
     settings = defaultSettings();
     try { await saveGlobalSettings(settings); } catch (e) { console.warn("switchUser: seed settings failed:", e); }

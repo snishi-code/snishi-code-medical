@@ -327,7 +327,8 @@ function buildExpandedWidget(format, patient) {
   return wrap;
 }
 
-// カードの 1 行: ラベル + 値表示 (タップで大入力シート) + (text なら) ワンタップ正常。
+// カードの 1 行: ラベル + (text なら) ワンタップ正常 + 値表示 (タップで大入力シート)。
+// 入力シートと同じくチェックを値の左側に置き、どの項目への正常入力か分かりやすくする。
 function buildCardItemRow(format, item, i, stored, patient) {
   const kind = item.kind || DEFAULT_ITEM_KIND;
   const row = document.createElement("div");
@@ -340,17 +341,6 @@ function buildCardItemRow(format, item, i, stored, patient) {
     lab.textContent = labelText;
     row.appendChild(lab);
   }
-
-  // 値表示は大きいタップ領域。タップで該当 item にフォーカスした大入力シートを開く (修正3)。
-  const valueBtn = document.createElement("button");
-  valueBtn.type = "button";
-  valueBtn.className = "formatCardValue";
-  const disp = cardItemDisplay(format, item, kind, stored[i]);
-  if (disp.empty) valueBtn.classList.add("empty");
-  valueBtn.textContent = disp.text;
-  valueBtn.setAttribute("aria-label", t("format.cell.edit.aria", { label: labelText || format.name }));
-  valueBtn.addEventListener("click", () => openFormatSheet(format, format.panel, i));
-  row.appendChild(valueBtn);
 
   // text item で normal があればワンタップの正常チェック (キーボードを出さない)。
   if (kind === "text" && item.normal) {
@@ -371,6 +361,17 @@ function buildCardItemRow(format, item, i, stored, patient) {
     });
     row.appendChild(normalBtn);
   }
+
+  // 値表示は大きいタップ領域。タップで該当 item にフォーカスした大入力シートを開く (修正3)。
+  const valueBtn = document.createElement("button");
+  valueBtn.type = "button";
+  valueBtn.className = "formatCardValue";
+  const disp = cardItemDisplay(format, item, kind, stored[i]);
+  if (disp.empty) valueBtn.classList.add("empty");
+  valueBtn.textContent = disp.text;
+  valueBtn.setAttribute("aria-label", t("format.cell.edit.aria", { label: labelText || format.name }));
+  valueBtn.addEventListener("click", () => openFormatSheet(format, format.panel, i));
+  row.appendChild(valueBtn);
   return row;
 }
 

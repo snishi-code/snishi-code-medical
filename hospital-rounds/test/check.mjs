@@ -601,6 +601,27 @@ await test("backfill: defaultSettings は S/O/A/P 各パネルに既定フォー
     const fid = settings.formats.find(f => f.panel === panel).id;
     assert.ok(def.expandFormatIds.includes(fid), `${panel} 既定が展開カードに入る`);
   }
+  const simpleOFmt = settings.formats.find(f => f.panel === "O" && f.name === "所見");
+  assert.ok(simpleOFmt, "O 欄にも S/A/P 相当のシンプルな展開フォーマットがある");
+  assert.ok(def.expandFormatIds.includes(simpleOFmt.id), "O 欄のシンプル所見が展開カードに入る");
+});
+
+await test("normalizeSettings: 既存設定にも O 欄のシンプル所見を補填する", () => {
+  const oldSettings = storeForPayload.defaultSettings();
+  const oldSimpleO = oldSettings.formats.find(f => f.panel === "O" && f.name === "所見");
+  assert.ok(oldSimpleO, "fixture setup has current O 所見");
+  oldSettings.formats = oldSettings.formats.filter(f => f.id !== oldSimpleO.id);
+  for (const g of oldSettings.formatGroups) {
+    g.formatIds = g.formatIds.filter(id => id !== oldSimpleO.id);
+    g.expandFormatIds = g.expandFormatIds.filter(id => id !== oldSimpleO.id);
+  }
+
+  const normalized = storeForPayload.normalizeSettings(oldSettings);
+  const restored = normalized.formats.find(f => f.panel === "O" && f.name === "所見");
+  const def = normalized.formatGroups.find(g => g.isDefault);
+  assert.ok(restored, "旧設定にも O 所見が追加される");
+  assert.ok(def.formatIds.includes(restored.id), "O 所見がデフォルトセットに含まれる");
+  assert.ok(def.expandFormatIds.includes(restored.id), "O 所見が展開カードとして表示される");
 });
 
 await test("buildTabPayload: タップ(formatValues)した欄だけ QR に出る / 未タップ欄は空 (fallback 撤去)", () => {
@@ -773,9 +794,10 @@ section("defaults.json");
 await test("DEFAULT_FORMATS comes from defaults.json", async () => {
   const c = await import("../src/constants.js");
   assert.ok(Array.isArray(c.DEFAULT_FORMATS));
-  // Phase 3: 各パネル (S/O/A/P) に既定フォーマットを常設 (O は 2 つ)。
-  assert.equal(c.DEFAULT_FORMATS.length, 5);
+  // Phase 3: 各パネル (S/O/A/P) に既定フォーマットを常設 (O は 3 つ)。
+  assert.equal(c.DEFAULT_FORMATS.length, 6);
   assert.equal(c.DEFAULT_FORMATS[0].name, "バイタル");
+  assert.ok(c.DEFAULT_FORMATS.some(f => f.panel === "O" && f.name === "所見"));
   // 全パネルに最低 1 つ既定フォーマットがある
   const panels = new Set(c.DEFAULT_FORMATS.map(f => f.panel));
   for (const panel of ["S", "O", "A", "P"]) {

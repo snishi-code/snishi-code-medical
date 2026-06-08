@@ -34,6 +34,18 @@
       ]
     },
     {
+      "name": "所見",
+      "panel": "O",
+      "joiner": ", ",
+      "labelSep": "：",
+      "titleWrap": "",
+      "tags": [],
+      "_backfillAlways": true,
+      "items": [
+        { "label": "", "kind": "text", "normal": "特記すべき異常なし" }
+      ]
+    },
+    {
       "name": "自覚症状",
       "panel": "S",
       "joiner": ", ",
@@ -73,9 +85,9 @@
     {
       "name": "標準",
       "isDefault": true,
-      "formatIndexes": [0, 1, 2, 3, 4],
+      "formatIndexes": [0, 1, 2, 3, 4, 5],
       "defaultFormatIndexes": [],
-      "expandFormatIndexes": [0, 1, 2, 3, 4]
+      "expandFormatIndexes": [0, 1, 2, 3, 4, 5]
     }
   ],
 
