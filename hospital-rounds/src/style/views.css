@@ -27,7 +27,10 @@
 
     /* (説明書のインタラクティブデモ #docsDemoBar / .docsDemo* は v8.9.4 で撤去) */
 
-    /* Home grid */
+    /* Home grid
+       スマホは 1 列固定 (老眼・現場で 1 人ずつ大きく確実に押せる)。30人で縦に
+       伸びてもよい — 横に詰めて小さくするより視認性を優先する。タブレット/PC の
+       広い幅でだけ多列にする (360/540px では列を増やさない)。 */
     .grid {
       display: grid;
       gap: 10px;
@@ -35,34 +38,57 @@
       margin-top: 14px;
     }
 
-    @media (min-width: 360px) {
+    @media (min-width: 720px) {
       .grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
 
-    @media (min-width: 540px) {
+    @media (min-width: 960px) {
       .grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
     }
 
-    @media (min-width: 720px) {
+    @media (min-width: 1200px) {
       .grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
       }
     }
 
-    @media (min-width: 900px) {
-      .grid {
-        grid-template-columns: repeat(5, minmax(0, 1fr));
-      }
+    /* 「患者を追加する」: 長押し不要の見える追加導線。一覧 (ホーム/プロブレム/共有)
+       末尾に置く。患者ボタンと取り違えないよう破線 + プラスアイコンで「追加」と分かる
+       見た目にする。 */
+    .addPatientBtn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 56px;
+      border: 2px dashed var(--blue-border, #bfdbfe);
+      border-radius: 14px;
+      background: var(--blue-light, #eff6ff);
+      color: var(--blue, #2563eb);
+      font-size: 17px;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+    }
+    .addPatientBtn:active {
+      transform: translateY(1px);
+    }
+    /* ホーム: 多列でも追加ボタンは全幅で 1 本 (列の途中に紛れない) */
+    .grid .addPatientBtn {
+      grid-column: 1 / -1;
     }
 
     .patientBtn {
       position: relative;
       width: 100%;
-      min-height: 58px;
+      /* スマホ・老眼で 1 人ずつ確実に押せて読める大きさ (1 列化したので縦に余裕がある)。
+         font-weight は 900 だと日本語が潰れて読みにくいので 800 に落とす。 */
+      min-height: 76px;
       border-radius: 14px;
       border: 1px solid var(--status-none-bd);
       background: var(--status-none-bg);
@@ -70,8 +96,8 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 18px;
-      font-weight: 900;
+      font-size: 21px;
+      font-weight: 800;
       color: var(--text);
       cursor: pointer;
       user-select: none;
@@ -141,6 +167,19 @@
       font-weight: 700;
       line-height: 1;
       flex-shrink: 0;
+    }
+
+    /* 編集できることの可視ヒント (鉛筆)。控えめなグレーで右端に固定。タグが多くて
+       はみ出してもこのアイコンは残す (= 編集導線を常に見せる)。 */
+    .detailMetaEditIcon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      margin-left: auto;
+      padding-left: 6px;
+      color: var(--muted, #94a3b8);
+      pointer-events: none;
     }
 
     /* 詳細画面ヘッダー行: [患者メタボタン] [転棟済バナー] を横並び。

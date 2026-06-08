@@ -8,6 +8,7 @@ import { makeRoomInput, formatPatientLabel, ensureRoomOrder, setRoomOrderLocked 
 import { refreshMemoQrIfActive } from "../features/qr-shared.js";
 import { statusClass } from "../features/status-ui.js";
 import { bindTapOrLongPress } from "../features/touch.js";
+import { makeAddPatientButton } from "../features/add-patient.js";
 
 let _editMode = false;
 
@@ -41,7 +42,9 @@ export function renderMemoScreen(renderHomeFn, opts, navigateToPatientFn) {
     const p = appState.patients[i - 1];
     if (!patientMatchesSharedFilter(p)) continue;
     const row = document.createElement("div");
-    row.className = "memoRow";
+    // read/edit の状態クラス: スマホ幅では read 時に「患者見出し + 本文」の2段表示へ
+    // 寄せる (CSS 側で切替)。edit 時は既存の部屋/氏名/タグ インライン編集を維持。
+    row.className = "memoRow " + (_editMode ? "edit" : "read");
 
     if (_editMode) {
       const nameWrap = document.createElement("div");
@@ -100,4 +103,6 @@ export function renderMemoScreen(renderHomeFn, opts, navigateToPatientFn) {
     frag.appendChild(row);
   }
   memoListHost.appendChild(frag);
+  // 末尾に「患者を追加する」(長押し不要)。追加→患者シート。onChange は当 view 再描画。
+  memoListHost.appendChild(makeAddPatientButton(rerender));
 }

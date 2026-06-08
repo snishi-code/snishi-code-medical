@@ -42,7 +42,9 @@ function infoCell(labelKey, inputEl, cellClass) {
 // ステータス選択 (色＋形マークの大ボックスを横一列)。openStatusPicker と同じ見た目
 // だが別オーバーレイを開かずシート内に常時表示する。選択後は再描画して selected を
 // 移すだけ (シートは開いたまま)。
-function buildStatusList(p, patientIdx, onChange) {
+// curIdx は「操作時点の 0-based index を返す関数」。シート表示中にソートで並びが
+// 動いても markUpdated が別患者を指さないよう、固定 index でなく都度解決する。
+function buildStatusList(p, curIdx, onChange) {
   const list = document.createElement("div");
   list.className = "statusPickerList patientSheetStatusList";
   const render = () => {
@@ -60,7 +62,8 @@ function buildStatusList(p, patientIdx, onChange) {
       box.addEventListener("click", (e) => {
         e.stopPropagation();
         p.status = opt.status;
-        markUpdated(patientIdx + 1);
+        const no = curIdx() + 1;
+        if (no > 0) markUpdated(no);
         scheduleSave();
         render();
         if (onChange) onChange();
@@ -80,6 +83,12 @@ export function openPatientSheet(patientIdx, onChange) {
   const p = appState.patients[patientIdx];
   if (!overlay || !body || !p) return;
 
+  // index-safety: シートは「患者オブジェクト p」を捕捉し、各操作 (氏名/部屋/タグ/
+  // ステータス) の保存・タグ get/set は操作時に indexOf(p) で index を取り直す。
+  // 追加直後や部屋番号入力で ensureRoomOrder が並びを変えても、固定 index 由来の
+  // 患者取り違え (別患者に氏名・タグ・ステータスが書かれる) を防ぐ。
+  const curIdx = () => appState.patients.indexOf(p);
+
   body.textContent = "";
 
   // レイアウト方針 (スマホ・現場): 部屋番号/氏名は患者確認用だが頻繁に編集しないので
@@ -96,7 +105,8 @@ export function openPatientSheet(patientIdx, onChange) {
   nameInp.addEventListener("input", () => {
     const next = nameInp.value;
     if (p.name !== next) p.name = next;
-    markUpdated(patientIdx + 1);
+    const no = curIdx() + 1;
+    if (no > 0) markUpdated(no);
     scheduleSave();
     if (onChange) onChange();
   });
@@ -114,8 +124,8 @@ export function openPatientSheet(patientIdx, onChange) {
   const tagBox = document.createElement("div");
   tagBox.className = "patientSheetTags";
   renderTagSelectionInto(tagBox, {
-    getSelected: () => getPatientTags(patientIdx),
-    setSelected: (tags) => setPatientTags(patientIdx, tags),
+    getSelected: () => getPatientTags(curIdx()),
+    setSelected: (tags) => setPatientTags(curIdx(), tags),
     entries: () => getAllTags().map(name => ({ value: name, label: name })),
     onSelectionMutated: () => { if (onChange) onChange(); },
   });
@@ -128,7 +138,7 @@ export function openPatientSheet(patientIdx, onChange) {
   statusLabel.className = "label";
   statusLabel.textContent = t("patientSheet.status");
   statusBar.appendChild(statusLabel);
-  statusBar.appendChild(buildStatusList(p, patientIdx, onChange));
+  statusBar.appendChild(buildStatusList(p, curIdx, onChange));
   body.appendChild(statusBar);
 
   overlay.classList.add("active");

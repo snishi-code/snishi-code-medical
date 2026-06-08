@@ -16,6 +16,7 @@ import { buildTimestampHeader } from "../features/qr-protocol.js";
 import { openPatientSheet } from "../features/patient-sheet.js";
 import { statusClass } from "../features/status-ui.js";
 import { bindTapOrLongPress } from "../features/touch.js";
+import { icon } from "../icons.js";
 
 // statusClass (status-ui.js) / bindTapOrLongPress (touch.js) は共通ヘルパへ移設し、
 // detail.js ↔ home.js の循環 import を解消した。
@@ -231,7 +232,9 @@ export function renderPatientMetaBtn() {
   const labelText = formatPatientLabel(p, String(selectedNo));
   label.textContent = labelText;
   btn.appendChild(label);
-  btn.setAttribute("aria-label", labelText);
+  // aria/title は「タップで編集できる」ことが伝わる文言にする (見た目の主役は名前/部屋)。
+  btn.setAttribute("aria-label", t("patientSheet.editAria", { label: labelText }));
+  btn.title = t("patientSheet.editTitle");
 
   // タグ概要 (設定タグ順。患者が持つ分だけ。多数ははみ出し横スクロール)
   const tagSet = new Set(getPatientTags(selectedNo - 1));
@@ -247,6 +250,14 @@ export function renderPatientMetaBtn() {
     }
     btn.appendChild(tags);
   }
+
+  // 末尾に控えめな編集アイコン (鉛筆)。これが「ここはタップで編集できる」可視ヒント。
+  // 右端固定 (margin-left:auto)。名前/タグの優先順位は変えない (装飾扱い・aria-hidden)。
+  const editIcon = document.createElement("span");
+  editIcon.className = "detailMetaEditIcon";
+  editIcon.innerHTML = icon("edit", 15);
+  editIcon.setAttribute("aria-hidden", "true");
+  btn.appendChild(editIcon);
 }
 
 // ============================

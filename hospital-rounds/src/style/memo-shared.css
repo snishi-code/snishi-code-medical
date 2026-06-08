@@ -94,6 +94,38 @@
       font-family: inherit;
     }
 
+    /* スマホ幅・read (非編集) モード: 患者見出しを上、本文を下に積む2段表示。
+       横並びだと老眼で本文が窮屈になるため、本文に幅をフルに使わせて読みやすくする。
+       患者ボタンはホームほどではないが読める大きさ (44px / 17px) にする。
+       edit モードの部屋/氏名/タグ インライン編集は従来どおり横並びを維持
+       (既存の患者取り違え対策: 行ごとのオブジェクト参照束縛・ソートロックを壊さない)。 */
+    @media (max-width: 640px) {
+      .memoRow.read {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .memoRow.read .memoNoBtn {
+        width: 100%;
+        max-width: none;
+        min-height: 44px;
+        font-size: 17px;
+      }
+      .memoRow.read input,
+      .memoRow.read textarea {
+        width: 100%;
+      }
+    }
+
+    /* 一覧末尾の「患者を追加する」(プロブレム/共有): カード (.memoScroll) 内なので
+       破線でなくカード下端のフルブリードボタンにする。 */
+    .memoScroll > .addPatientBtn {
+      border: none;
+      border-top: 1px solid var(--line);
+      border-radius: 0 0 14px 14px;
+      min-height: 52px;
+    }
+
     .detailMemoWrap {
       margin-top: 10px;
       padding: 10px 12px;

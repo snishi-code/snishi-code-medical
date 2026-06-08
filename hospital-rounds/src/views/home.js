@@ -7,6 +7,7 @@ import { makeSharedTagFilterPicker, patientMatchesSharedFilter, getStatusMark } 
 import { formatPatientLabel, ensureRoomOrder } from "../features/room.js";
 import { bindTapOrLongPress } from "../features/touch.js";
 import { statusClass } from "../features/status-ui.js";
+import { makeAddPatientButton } from "../features/add-patient.js";
 import { t } from "../i18n.js";
 
 // statusClass (status-ui.js) / bindTapOrLongPress (touch.js) は共通ヘルパへ移設し、
@@ -68,5 +69,8 @@ export function renderHome(onPatientClick) {
     frag.appendChild(btn);
   }
   homeGrid.appendChild(frag);
+  // 末尾に「患者を追加する」(長押し不要の見える導線)。追加→患者シートを開く。
+  // onChange はシート内編集の反映先 = ホーム再描画。
+  homeGrid.appendChild(makeAddPatientButton(() => renderHome(onPatientClick)));
   updateCountChip();
 }
