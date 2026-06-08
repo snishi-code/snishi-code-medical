@@ -13,7 +13,7 @@ import {
   initStore, flushSavePending, setOnWorkspaceChanged, setOnUserChanged,
   setMarkUpdatedHandler, setRecvContent,
 } from "./store.js";
-import { clearPanelClinicalInput } from "./features/format-values.js";
+import { clearPanelClinicalInput, formatRemovalBreaksAnyGroupExpand } from "./features/format-values.js";
 
 import { renderHome, updateCountChip } from "./views/home.js";
 import { renderDetail, renderQrIfNeeded, initDetailEvents, initStatusButtons, initQrNavButtons, initLifecycleActions } from "./views/detail.js";
@@ -31,7 +31,7 @@ import { initEventLog, logEvent, EVENT } from "./features/eventlog.js";
 import { initSnapshots, captureSnapshot, REASON } from "./features/snapshots.js";
 import { DOCS_BUNDLE } from "./docs-bundle.js";
 import { setDataChangeHandler } from "./features/drag.js";
-import { initFormats, setOnTextChanged as setOnFormatTextChanged, setOnExpandedInput, setFormatStoreAdapter } from "./features/formats.js";
+import { initFormats, setOnTextChanged as setOnFormatTextChanged, setFormatStoreAdapter } from "./features/formats.js";
 import { initMovePatient } from "./features/move-patient.js";
 import { purgeExpiredPatientLifecycleRecords } from "./features/patient-lifecycle.js";
 import { initQrFormat, closeQrFormatOverlay, setOnFormatApplied, setFormatStoreAdapter as setQrFormatStoreAdapter } from "./features/qr-format.js";
@@ -225,6 +225,13 @@ setFormatStoreAdapter({
     if (!Array.isArray(settings.formats)) return;
     const idx = settings.formats.findIndex(f => f.id === id);
     if (idx < 0) return;
+    // 修正1 (防御): あるグループのあるパネルで「最後の展開フォーマット」を消すと
+    // ワンタップ入力カードが欠けるので削除しない。UI 側 (settings-view) で阻止済みだが、
+    // ここでも fail-closed で握る (silently 消さない)。
+    if (formatRemovalBreaksAnyGroupExpand(id, settings.formats, settings.formatGroups)) {
+      console.warn("deleteFormat blocked: sole expand format for a panel", id);
+      return;
+    }
     settings.formats.splice(idx, 1);
     saveSettings();
   },
@@ -250,10 +257,6 @@ setQrFormatStoreAdapter({
 initFormats();
 setOnFormatTextChanged(() => {
   doRenderDetail();
-  if (typeof renderQrIfNeeded === "function") renderQrIfNeeded();
-});
-// 展開(A)欄の入力毎: 再描画せず QR プレビューだけ軽く更新 (フォーカス維持のため)
-setOnExpandedInput(() => {
   if (typeof renderQrIfNeeded === "function") renderQrIfNeeded();
 });
 

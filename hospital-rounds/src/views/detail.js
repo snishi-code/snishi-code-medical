@@ -388,11 +388,7 @@ export function renderLifecycleActions(p) {
 export function renderDetail(syncDetailMemoDisplay) {
   qrVisible = false;
   const p = appState.patients[selectedNo - 1];
-  const sText = document.getElementById("sText");
-  const aText = document.getElementById("aText");
-  const pText = document.getElementById("pText");
   const detailSharedText = document.getElementById("detailSharedText");
-  const oFreeText = document.getElementById("oFreeText");
 
   if (syncDetailMemoDisplay) syncDetailMemoDisplay();
 
@@ -402,11 +398,10 @@ export function renderDetail(syncDetailMemoDisplay) {
   renderLifecycleActions(p);
   refreshFormatGroupToggle();
 
-  if (sText) sText.value = p.s;
-  if (aText) aText.value = p.a.text;
-  if (pText) pText.value = p.p.text;
   if (detailSharedText) detailSharedText.value = p.shared || "";
-  if (oFreeText) oFreeText.value = String(p.oFree ?? "");
+  // S/O/A/P 自由記述欄は撤去 (修正2)。旧フィールド p.s / p.oFree / p.a.text / p.p.text は
+  // スキーマ温存のためデータとしては残るが、画面にも出さず QR 平文にも出力しない (dormant)。
+  // 不可視データの電子カルテ流出を防ぐため payload.js が出力経路から切り離している。
 
   // 各パネル: ヘッダーに ☰ ランチャー、本文上に実効グループの展開入力欄
   renderFormatStrip("S", document.getElementById("sFormatStrip"));
@@ -427,13 +422,10 @@ export function renderDetail(syncDetailMemoDisplay) {
 
 export function initDetailEvents(renderHomeFn) {
   const detailMemoText = document.getElementById("detailMemoText");
-  const sText = document.getElementById("sText");
-  const aText = document.getElementById("aText");
-  const pText = document.getElementById("pText");
   const detailSharedText = document.getElementById("detailSharedText");
-  const oFreeText = document.getElementById("oFreeText");
 
   // 氏名編集は患者シート (openPatientSheet) に集約 (詳細ヘッダーから個別入力欄を撤去)。
+  // S/O/A/P 自由記述欄も撤去 (修正2)。入力は展開カード + 大入力シート経由で formatValues へ。
 
   if (detailMemoText) {
     detailMemoText.addEventListener("input", () => {
@@ -444,14 +436,6 @@ export function initDetailEvents(renderHomeFn) {
     });
   }
 
-  if (sText) sText.addEventListener("input", () => {
-    const p = appState.patients[selectedNo - 1];
-    p.s = String(sText.value ?? "");
-    markUpdated(selectedNo);
-    scheduleSave();
-    renderQrIfNeeded();
-  });
-
   if (detailSharedText) {
     detailSharedText.addEventListener("input", () => {
       const p = appState.patients[selectedNo - 1];
@@ -460,30 +444,6 @@ export function initDetailEvents(renderHomeFn) {
       scheduleSave();
     });
   }
-
-  if (aText) aText.addEventListener("input", () => {
-    const p = appState.patients[selectedNo - 1];
-    p.a.text = String(aText.value ?? "");
-    markUpdated(selectedNo);
-    scheduleSave();
-    renderQrIfNeeded();
-  });
-
-  if (pText) pText.addEventListener("input", () => {
-    const p = appState.patients[selectedNo - 1];
-    p.p.text = String(pText.value ?? "");
-    markUpdated(selectedNo);
-    scheduleSave();
-    renderQrIfNeeded();
-  });
-
-  if (oFreeText) oFreeText.addEventListener("input", () => {
-    const p = appState.patients[selectedNo - 1];
-    p.oFree = String(oFreeText.value ?? "");
-    markUpdated(selectedNo);
-    scheduleSave();
-    renderQrIfNeeded();
-  });
 
   const qrToggleBtn = document.getElementById("qrToggleBtn");
   if (qrToggleBtn) qrToggleBtn.addEventListener("click", () => {

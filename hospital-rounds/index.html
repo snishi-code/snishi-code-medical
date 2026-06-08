@@ -505,8 +505,6 @@
         </div>
         <div class="cardBody">
           <div class="formatExpandedHost" id="sExpanded"></div>
-          <div class="panelFreeLabel" data-i18n="panel.free.label">補足・メモ（任意）</div>
-          <textarea id="sText" class="panelFreeText"></textarea>
         </div>
       </div>
 
@@ -517,8 +515,6 @@
         </div>
         <div class="cardBody">
           <div class="formatExpandedHost" id="oExpanded"></div>
-          <div class="panelFreeLabel" data-i18n="panel.free.label">補足・メモ（任意）</div>
-          <textarea id="oFreeText" class="panelFreeText"></textarea>
         </div>
       </div>
 
@@ -529,8 +525,6 @@
         </div>
         <div class="cardBody">
           <div class="formatExpandedHost" id="aExpanded"></div>
-          <div class="panelFreeLabel" data-i18n="panel.free.label">補足・メモ（任意）</div>
-          <textarea id="aText" class="panelFreeText"></textarea>
         </div>
       </div>
 
@@ -541,8 +535,6 @@
         </div>
         <div class="cardBody">
           <div class="formatExpandedHost" id="pExpanded"></div>
-          <div class="panelFreeLabel" data-i18n="panel.free.label">補足・メモ（任意）</div>
-          <textarea id="pText" class="panelFreeText"></textarea>
         </div>
       </div>
 
@@ -569,14 +561,17 @@
     </section>
 
 
-    <!-- フォーマット入力モーダル: numeric / text を 1 つで動的描画 -->
+    <!-- フォーマット入力シート (修正3): フォーマット単位の大きい入力面。
+         カードの値セル / クイック chip / ☰ ランチャーから開く。numeric / text を動的描画。 -->
     <div class="popupMenuOverlay" id="formatInputOverlay">
       <div class="popupMenu formatInputMenu">
         <div class="popupTitle" id="formatInputTitle">入力</div>
         <div class="formatInputBody" id="formatInputBody"></div>
         <div class="formatInputActions">
-          <button class="secondary" id="formatInputCancelBtn" type="button">キャンセル</button>
-          <button class="primary" id="formatInputApplyBtn" type="button">反映</button>
+          <button class="iconText formatInputClear" id="formatInputClearBtn" type="button" data-i18n="format.input.clear">消去</button>
+          <span class="formatInputActionsSpacer"></span>
+          <button class="secondary" id="formatInputCancelBtn" type="button" data-i18n="common.cancel">キャンセル</button>
+          <button class="primary" id="formatInputApplyBtn" type="button" data-i18n="common.save">保存</button>
         </div>
       </div>
     </div>

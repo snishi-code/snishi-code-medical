@@ -21,9 +21,19 @@
 
 import { settings, appState, selectedNo, saveSettings, markUpdated, scheduleSave } from "../store.js";
 import { FORMAT_PANELS } from "../constants.js";
-import { flushGroupExpandedValues } from "./formats.js";
 import { openQrSetOverlay } from "./qr-set.js";
+import {
+  isLastExpandInPanel, missingExpandPanelsForGroup, repairGroupExpandInvariant,
+} from "./format-values.js";
 import { t } from "../i18n.js";
+
+// 展開フォーマット不変条件のヘルパは pure データ層 (format-values.js) が正本。
+// 仕様上「format-groups.js から参照できる」ことを満たすため、ここから re-export する。
+export {
+  panelFormatsInGroup, groupHasExpandForPanel, missingExpandPanelsForGroup,
+  validateGroupHasExpandedFormatForEveryPanel, isLastExpandInPanel,
+  formatRemovalBreaksAnyGroupExpand, repairGroupExpandInvariant,
+} from "./format-values.js";
 
 function newGroupId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return "grp_" + crypto.randomUUID().slice(0, 8);
@@ -159,13 +169,10 @@ function buildPickerRow({ id, name, isDefault, selected, sub }) {
       // デフォルトグループ / 選択中の行を再タップ → "" (= デフォルトに従う)。
       // それ以外は明示選択。
       const newId = (isDefault || selected) ? "" : String(id || "");
-      // 実効グループが変わる時は、旧グループの展開(A)値を各欄の自由記述へ流し込む
-      // (グループを変えても入力済みデータを失わないため)。
-      const oldGroup = resolveActiveGroup(p);
-      const newGroup = newId ? getFormatGroupById(newId) : getDefaultFormatGroup();
-      if (oldGroup && (!newGroup || oldGroup.id !== newGroup.id)) {
-        flushGroupExpandedValues(p, oldGroup);
-      }
+      // グループ切替で patient.formatValues は触らない (formatId キーで非揮発に保持され、
+      // 戻せば同じ値が再表示される)。旧実装は見えない自由記述へ流し込んでいたが、
+      // 自由記述欄を撤去した (修正2) ため「見えない場所へデータを逃がす」ことになる。
+      // 値は維持し、出力は「値が入った全フォーマット」を payload が拾う。
       p.activeFormatGroupId = newId;
       markUpdated(selectedNo);
       scheduleSave();
@@ -292,6 +299,13 @@ function buildGroupFormatRow(f, panel) {
     if (cb.checked) {
       if (!target.formatIds.includes(f.id)) target.formatIds.push(f.id);
     } else {
+      // 修正1: そのパネルの「最後の展開フォーマット」をセットから外すのは不可。
+      // (外すと S/O/A/P のどれかにワンタップ入力カードが無くなる)
+      if (isLastExpandInPanel(target, settings.formats, f.id, panel)) {
+        cb.checked = true;
+        alert(t("formatGroup.expand.lastBlocked", { panel: t("panel." + panel) }));
+        return;
+      }
       target.formatIds = target.formatIds.filter(x => x !== f.id);
       target.defaultFormatIds = target.defaultFormatIds.filter(x => x !== f.id);
       target.expandFormatIds = (target.expandFormatIds || []).filter(x => x !== f.id);
@@ -314,6 +328,11 @@ function buildGroupFormatRow(f, panel) {
     const mode = target.expandFormatIds.includes(f.id) ? "expand"
                : target.defaultFormatIds.includes(f.id) ? "default" : "quick";
     const setMode = (next) => {
+      // 修正1: そのパネルの「最後の展開フォーマット」を quick/規定文 へ落とすのは不可。
+      if (next !== "expand" && isLastExpandInPanel(target, settings.formats, f.id, panel)) {
+        alert(t("formatGroup.expand.lastBlocked", { panel: t("panel." + panel) }));
+        return;
+      }
       target.expandFormatIds = target.expandFormatIds.filter(x => x !== f.id);
       target.defaultFormatIds = target.defaultFormatIds.filter(x => x !== f.id);
       if (next === "expand") target.expandFormatIds.push(f.id);
@@ -357,6 +376,9 @@ function saveEdit() {
   // defaultFormatIds / expandFormatIds は formatIds の部分集合に正規化
   target.defaultFormatIds = (target.defaultFormatIds || []).filter(id => target.formatIds.includes(id));
   target.expandFormatIds = (target.expandFormatIds || []).filter(id => target.formatIds.includes(id));
+  // 修正1: 防御的に不変条件を補修 (含むパネルで expand が欠けていたら先頭を昇格)。
+  // UI のブロックを擦り抜けた場合や、含むパネルに 1 つも expand を選ばず保存した場合の救済。
+  repairGroupExpandInvariant(target, settings.formats);
   // 同名チェック
   const all = Array.isArray(settings.formatGroups) ? settings.formatGroups : [];
   const dup = all.find(g => g.id !== target.id && g.name === name);

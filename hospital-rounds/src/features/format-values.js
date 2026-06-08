@@ -17,7 +17,7 @@
 // 純データロジックを置く (DOM・store に依存しないので Node テストで直接検査できる)。
 // ============================
 
-import { DEFAULT_ITEM_KIND, DEFAULT_LABEL_SEP_OTHER } from "../constants.js";
+import { DEFAULT_ITEM_KIND, DEFAULT_LABEL_SEP_OTHER, FORMAT_PANELS } from "../constants.js";
 
 // number/fraction の保存値を { value, note } に正規化する。旧文字列値も読める。
 export function readNumericEntry(stored) {
@@ -110,14 +110,6 @@ export function setPanelText(p, panel, val) {
   p[key].text = val;
 }
 
-// データのみ末尾追加 (DOM 非依存)。グループ切替の流し込み用。
-export function appendTextToPanelData(p, panel, text) {
-  if (!text) return;
-  const cur = getPanelText(p, panel);
-  const sep = cur && !cur.endsWith("\n") ? "\n" : "";
-  setPanelText(p, panel, cur + sep + text);
-}
-
 // ============================
 // パネル単位クリア (診察開始) — settings.formats[].panel を正本に formatId を解決する。
 // 自由記述と展開フォーマット値を S/O/A/P で同じ仕組みで一括クリアする。
@@ -143,4 +135,84 @@ export function clearPanelClinicalInput(patient, panel, formats) {
   if (!patient) return;
   setPanelText(patient, panel, "");
   clearPanelFormatValues(patient, panel, formats);
+}
+
+// ============================
+// 展開(expand)フォーマットの不変条件 (Phase 3 follow-up / 修正1)
+//
+// 「ワンタップ診察入力」を成立させるため、患者に適用しうる formatGroup は、各パネル
+// (S/O/A/P) に最低 1 つの「展開(expand)フォーマット」= 常時タップ可能な入力カードを
+// 持つ必要がある。ここではグループ + formats だけに依存する純データ判定を置く
+// (DOM/store 非依存なので Node テストで直接検査できる)。format-groups.js が UI 配線
+// (編集ブロック / 削除ブロック / 取込補修) からこれらを使う。
+//
+// 適用範囲: 「そのパネルのフォーマットを 1 つ以上含むグループ」のみを対象にする。
+// あるパネルのフォーマットを 1 つも含まないグループ (例: O だけのカスタムセット) は
+// 対象外 — 患者画面では effective group が当該パネルの expand を持たない時に
+// デフォルトグループの expand へフォールバックするため (formats.js)。
+// デフォルトグループは backfill で全パネルのフォーマットを必ず含むので全パネルが対象。
+// ============================
+
+// group の formatIds のうち、指定 panel に属するフォーマット一覧 (formats が正本)。
+export function panelFormatsInGroup(group, formats, panel) {
+  const ids = new Set(Array.isArray(group?.formatIds) ? group.formatIds : []);
+  return (Array.isArray(formats) ? formats : []).filter(f => f && f.panel === panel && ids.has(f.id));
+}
+
+// group が指定 panel で「展開(expand)」フォーマットを 1 つ以上持つか。
+export function groupHasExpandForPanel(group, formats, panel) {
+  const expand = new Set(Array.isArray(group?.expandFormatIds) ? group.expandFormatIds : []);
+  return panelFormatsInGroup(group, formats, panel).some(f => expand.has(f.id));
+}
+
+// group が「含むパネル」のうち、展開フォーマットが欠けているパネル一覧。
+export function missingExpandPanelsForGroup(group, formats) {
+  const out = [];
+  for (const panel of FORMAT_PANELS) {
+    const inPanel = panelFormatsInGroup(group, formats, panel);
+    if (inPanel.length && !groupHasExpandForPanel(group, formats, panel)) out.push(panel);
+  }
+  return out;
+}
+
+// group が「含む全パネル」で展開フォーマットを持つか (= 不変条件を満たすか)。
+export function validateGroupHasExpandedFormatForEveryPanel(group, formats) {
+  return missingExpandPanelsForGroup(group, formats).length === 0;
+}
+
+// group 内で「ある panel の最後の展開フォーマット」が formatId かどうか
+// (= これを expand から外すとその panel の expand が 0 になる)。編集UIのブロック判定。
+export function isLastExpandInPanel(group, formats, formatId, panel) {
+  const byId = new Map((Array.isArray(formats) ? formats : []).map(f => [f.id, f]));
+  const expandInPanel = (Array.isArray(group?.expandFormatIds) ? group.expandFormatIds : [])
+    .filter(id => byId.get(id)?.panel === panel);
+  return expandInPanel.length === 1 && expandInPanel[0] === formatId;
+}
+
+// format を削除すると、いずれかのグループのいずれかのパネルで「最後の展開フォーマット」が
+// 失われる (= expand が 0 になる) なら true。設定画面の削除ブロック / adapter 防御に使う。
+export function formatRemovalBreaksAnyGroupExpand(formatId, formats, groups) {
+  const fmt = (Array.isArray(formats) ? formats : []).find(f => f && f.id === formatId);
+  if (!fmt) return false;
+  for (const g of (Array.isArray(groups) ? groups : [])) {
+    if (isLastExpandInPanel(g, formats, formatId, fmt.panel)) return true;
+  }
+  return false;
+}
+
+// group の各パネルで展開フォーマットが欠けている場合、そのパネルに属する formatIds の
+// 先頭を expand に昇格して補修する (壊れた外部QR/旧データの救済)。group を in-place で
+// 直して返す。formats が正本。取込パスから呼ぶ。
+export function repairGroupExpandInvariant(group, formats) {
+  if (!group) return group;
+  if (!Array.isArray(group.expandFormatIds)) group.expandFormatIds = [];
+  const byId = new Map((Array.isArray(formats) ? formats : []).map(f => [f.id, f]));
+  for (const panel of FORMAT_PANELS) {
+    const inPanel = (Array.isArray(group.formatIds) ? group.formatIds : [])
+      .filter(id => byId.get(id)?.panel === panel);
+    if (!inPanel.length) continue;
+    if (inPanel.some(id => group.expandFormatIds.includes(id))) continue;
+    group.expandFormatIds.push(inPanel[0]); // そのパネルの先頭フォーマットを展開に昇格
+  }
+  return group;
 }
