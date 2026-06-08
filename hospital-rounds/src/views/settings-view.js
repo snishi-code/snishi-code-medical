@@ -6,6 +6,7 @@ import { renameTagAt, deleteTagAt, moveTag, makeAddTagWidget } from "../features
 import { bindHandleDrag } from "../features/drag.js";
 import { startNewFormat, startEditFormat, deleteFormatById } from "../features/formats.js";
 import { getAllFormatGroups, startNewFormatGroup, startEditFormatGroup, deleteFormatGroupById } from "../features/format-groups.js";
+import { formatRemovalBreaksAnyGroupExpand } from "../features/format-values.js";
 import { listBundles, renameBundle, deleteBundle, getActiveWorkspaceId,
   listUsers, getCurrentUserId, renameUser, deleteUser, userNameExists } from "../storage.js";
 import { switchUser, renameCurrentUser } from "../store.js";
@@ -81,10 +82,21 @@ function renderFormatListForPanel(panel) {
     const del = document.createElement("button");
     del.type = "button";
     del.className = "iconBtn";
-    del.title = t("common.delete");
-    del.setAttribute("aria-label", t("common.delete"));
     del.innerHTML = TRASH_SVG;
+    // 修正1: このフォーマットが、いずれかのセットのいずれかのパネルで「最後の展開
+    // フォーマット」なら削除不可 (消すとワンタップ入力カードが欠ける)。ボタンを無効化し、
+    // 押下経路でも防御的に弾く。
+    const isSoleExpand = formatRemovalBreaksAnyGroupExpand(f.id, settings.formats, settings.formatGroups);
+    if (isSoleExpand) {
+      del.disabled = true;
+      del.title = t("format.delete.soleExpandBlocked");
+      del.setAttribute("aria-label", t("format.delete.soleExpandBlocked"));
+    } else {
+      del.title = t("common.delete");
+      del.setAttribute("aria-label", t("common.delete"));
+    }
     del.addEventListener("click", () => {
+      if (isSoleExpand) { alert(t("format.delete.soleExpandBlocked")); return; }
       if (!confirm(t("format.delete.confirm", { name: f.name }))) return;
       deleteFormatById(f.id);
       renderFormatList();

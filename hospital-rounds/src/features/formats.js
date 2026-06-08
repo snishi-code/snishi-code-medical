@@ -26,16 +26,15 @@
 
 import { appState, settings, selectedNo, saveSettings, scheduleSave, markUpdated } from "../store.js";
 import {
-  FORMAT_PANELS, FORMAT_ITEM_KINDS, DEFAULT_ITEM_KIND,
+  FORMAT_ITEM_KINDS, DEFAULT_ITEM_KIND,
   DEFAULT_LABEL_SEP_TEXT, DEFAULT_LABEL_SEP_OTHER,
 } from "../constants.js";
 import { makeTagPicker, getAllTags, getPatientTags, setPatientTags } from "./tags.js";
 import { openQrFormatOverlay } from "./qr-format.js";
-import { resolveActiveGroup } from "./format-groups.js";
+import { resolveActiveGroup, getDefaultFormatGroup } from "./format-groups.js";
 import { bindHandleDrag } from "./drag.js";
 import {
-  readNumericEntry, combineLabelValueMemo, composeFormatFromValues,
-  getPanelText, setPanelText, appendTextToPanelData,
+  readNumericEntry, composeFormatFromValues,
 } from "./format-values.js";
 import { icon } from "../icons.js";
 import { t, applyI18n } from "../i18n.js";
@@ -43,9 +42,8 @@ import { t, applyI18n } from "../i18n.js";
 // strip 右端のハンバーガー (パネルごとの「全フォーマット一覧 = お気に入りトグル popup」を開く)
 const FORMAT_PICKER_HAMBURGER_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`;
 
-const PANEL_TEXTAREA_ID = { S: "sText", O: "oFreeText", A: "aText", P: "pText" };
-// パネル本文の読み書き (getPanelText/setPanelText/appendTextToPanelData) と
-// パネル別 formatId 解決は format-values.js (DOM 非依存) に集約。
+// 自由記述パネル (sText 等) は撤去 (修正2)。入力は全て展開カード + 大入力シート経由で
+// patient.formatValues に構造保存する。
 
 function newFmtId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return "fmt_" + crypto.randomUUID();
@@ -159,6 +157,19 @@ export function expandedFormatsForPanel(panel, group) {
   return out;
 }
 
+// 患者画面に常時出す展開カード (修正1 のワンタップ保証)。実効グループがこの panel の
+// 展開フォーマットを持たない (カスタムセットが当該パネルを含まない / 壊れたデータ) 時は
+// デフォルトグループの展開フォーマットへフォールバックする。これにより、どのグループが
+// active でも S/O/A/P 各パネルに最低 1 つカードが出る。
+export function effectiveExpandedFormatsForPanel(panel, group) {
+  let out = expandedFormatsForPanel(panel, group);
+  if (!out.length) {
+    const def = getDefaultFormatGroup();
+    if (def && (!group || def.id !== group.id)) out = expandedFormatsForPanel(panel, def);
+  }
+  return out;
+}
+
 // 実効グループの「クイックアクセス(B)」= グループ内かつ展開でない (チップ表示)。
 export function quickAccessFormatsForPanel(panel, group) {
   if (!group) return [];
@@ -185,14 +196,13 @@ function makeFormatPicker(panel, onChange) {
     addWidget: (onAdded) => makeAddFormatWidget(panel, onAdded),
     onItemClick: (entry) => {
       const f = formatsForPanel(panel).find(x => x.id === entry.value);
-      if (f) openFormatInputModal(f, panel);
+      if (f) openFormatSheet(f, panel, 0);
     },
   });
 }
 
 export function renderFormatStrip(panel, hostEl) {
   if (!hostEl) return;
-  ensureCaretTracker();
   hostEl.textContent = "";
   hostEl.className = "formatStrip";
 
@@ -209,7 +219,7 @@ export function renderFormatStrip(panel, hostEl) {
     chip.className = "formatStripBtn formatStripPinned";
     chip.textContent = f.name;
     chip.title = t("format.chip.input.title", { name: f.name });
-    chip.addEventListener("click", () => openFormatInputModal(f, panel));
+    chip.addEventListener("click", () => openFormatSheet(f, panel, 0));
     chips.appendChild(chip);
   }
   hostEl.appendChild(chips);
@@ -223,27 +233,53 @@ export function renderFormatStrip(panel, hostEl) {
 }
 
 // ============================
-// インライン展開フォーマット (A・非揮発) (v8.3+)
+// 患者画面: 展開フォーマットカード (修正2/3/4)
 //
-// 実効グループの「展開(A)」フォーマットを、パネル本文の上に展開入力欄として並べる。
-// 値は patient.formatValues に構造保存 (非揮発)。欄に出しっぱなしで再編集可。入力毎に
-// formatValues を更新するだけで再描画はしない (フォーカス維持)。グループ切替時に
-// flushGroupExpandedValues() で各欄の自由記述へ流し込んでクリアする。
-// 出力 (payload) は「現グループの A 値合成 + 自由記述」。
+// 各パネルに「展開(expand)フォーマット」を常時カードとして並べる (= ワンタップ入力面)。
+// カードは小さな inline input を持たず、値の「読み表示」+ タップで大入力シートを開く面に
+// する (修正3)。text item は item.normal があればワンタップの正常チェックも出す (修正2 の
+// 文字入力最小化)。値は patient.formatValues に構造保存。グループ切替時も維持され、
+// 値が入った非展開フォーマット (クイック/ランチャー入力で「展開」されたもの) もカードとして
+// 出す (= 自由記述欄の代替の可視先)。format.titleWrap が空なら見出しを出さない (修正4)。
 // ============================
 const EXPANDED_HOST_ID = { S: "sExpanded", O: "oExpanded", A: "aExpanded", P: "pExpanded" };
 
-let _onExpandedInput = null;
-export function setOnExpandedInput(fn) { _onExpandedInput = fn; }
+// チェック(正常)アイコン (lucide: check)。
+const CHECK_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
 export function renderExpandedFormats(panel, hostEl) {
   if (!hostEl) return;
   hostEl.textContent = "";
   const p = appState.patients[selectedNo - 1];
   if (!p) return;
+  if (!p.formatValues || typeof p.formatValues !== "object") p.formatValues = {};
+  const fv = p.formatValues;
   const group = resolveActiveGroup(p);
-  const formats = expandedFormatsForPanel(panel, group);
-  for (const format of formats) hostEl.appendChild(buildExpandedWidget(format, p));
+  // 常時出す展開カード (実効グループ + デフォルトフォールバック)。
+  const expand = effectiveExpandedFormatsForPanel(panel, group);
+  const shown = new Set(expand.map(f => f.id));
+  // 値が入っている非展開フォーマット (クイック/ランチャーで入力 → 「展開」されたもの)。
+  const extras = formatsForPanel(panel)
+    .filter(f => !shown.has(f.id) && composeFormatFromValues(f, fv[f.id] || {}).hasValue);
+  for (const format of [...expand, ...extras]) hostEl.appendChild(buildExpandedWidget(format, p));
+}
+
+// number/fraction/text 各 item の「カード上の値表示」テキストと空判定。
+function cardItemDisplay(format, item, kind, stored) {
+  if (kind === "number") {
+    const { value, note } = readNumericEntry(stored);
+    const v = value.trim();
+    if (!v) return { text: t("format.card.empty"), empty: true };
+    return { text: `${v}${item.unit || ""}${note.trim() ? " " + note.trim() : ""}`, empty: false };
+  }
+  if (kind === "fraction") {
+    const { value, note } = readNumericEntry(stored);
+    if (!value.replace("/", "").trim()) return { text: t("format.card.empty"), empty: true };
+    return { text: `${value}${item.unit || ""}${note.trim() ? " " + note.trim() : ""}`, empty: false };
+  }
+  const v = String(stored ?? "").trim();
+  if (!v) return { text: t("format.card.empty"), empty: true };
+  return { text: v, empty: false };
 }
 
 function buildExpandedWidget(format, patient) {
@@ -254,92 +290,175 @@ function buildExpandedWidget(format, patient) {
   const wrap = document.createElement("div");
   wrap.className = "formatExpanded";
 
-  const head = document.createElement("div");
-  head.className = "formatExpandedName";
-  head.textContent = format.name;
-  wrap.appendChild(head);
+  // 修正4: titleWrap が空ならカード見出し (format 名) を出さない。QR 出力
+  // (composeFormatFromValues) も titleWrap 連動なので、表示と出力が一致する。
+  if (typeof format.titleWrap === "string" && format.titleWrap !== "") {
+    const head = document.createElement("div");
+    head.className = "formatExpandedName";
+    head.textContent = format.name;
+    wrap.appendChild(head);
+  }
 
-  const allText = (format.items || []).every(it => it && it.kind === "text");
   const body = document.createElement("div");
-  body.className = "formatInputBody " + (allText ? "text" : "mixed");
+  body.className = "formatCardBody";
   wrap.appendChild(body);
 
-  const items = format.items || [];
-  items.forEach((item, i) => {
-    const kind = item.kind || DEFAULT_ITEM_KIND;
-    const onInput = (v) => {
-      if (!patient.formatValues[format.id] || typeof patient.formatValues[format.id] !== "object") {
-        patient.formatValues[format.id] = {};
-      }
-      patient.formatValues[format.id][i] = v;
-      markUpdated(selectedNo);
-      scheduleSave();
-      if (_onExpandedInput) _onExpandedInput(); // QR プレビュー等の軽量更新 (再描画はしない)
-    };
-    const opts = { value: stored[i], onInput };
-    if (kind === "number") buildNumberRow(body, item, opts);
-    else if (kind === "fraction") buildFractionRow(body, item, opts);
-    else buildTextRow(body, item, opts);
+  (format.items || []).forEach((item, i) => {
+    body.appendChild(buildCardItemRow(format, item, i, stored, patient));
   });
-
   return wrap;
 }
 
-// グループ切替時: 旧グループの展開(A)値を、各欄の自由記述へ流し込んでクリアする。
-// (グループを変えても入力済みのデータを失わないため)。caller (format-groups) が
-// activeFormatGroupId を変更する「前」に呼ぶ。
-export function flushGroupExpandedValues(patient, group) {
-  if (!patient || !group) return;
-  const fv = (patient.formatValues && typeof patient.formatValues === "object") ? patient.formatValues : {};
-  for (const panel of FORMAT_PANELS) {
-    const aFormats = expandedFormatsForPanel(panel, group);
-    const pieces = [];
-    for (const f of aFormats) {
-      const { text, hasValue } = composeFormatFromValues(f, fv[f.id] || {});
-      if (hasValue) pieces.push(text);
-      delete fv[f.id]; // 流し込んだら (空でも) クリア
-    }
-    if (pieces.length) appendTextToPanelData(patient, panel, pieces.join("\n"));
+// カードの 1 行: ラベル + 値表示 (タップで大入力シート) + (text なら) ワンタップ正常。
+function buildCardItemRow(format, item, i, stored, patient) {
+  const kind = item.kind || DEFAULT_ITEM_KIND;
+  const row = document.createElement("div");
+  row.className = "formatCardItem";
+
+  const labelText = String(item.label ?? "").trim();
+  if (labelText) {
+    const lab = document.createElement("div");
+    lab.className = "formatCardItemLabel";
+    lab.textContent = labelText;
+    row.appendChild(lab);
   }
+
+  // 値表示は大きいタップ領域。タップで該当 item にフォーカスした大入力シートを開く (修正3)。
+  const valueBtn = document.createElement("button");
+  valueBtn.type = "button";
+  valueBtn.className = "formatCardValue";
+  const disp = cardItemDisplay(format, item, kind, stored[i]);
+  if (disp.empty) valueBtn.classList.add("empty");
+  valueBtn.textContent = disp.text;
+  valueBtn.setAttribute("aria-label", t("format.cell.edit.aria", { label: labelText || format.name }));
+  valueBtn.addEventListener("click", () => openFormatSheet(format, format.panel, i));
+  row.appendChild(valueBtn);
+
+  // text item で normal があればワンタップの正常チェック (キーボードを出さない)。
+  if (kind === "text" && item.normal) {
+    const normalBtn = document.createElement("button");
+    normalBtn.type = "button";
+    normalBtn.className = "formatCardNormalBtn";
+    const isNormal = String(stored[i] ?? "") === String(item.normal);
+    normalBtn.classList.toggle("on", isNormal);
+    normalBtn.title = t("format.normal.tooltip.has", { value: item.normal });
+    normalBtn.setAttribute("aria-label", t("common.normal"));
+    normalBtn.setAttribute("aria-pressed", isNormal ? "true" : "false");
+    normalBtn.innerHTML = CHECK_SVG;
+    normalBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      writeFormatValue(patient, format, i, item.normal || "");
+      applyFormatTags(format);
+      if (_onTextChanged) _onTextChanged(); // 再描画 (カード値更新 + 新カード反映 + QR)
+    });
+    row.appendChild(normalBtn);
+  }
+  return row;
+}
+
+// formatValues[format.id][itemIndex] へ値を書く小さなヘルパ (保存予約まで)。
+function writeFormatValue(patient, format, itemIndex, value) {
+  if (!patient.formatValues || typeof patient.formatValues !== "object") patient.formatValues = {};
+  if (!patient.formatValues[format.id] || typeof patient.formatValues[format.id] !== "object") {
+    patient.formatValues[format.id] = {};
+  }
+  patient.formatValues[format.id][itemIndex] = value;
+  markUpdated(selectedNo);
+  scheduleSave();
 }
 
 // ============================
-// フォーマット入力モーダル
+// 大入力シート (フォーマット単位) — 修正3
+//
+// カードの値セル / クイック chip / ☰ ランチャーから開く。フォーマット全 item を大きい
+// 入力欄で 1 枚にまとめて出し、タップした item にフォーカスする。draft (formatValues の
+// コピー) を編集し、保存で formatValues へ確定 / キャンセルで破棄 / クリアで空に。
 // ============================
-let _currentInput = null; // { format, panel, rowEls }
+let _currentSheet = null; // { format, draft }
 
-function openFormatInputModal(format, panel) {
+function openFormatSheet(format, panel, focusIndex) {
   const overlay = document.getElementById("formatInputOverlay");
   const title = document.getElementById("formatInputTitle");
   const body = document.getElementById("formatInputBody");
   if (!overlay || !title || !body) return;
 
-  title.textContent = format.name;
+  // 修正4: 入力シートの「患者向けの目立つタイトル表示」も titleWrap に連動させる。
+  // titleWrap が空なら見出しを出さない (カードと一致)。文脈は item label / panel と
+  // ダイアログの aria-label で担保する。
+  const showTitle = typeof format.titleWrap === "string" && format.titleWrap !== "";
+  title.textContent = showTitle ? format.name : "";
+  title.hidden = !showTitle;
+  const menu = overlay.querySelector(".formatInputMenu");
+  if (menu) {
+    menu.setAttribute("role", "dialog");
+    menu.setAttribute("aria-label", t("format.cell.edit.aria", { label: format.name }));
+  }
   body.textContent = "";
-  // 全 item が text の format なら従来通り flex の 1 行レイアウト
-  // それ以外は kind ごとに行 div を縦に積む (CSS grid は使わず行内 flex)
   const allText = (format.items || []).every(it => it && it.kind === "text");
   body.className = "formatInputBody " + (allText ? "text" : "mixed");
-  _currentInput = { format, panel, rowEls: [] };
 
-  for (const item of format.items) {
+  const p = appState.patients[selectedNo - 1];
+  const stored = (p?.formatValues?.[format.id] && typeof p.formatValues[format.id] === "object")
+    ? p.formatValues[format.id] : {};
+  const draft = { ...stored };
+  _currentSheet = { format, draft };
+
+  (format.items || []).forEach((item, i) => {
     const kind = item.kind || DEFAULT_ITEM_KIND;
-    if (kind === "number") _currentInput.rowEls.push(buildNumberRow(body, item));
-    else if (kind === "fraction") _currentInput.rowEls.push(buildFractionRow(body, item));
-    else _currentInput.rowEls.push(buildTextRow(body, item));
-  }
+    const opts = { value: draft[i], onInput: (v) => { draft[i] = v; } };
+    if (kind === "number") buildNumberRow(body, item, opts);
+    else if (kind === "fraction") buildFractionRow(body, item, opts);
+    else buildTextRow(body, item, opts);
+  });
 
   overlay.classList.add("active");
-  // text-only フォーマット (身体所見など) は自動フォーカスしない。正常文を「ぽちぽち
-  // 押すだけ」の運用でキーボードが暴発しないようにする。number/mixed は最初の数値欄に
-  // フォーカスして入力をすぐ始められるようにする (数値入力は手で打つのが前提)。
-  if (!allText) {
-    setTimeout(() => {
-      const first = body.querySelector("input, textarea");
-      if (first) first.focus();
-    }, 50);
-  }
+  // タップした item の入力欄へフォーカス (手入力をすぐ始められる)。text-only でも
+  // 「セルをタップして開いた」= 手入力意図なのでフォーカスして良い。
+  setTimeout(() => {
+    const rows = body.querySelectorAll(".formatInputRow");
+    const target = rows[focusIndex] || rows[0];
+    const inp = target && target.querySelector("input, textarea");
+    if (inp) inp.focus();
+  }, 50);
 }
+
+function applyFormatSheet() {
+  if (!_currentSheet) { closeFormatSheet(); return; }
+  const { format, draft } = _currentSheet;
+  const p = appState.patients[selectedNo - 1];
+  if (p) {
+    if (!p.formatValues || typeof p.formatValues !== "object") p.formatValues = {};
+    p.formatValues[format.id] = { ...draft };
+    applyFormatTags(format);
+    markUpdated(selectedNo);
+    scheduleSave();
+  }
+  closeFormatSheet();
+  if (_onTextChanged) _onTextChanged(); // 再描画 (カード反映 + QR)
+}
+
+// クリア: シート内の入力を空にする (明示ボタン)。閉じず、保存で確定 / キャンセルで元へ。
+// 重要: draft は build*Row の onInput クロージャが参照する「同一オブジェクト」を
+// その場で空にする (別オブジェクトに差し替えると、以後の入力が旧 draft に入り、保存で
+// 空が確定してしまう — 消去→再入力→保存で再入力が消えるバグになる)。
+function clearFormatSheet() {
+  if (!_currentSheet) return;
+  const draft = _currentSheet.draft;
+  for (const k of Object.keys(draft)) delete draft[k];
+  const body = document.getElementById("formatInputBody");
+  if (body) {
+    for (const inp of body.querySelectorAll("input, textarea")) inp.value = "";
+  }
+  // title 等の文脈は維持。focus は触らない。
+}
+
+function closeFormatSheet() {
+  const overlay = document.getElementById("formatInputOverlay");
+  if (overlay) overlay.classList.remove("active");
+  _currentSheet = null;
+}
+
+export function closeFormatInputModal() { closeFormatSheet(); }
 
 // ============================
 // iOS Safari の inputMode 引きずり対策ヘルパ
@@ -538,75 +657,18 @@ function buildTextRow(host, item, opts = {}) {
   return { item, kind: "text", val };
 }
 
-export function closeFormatInputModal() {
-  const overlay = document.getElementById("formatInputOverlay");
-  if (overlay) overlay.classList.remove("active");
-  _currentInput = null;
-}
-
-// rowEls (build*Row が返す行参照) から展開テキストを組み立てる。モーダルとインライン
-// 展開の両方で共用。戻り値: { text, hasValue }。hasValue=実際に値が入った item があるか
-// (titleWrap だけのタイトル行は hasValue=false 扱い → インライン自動反映で空タブ抜けでは
-//  挿入しないために使う)。
-function composeFormatText(format, rowEls) {
-  const labelSep = typeof format.labelSep === "string" ? format.labelSep : DEFAULT_LABEL_SEP_OTHER;
-  const parts = [];
-  for (const row of rowEls) {
-    if (row.kind === "number") {
-      const value = String(row.val.value || "").trim();
-      if (!value) continue; // 値なし注記だけは出力しない
-      const unit = row.item.unit || "";
-      const note = row.note ? String(row.note.value || "").trim() : "";
-      parts.push(combineLabelValueMemo(row.item.label, labelSep, `${value}${unit}`, note));
-    } else if (row.kind === "fraction") {
-      // "120/53" / "/53" / "120/" を許容 (片側だけ入力可)。日付 "5/20" もここ
-      const a = String(row.numer.value || "").trim();
-      const b = String(row.denom.value || "").trim();
-      if (!a && !b) continue;
-      const unit = row.item.unit || "";
-      const note = row.note ? String(row.note.value || "").trim() : "";
-      parts.push(combineLabelValueMemo(row.item.label, labelSep, `${a}/${b}${unit}`, note));
-    } else {
-      const value = String(row.val.value || "").trim();
-      if (!value) continue;
-      const lab = String(row.item.label || "").trim();
-      parts.push(lab ? `${lab}${labelSep}${value}` : value);
-    }
-  }
-  const body = parts.join(format.joiner || ", ");
-  const titleWrap = typeof format.titleWrap === "string" ? format.titleWrap : "";
-  let text = body;
-  if (titleWrap) {
-    const L = titleWrap[0] || "";
-    const R = titleWrap[1] || "";
-    const titleLine = `${L}${format.name}${R}`;
-    text = body ? `${titleLine}\n${body}` : titleLine;
-  }
-  return { text, hasValue: parts.length > 0 };
-}
-
-// payload.js から呼ぶ: 実効グループの展開(A)値を panel 別に合成して返す (再エクスポート用)。
-export function composeExpandedForPanel(panel, group, formatValues) {
-  if (!group) return "";
+// payload.js から呼ぶ: パネルに属する「値が入った全フォーマット」を合成して返す。
+// 展開カード・クイック chip・☰ ランチャーのいずれで入力しても formatValues に入るので、
+// グループ所属に関わらず settings.formats(panel) のうち値があるものを順に出す。
+// group 引数は後方互換のため残すが未使用 (出力はグループ非依存 = 値が正本)。
+export function composeExpandedForPanel(panel, _group, formatValues) {
   const fv = (formatValues && typeof formatValues === "object") ? formatValues : {};
   const pieces = [];
-  for (const f of expandedFormatsForPanel(panel, group)) {
+  for (const f of formatsForPanel(panel)) {
     const { text, hasValue } = composeFormatFromValues(f, fv[f.id] || {});
     if (hasValue) pieces.push(text);
   }
   return pieces.join("\n");
-}
-
-function applyFormatInput() {
-  if (!_currentInput) { closeFormatInputModal(); return; }
-  const { format, panel, rowEls } = _currentInput;
-  const { text } = composeFormatText(format, rowEls);
-  // タグ merge を appendToPanel より前に実行する。appendToPanel が _onTextChanged
-  // (= 詳細画面の再描画) を発火するので、その時点で tags も新しい状態になっている
-  // ようにしておく (= inline タグ表示が即時更新される)。
-  applyFormatTags(format);
-  appendToPanel(panel, text);
-  closeFormatInputModal();
 }
 
 function applyFormatTags(format) {
@@ -627,70 +689,6 @@ function applyFormatTags(format) {
     }
   }
   if (changed) setPatientTags(idx, Array.from(set));
-}
-
-// 直近にカーソルが置かれていたパネルと、その時の患者 pid。フォーマット展開時に
-// 「同じパネルにカーソルがあればその位置へ、無ければ末尾へ」を判定するのに使う。
-let _lastFocusedPanel = null;
-let _lastFocusedPid = null;
-let _caretTrackerAttached = false;
-
-// 4 つのパネル textarea は index.html で静的。focusin を 1 度だけ document に張り、
-// どのパネルが直近フォーカスされたかを記録する (chip タップで blur しても保持される)。
-function ensureCaretTracker() {
-  if (_caretTrackerAttached) return;
-  _caretTrackerAttached = true;
-  document.addEventListener("focusin", (e) => {
-    const id = e.target && e.target.id;
-    if (!id) return;
-    const panel = Object.keys(PANEL_TEXTAREA_ID).find(k => PANEL_TEXTAREA_ID[k] === id);
-    if (!panel) return;
-    _lastFocusedPanel = panel;
-    const p = appState.patients[selectedNo - 1];
-    _lastFocusedPid = p ? p.pid : null;
-  }, true);
-}
-
-function appendToPanel(panel, text) {
-  if (!text) return;
-  const p = appState.patients[selectedNo - 1];
-  if (!p) return;
-  const taId = PANEL_TEXTAREA_ID[panel];
-  const ta = document.getElementById(taId);
-  const current = getPanelText(p, panel);
-
-  // カーソル位置展開: 同じパネルが直近フォーカスされ、かつ同じ患者なら caret 位置へ
-  // 挿入する。別パネルにカーソルがあった / どこにも無い場合は末尾へ。
-  const useCaret = !!ta && _lastFocusedPanel === panel && _lastFocusedPid === p.pid;
-  let next, caretAfter;
-  if (useCaret) {
-    const len = current.length;
-    const start = Math.max(0, Math.min(ta.selectionStart ?? len, len));
-    const end = Math.max(start, Math.min(ta.selectionEnd ?? start, len));
-    const before = current.slice(0, start);
-    const after = current.slice(end);
-    // 前後の行とくっつかないよう必要なら改行を補う
-    const nlBefore = before && !before.endsWith("\n") ? "\n" : "";
-    const nlAfter = after && !after.startsWith("\n") ? "\n" : "";
-    const ins = nlBefore + text + nlAfter;
-    next = before + ins + after;
-    caretAfter = (before + nlBefore + text).length; // 挿入テキスト直後
-  } else {
-    const sep = current && !current.endsWith("\n") ? "\n" : "";
-    next = current + sep + text;
-    caretAfter = next.length;
-  }
-
-  setPanelText(p, panel, next);
-  if (ta) {
-    ta.value = next;
-    if (useCaret) {
-      try { ta.focus(); ta.selectionStart = ta.selectionEnd = caretAfter; } catch (_) { /* noop */ }
-    }
-  }
-  markUpdated(selectedNo);
-  scheduleSave();
-  if (_onTextChanged) _onTextChanged();
 }
 
 // ============================
@@ -996,11 +994,13 @@ export function deleteFormatById(id) {
 export function initFormats() {
   const inputApply = document.getElementById("formatInputApplyBtn");
   const inputCancel = document.getElementById("formatInputCancelBtn");
+  const inputClear = document.getElementById("formatInputClearBtn");
   const inputOverlay = document.getElementById("formatInputOverlay");
-  if (inputApply) inputApply.addEventListener("click", applyFormatInput);
-  if (inputCancel) inputCancel.addEventListener("click", closeFormatInputModal);
+  if (inputApply) inputApply.addEventListener("click", applyFormatSheet);
+  if (inputCancel) inputCancel.addEventListener("click", closeFormatSheet);
+  if (inputClear) inputClear.addEventListener("click", clearFormatSheet);
   if (inputOverlay) inputOverlay.addEventListener("click", (e) => {
-    if (e.target === inputOverlay) closeFormatInputModal();
+    if (e.target === inputOverlay) closeFormatSheet();
   });
 
   const editSave = document.getElementById("formatEditSaveBtn");

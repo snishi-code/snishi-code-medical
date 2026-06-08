@@ -14,6 +14,7 @@
 // ============================
 
 import { settings, saveSettingsOrThrow, newFormatId, newGroupId } from "../store.js";
+import { repairGroupExpandInvariant } from "./format-values.js";
 import { createQrFlow } from "./qr-flow.js";
 import {
   formatToWire, formatFromWire,
@@ -99,6 +100,9 @@ async function applyReceivedSet(decoded, ctrl) {
     defaultFormatIds: (decoded.group.defaultFormatIds || []).slice(),
     expandFormatIds: (decoded.group.expandFormatIds || []).slice(),
   };
+  // 修正1: 壊れた外部セット (あるパネルに展開フォーマットが無い) を取り込んでも、保存後に
+  // そのパネルの展開カードが欠けないよう補修する (含むパネルの先頭を展開に昇格)。
+  repairGroupExpandInvariant(newGroup, newFormats);
 
   const summary = `（${t("qrSet.summary.formats", { n: newFormats.length })}）`;
   if (!confirm(t("qrSet.import.confirm", { name: groupName, summary }))) return;

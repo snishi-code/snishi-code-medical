@@ -5,6 +5,7 @@ import {
   newFormatId, newGroupId, makeDefaultFormatGroups, ensureOneDefaultGroup,
 } from "../store.js";
 import { createQrFlow } from "./qr-flow.js";
+import { repairGroupExpandInvariant } from "./format-values.js";
 import {
   formatToWire, formatFromWire,
   formatGroupToWire, formatGroupFromWire,
@@ -127,6 +128,11 @@ async function applySettings(safe, ctrl) {
   const next = { ...settings };
   for (const k of APPLIED_FIELDS) {
     if (safe[k] !== undefined) next[k] = safe[k];
+  }
+  // 修正1: 取り込んだ全セットを「含むパネルで展開フォーマットを最低 1 つ持つ」よう補修。
+  // setSettings は normalize を通さないので、壊れた外部設定が保存される前にここで補修する。
+  if (Array.isArray(next.formatGroups) && Array.isArray(next.formats)) {
+    for (const g of next.formatGroups) repairGroupExpandInvariant(g, next.formats);
   }
   setSettings(next);
   // fail-closed: 保存が確認できてから閉じる/成功表示。失敗は in-memory を戻して中断。

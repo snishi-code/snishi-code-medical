@@ -10,7 +10,7 @@ import {
   clone,
 } from "./constants.js";
 import { projectBundle, parseBundle, getSection, SECTION } from "./bundle.js";
-import { formatValueHasInput } from "./features/format-values.js";
+import { formatValueHasInput, repairGroupExpandInvariant } from "./features/format-values.js";
 import { t } from "./i18n.js";
 import { showToast } from "./toast.js";
 import {
@@ -264,6 +264,13 @@ function normalizeSettings(raw) {
   // Phase 3: 各パネルに既定フォーマットカードを常設する補完 (formats + formatGroups が
   // 確定した後に実行)。
   backfillPanelDefaults(out);
+  // Phase 3 follow-up (修正1): 各グループが「含むパネル」で展開フォーマットを最低 1 つ持つ
+  // よう補修する。壊れた外部QR/旧データ/規定文だけのグループを読んでも、保存後に S/O/A/P の
+  // 展開カードが欠けない (ワンタップ入力を保証)。デフォルトグループは backfill で全パネルの
+  // フォーマットを含むので、全パネルが展開を持つことになる。
+  if (Array.isArray(out.formatGroups)) {
+    for (const g of out.formatGroups) repairGroupExpandInvariant(g, out.formats);
+  }
   return out;
 }
 
