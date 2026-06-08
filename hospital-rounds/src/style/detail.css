@@ -94,12 +94,13 @@
       min-width: 100px;
     }
 
-    /* 文字ボタン (診察開始 / 編集): タッチしやすい幅・高さを確保 */
+    /* 文字ボタン (診察開始 / 編集): タッチしやすい幅・高さを確保。
+       老眼・現場で読めるよう最小 44px / 16px を下回らない。 */
     .homeStartBtn,
     .editTextBtn {
-      min-height: 40px;
-      padding: 8px 16px;
-      font-size: 14px;
+      min-height: 44px;
+      padding: 9px 18px;
+      font-size: 16px;
       white-space: nowrap;
     }
     .homeStartBtn {
