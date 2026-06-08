@@ -24,6 +24,8 @@ export function bindTapOrLongPress(el, onTap, onLongPress, longMs = 600) {
     longFired = false;
     startX = e.clientX;
     startY = e.clientY;
+    // onLongPress 未指定 (Phase 2 で長押しメニュー廃止) ならタイマーを張らずタップ専用。
+    if (!onLongPress) return;
     timer = setTimeout(() => {
       longFired = true;
       onLongPress();

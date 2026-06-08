@@ -554,43 +554,16 @@
         </div>
       </div>
 
+      <!-- 患者管理 (見える導線): 通常病棟=転棟/削除, 削除済み病棟=転棟して復元/完全削除。
+           文脈別の中身は detail.js#renderLifecycleActions が描画・配線する。 -->
+      <div id="detailLifecycleActions" class="detailLifecycleActions"></div>
+
       <div class="qrHint" style="margin-top:10px">
         保存先 (IndexedDB): <span class="mono" id="storageKeyLabel"></span>
       </div>
       </div>
     </section>
 
-    <div class="popupMenuOverlay" id="actionMenuOverlay">
-      <div class="popupMenu actionMenu">
-        <div class="popupTitle" id="actionMenuTitle">患者の操作</div>
-        <!-- 3 列 2 行: [+1] [−1] [→1] / [+5] [−5] [→5] -->
-        <div class="actionGrid actionGrid3col">
-          <button class="actionGridBtn add" id="actionAdd1Btn" type="button" data-i18n-title="patientButton.action.add1.title" data-i18n-aria="patientButton.action.add1.aria" title="1人追加（下へ）" aria-label="1人追加（下へ）">
-            <span class="actionGridSign">+</span><span class="actionGridNum">1</span>
-          </button>
-          <button class="actionGridBtn del" id="actionDeleteBtn" type="button" data-i18n-title="patientButton.action.delete1.title" data-i18n-aria="patientButton.action.delete1.aria" title="1人削除" aria-label="1人削除">
-            <span class="actionGridSign">−</span><span class="actionGridNum">1</span>
-          </button>
-          <button class="actionGridBtn move" id="actionMove1Btn" type="button" data-i18n-title="patientButton.action.move1.title" data-i18n-aria="patientButton.action.move1.aria" title="1人を他ワークスペースへ移動" aria-label="1人を他ワークスペースへ移動">
-            <svg class="actionGridIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h13"/><path d="m13 6 6 6-6 6"/><path d="M21 4v16"/></svg>
-            <span class="actionGridNum">1</span>
-          </button>
-          <button class="actionGridBtn add" id="actionAdd5Btn" type="button" data-i18n-title="patientButton.action.add5.title" data-i18n-aria="patientButton.action.add5.aria" title="5人追加（下へ）" aria-label="5人追加（下へ）">
-            <span class="actionGridSign">+</span><span class="actionGridNum">5</span>
-          </button>
-          <button class="actionGridBtn del" id="actionDelete5Btn" type="button" data-i18n-title="patientButton.action.delete5.title" data-i18n-aria="patientButton.action.delete5.aria" title="5人削除（下へ）" aria-label="5人削除（下へ）">
-            <span class="actionGridSign">−</span><span class="actionGridNum">5</span>
-          </button>
-          <button class="actionGridBtn move" id="actionMove5Btn" type="button" data-i18n-title="patientButton.action.move5.title" data-i18n-aria="patientButton.action.move5.aria" title="5人を他ワークスペースへ移動" aria-label="5人を他ワークスペースへ移動">
-            <svg class="actionGridIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h13"/><path d="m13 6 6 6-6 6"/><path d="M21 4v16"/></svg>
-            <span class="actionGridNum">5</span>
-          </button>
-        </div>
-        <button class="actionMenuClose" id="actionCancelBtn" type="button" data-i18n-title="patientButton.action.close.title" data-i18n-aria="patientButton.action.close.aria" title="閉じる" aria-label="閉じる">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-    </div>
 
     <!-- フォーマット入力モーダル: numeric / text を 1 つで動的描画 -->
     <div class="popupMenuOverlay" id="formatInputOverlay">
@@ -826,7 +799,7 @@
     <!-- 患者を他ワークスペースへ移動: 移動先ピッカー -->
     <div class="popupMenuOverlay" id="movePatientOverlay">
       <div class="popupMenu movePatientMenu">
-        <div class="popupTitle" data-i18n="move.title">他のワークスペースへ移動</div>
+        <div class="popupTitle" id="movePatientTitle" data-i18n="move.title">他のワークスペースへ移動</div>
         <div class="movePatientHint" id="movePatientHint" data-i18n="move.hint">移動先のワークスペースを選んでください。元のワークスペースには「(移)」マークで履歴が残ります。</div>
         <div class="ioDbList" id="movePatientList"></div>
       </div>

@@ -1330,6 +1330,191 @@ await test("isPatientTransferred / decorateTransferredName (純粋関数)", asyn
 });
 
 // ============================
+// patient lifecycle / trash (fake-indexeddb)
+// ============================
+section("patient lifecycle / trash (fake-indexeddb)");
+
+const lifeMod = await import(pathToFileURL(join(srcDir, "features", "patient-lifecycle.js")).href);
+const LIFE_D = 24 * 60 * 60 * 1000;
+
+// 現アクティブ = 通常病棟 (label 付き) を作り、live appState もそれに合わせる。
+// userId はテストごとに分けること (Trash はユーザー別なので使い回すと混ざる)。
+async function setupWard(label, patients, userId) {
+  storageMod.setCurrentUserId(userId);
+  const wsId = storageMod.newWorkspaceId();
+  storageMod.setActiveWorkspaceId(wsId);
+  const bundle = projectBundle({ appState: { v: 3, title: "", patients }, settings: storeForIdb.settings, sections: [SECTION.META, SECTION.PATIENTS] });
+  await storageMod.saveBundle(bundle, wsId, label, userId);
+  storeForIdb.setAppState({ v: 3, title: "", patients: patients.map(p => ({ ...p })) });
+  return wsId;
+}
+
+// Trash をアクティブにし、live appState を Trash 内容に合わせる (復元/完全削除の前段)。
+async function activateTrash(trashId) {
+  storageMod.setActiveWorkspaceId(trashId);
+  const tp = getSection(await storageMod.loadBundle(trashId), SECTION.PATIENTS);
+  storeForIdb.setAppState({ v: 3, title: "", patients: tp.map(p => ({ ...p })) });
+  return tp;
+}
+
+await test("deletePatientToTrash: 元病棟から消え Trash に1件 / 元に(移)は残らない", async () => {
+  const srcWs = await setupWard("内科病棟", [
+    { ...storeForIdb.makeDefaultPatient(), name: "削除太郎", room: "401", status: "yellow", s: "所見あり" },
+    { ...storeForIdb.makeDefaultPatient(), name: "残留花子", room: "402" },
+  ], "usr_del");
+  const res = await lifeMod.deletePatientToTrash(0);
+  assert.equal(res.ok, true, "削除成功");
+  assert.equal(res.mode, "trash", "Trash 退避");
+  // 元病棟 live: 削除太郎は消え、残留花子は残り、(移) は付かない
+  const srcNames = storeForIdb.appState.patients.map(p => p.name);
+  assert.ok(!srcNames.includes("削除太郎"), "元病棟から消える");
+  assert.ok(srcNames.includes("残留花子"), "他患者は残る");
+  assert.ok(storeForIdb.appState.patients.every(p => !p.transferredAt), "元病棟に (移) を残さない");
+  // 元病棟 durable も一致
+  const srcB = getSection(await storageMod.loadBundle(srcWs), SECTION.PATIENTS);
+  assert.ok(!srcB.some(p => p.name === "削除太郎"), "durable からも消える");
+  // Trash: 1件、deleted メタ付き、(移) でない
+  const trashId = lifeMod.getTrashWorkspaceId();
+  const trashP = getSection(await storageMod.loadBundle(trashId), SECTION.PATIENTS);
+  assert.equal(trashP.length, 1, "Trash に1件");
+  assert.equal(trashP[0].name, "削除太郎");
+  assert.ok(trashP[0].deletedAt > 0, "deletedAt が立つ");
+  assert.equal(trashP[0].deletedFromWorkspaceId, srcWs, "退避元 ID を記録");
+  assert.equal(trashP[0].deletedFromWorkspaceLabel, "内科病棟", "退避元 label を記録");
+  assert.equal(trashP[0].transferredAt, 0, "Trash 内で (移) にしない");
+});
+
+await test("restoreDeletedPatientToWorkspace: Trashから消え復元先にだけ存在", async () => {
+  await setupWard("外科病棟", [
+    { ...storeForIdb.makeDefaultPatient(), name: "復活太郎", room: "501", status: "blue", s: "経過" },
+  ], "usr_restore");
+  const destWs = await makeEmptyWorkspace("回復期病棟");
+  await lifeMod.deletePatientToTrash(0);
+  const trashId = lifeMod.getTrashWorkspaceId();
+  await activateTrash(trashId);
+
+  const res = await lifeMod.restoreDeletedPatientToWorkspace(0, destWs, "回復期病棟");
+  assert.equal(res.ok, true, "復元成功");
+  // Trash から消える (live + durable)
+  assert.equal(storeForIdb.appState.patients.length, 0, "Trash live から消える");
+  const trashAfter = getSection(await storageMod.loadBundle(trashId), SECTION.PATIENTS);
+  assert.equal(trashAfter.length, 0, "Trash durable からも消える");
+  // 復元先にだけ存在、マーカー消去
+  const destP = getSection(await storageMod.loadBundle(destWs), SECTION.PATIENTS);
+  const restored = destP.find(p => p.name === "復活太郎");
+  assert.ok(restored, "復元先に存在");
+  assert.equal(restored.deletedAt, 0, "deletedAt 消去");
+  assert.equal(restored.deletedFromWorkspaceId, "", "退避元メタ消去");
+  assert.equal(restored.transferredAt, 0, "transferred 消去");
+  assert.equal(restored.s, "経過", "臨床内容は保持");
+});
+
+await test("Trash内で削除すると完全削除 (どこにも残らない)", async () => {
+  await setupWard("循環器病棟", [
+    { ...storeForIdb.makeDefaultPatient(), name: "完全削除子", status: "yellow" },
+  ], "usr_trashdel");
+  await lifeMod.deletePatientToTrash(0);
+  const trashId = lifeMod.getTrashWorkspaceId();
+  await activateTrash(trashId);
+  // Trash 内で削除 → permanentlyDelete へ委譲
+  const res = await lifeMod.deletePatientToTrash(0);
+  assert.equal(res.ok, true);
+  assert.equal(res.mode, "permanent", "完全削除に回る");
+  assert.equal(storeForIdb.appState.patients.length, 0, "Trash live が空");
+  const tpAfter = getSection(await storageMod.loadBundle(trashId), SECTION.PATIENTS);
+  assert.equal(tpAfter.length, 0, "Trash durable も空 (どこにも残らない)");
+});
+
+await test("(移) 患者の削除は Trash へ送らず完全削除 (増殖しない)", async () => {
+  await setupWard("呼吸器病棟", [
+    { ...storeForIdb.makeDefaultPatient(), name: "移動済", status: "gray", transferredAt: Date.now(), transferredTo: "他病棟" },
+  ], "usr_movedel");
+  const res = await lifeMod.deletePatientToTrash(0);
+  assert.equal(res.ok, true);
+  assert.equal(res.mode, "permanent", "(移) は完全削除");
+  // Trash は作られていない or 入っていない
+  const trashId = lifeMod.getTrashWorkspaceId();
+  const trashB = await storageMod.loadBundle(trashId);
+  const tp = trashB ? getSection(trashB, SECTION.PATIENTS) : [];
+  assert.ok(!tp.some(p => p.name === "移動済"), "(移) 患者は Trash に入らない (増殖しない)");
+});
+
+await test("purge: 30日超のTrash患者と(移)stubを完全削除 / 29日以内は保持", async () => {
+  const uid = "usr_purge";
+  storageMod.setCurrentUserId(uid);
+  // active = 空ダミー (purge の active 分岐を no-op に)
+  const dummy = storageMod.newWorkspaceId();
+  storageMod.setActiveWorkspaceId(dummy);
+  await storageMod.saveBundle(projectBundle({ appState: { v: 3, title: "", patients: [] }, settings: storeForIdb.settings, sections: [SECTION.META, SECTION.PATIENTS] }), dummy, "ダミー", uid);
+  storeForIdb.setAppState({ v: 3, title: "", patients: [] });
+
+  const now = Date.now();
+  // Trash (非アクティブ): 31日 + 29日 の削除患者
+  const trashId = lifeMod.getTrashWorkspaceId(uid);
+  await storageMod.saveBundle(projectBundle({ appState: { v: 3, title: "", patients: [
+    { ...storeForIdb.makeDefaultPatient(), name: "古い削除", deletedAt: now - 31 * LIFE_D, deletedFromWorkspaceId: "w", deletedFromWorkspaceLabel: "L" },
+    { ...storeForIdb.makeDefaultPatient(), name: "最近削除", deletedAt: now - 29 * LIFE_D, deletedFromWorkspaceId: "w", deletedFromWorkspaceLabel: "L" },
+  ] }, settings: storeForIdb.settings, sections: [SECTION.META, SECTION.PATIENTS] }), trashId, "削除済み", uid);
+  // 通常病棟 (非アクティブ): 31日(移) + 現役 + 29日(移)
+  const ward = storageMod.newWorkspaceId();
+  await storageMod.saveBundle(projectBundle({ appState: { v: 3, title: "", patients: [
+    { ...storeForIdb.makeDefaultPatient(), name: "古い移動", status: "gray", transferredAt: now - 31 * LIFE_D, transferredTo: "x" },
+    { ...storeForIdb.makeDefaultPatient(), name: "現役", room: "601" },
+    { ...storeForIdb.makeDefaultPatient(), name: "最近移動", status: "gray", transferredAt: now - 29 * LIFE_D, transferredTo: "x" },
+  ] }, settings: storeForIdb.settings, sections: [SECTION.META, SECTION.PATIENTS] }), ward, "一般病棟", uid);
+
+  const res = await lifeMod.purgeExpiredPatientLifecycleRecords(now);
+  assert.equal(res.ok, true);
+  // Trash: 古い削除は消え、最近削除は残る
+  const tp = getSection(await storageMod.loadBundle(trashId), SECTION.PATIENTS);
+  assert.equal(tp.length, 1, "Trash: 30日超のみ purge");
+  assert.equal(tp[0].name, "最近削除");
+  // Ward: 古い移動は消え、現役・最近移動は残る
+  const wp = getSection(await storageMod.loadBundle(ward), SECTION.PATIENTS);
+  assert.ok(!wp.some(p => p.name === "古い移動"), "30日超の(移)は完全削除");
+  assert.ok(wp.some(p => p.name === "現役"), "現役患者は残る");
+  assert.ok(wp.some(p => p.name === "最近移動"), "29日の(移)は残る");
+});
+
+await test("movePatients: 空スロットは転棟されない (データ層防御)", async () => {
+  storageMod.setCurrentUserId("usr_emptymove");
+  const srcWs = storageMod.newWorkspaceId();
+  storageMod.setActiveWorkspaceId(srcWs);
+  const destId = await makeEmptyWorkspace("空転棟先");
+  storeForIdb.setAppState({ v: 3, title: "", patients: [storeForIdb.makeDefaultPatient()] });
+  const moved = await moveMod.movePatients([0], destId, "空転棟先");
+  assert.equal(moved, 0, "空スロットは移動されない");
+  const destP = getSection(await storageMod.loadBundle(destId), SECTION.PATIENTS);
+  assert.equal(destP.length, 0, "移動先に空コピーが増えない");
+  assert.equal(storeForIdb.appState.patients[0].transferredAt, 0, "元にも (移) が付かない");
+});
+
+await test("deletePatientToTrash: 空スロットは Trash に入らず完全削除", async () => {
+  await setupWard("空削除病棟", [
+    storeForIdb.makeDefaultPatient(),
+    { ...storeForIdb.makeDefaultPatient(), name: "実在", status: "yellow" },
+  ], "usr_emptydel");
+  const res = await lifeMod.deletePatientToTrash(0);
+  assert.equal(res.ok, true);
+  assert.equal(res.mode, "permanent", "空は完全削除に回る");
+  const names = storeForIdb.appState.patients.map(p => p.name);
+  assert.ok(names.includes("実在"), "実在患者は残る");
+  const trashId = lifeMod.getTrashWorkspaceId();
+  const trashB = await storageMod.loadBundle(trashId);
+  const tp = trashB ? getSection(trashB, SECTION.PATIENTS) : [];
+  assert.equal(tp.length, 0, "空スロットは Trash に入らない");
+});
+
+await test("isTrashWorkspaceId / getTrashWorkspaceId / isPatientDeleted (純粋)", async () => {
+  assert.equal(lifeMod.isTrashWorkspaceId("__trash__::usr_x"), true);
+  assert.equal(lifeMod.isTrashWorkspaceId("default"), false);
+  assert.equal(lifeMod.isTrashWorkspaceId("__settings__::usr_x"), false);
+  assert.equal(lifeMod.getTrashWorkspaceId("usr_x"), "__trash__::usr_x");
+  assert.equal(lifeMod.isPatientDeleted({ deletedAt: 0 }), false);
+  assert.equal(lifeMod.isPatientDeleted({ deletedAt: 123 }), true);
+});
+
+// ============================
 // snapshot restore (fake-indexeddb)
 // ============================
 section("snapshot restore (fake-indexeddb)");

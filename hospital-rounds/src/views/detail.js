@@ -1,6 +1,6 @@
 "use strict";
 
-import { appState, settings, selectedNo, markUpdated, scheduleSave } from "../store.js";
+import { appState, settings, selectedNo, markUpdated, scheduleSave, isPatientEmpty } from "../store.js";
 import { renderFormatStrip, renderExpandedFormats } from "../features/formats.js";
 import { refreshFormatGroupToggle } from "../features/format-groups.js";
 import { STATUS } from "../constants.js";
@@ -9,7 +9,11 @@ import { utf8ByteLength } from "../payload.js";
 import { qrcodegen } from "../libs/qrcodegen.js";
 import { getPatientTags, getStatusMark } from "../features/tags.js";
 import { formatPatientLabel } from "../features/room.js";
-import { isPatientTransferred } from "../features/move-patient.js";
+import { isPatientTransferred, openMovePatientModal } from "../features/move-patient.js";
+import {
+  deletePatientToTrash, permanentlyDeletePatient, restoreDeletedPatientToWorkspace,
+  isTrashActive,
+} from "../features/patient-lifecycle.js";
 import { t } from "../i18n.js";
 import { scanQR, isScannerSupported } from "../features/qr-scan.js";
 import { buildTimestampHeader } from "../features/qr-protocol.js";
@@ -261,6 +265,122 @@ export function renderPatientMetaBtn() {
 }
 
 // ============================
+// Patient lifecycle actions (患者管理: 転棟 / 削除 / 復元 / 完全削除)
+// ============================
+
+// 削除/復元成功後に呼ぶナビゲーション (= ホームへ戻る) と再描画フック。main.js が配線。
+let _lifecycleCb = {};
+export function initLifecycleActions(cb) { _lifecycleCb = cb || {}; }
+
+// 二重クリック防止 (即時 await 系: 削除/完全削除)。転棟/復元はモーダルを開くだけなので
+// API 側 (_busy) とモーダルで多重実行を防ぐ。
+let _lifecycleBusy = false;
+
+function lifecycleBtn(label, cls, onClick, iconName) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "lifecycleBtn " + cls;
+  if (iconName) {
+    const ic = document.createElement("span");
+    ic.className = "lifecycleBtnIcon";
+    ic.innerHTML = icon(iconName, 16);
+    ic.setAttribute("aria-hidden", "true");
+    b.appendChild(ic);
+  }
+  const sp = document.createElement("span");
+  sp.textContent = label;
+  b.appendChild(sp);
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function afterLifecycleDone() {
+  if (_lifecycleCb.navigateHome) _lifecycleCb.navigateHome();
+}
+
+// 詳細画面下部の「患者管理」エリアを現在の文脈で描画する:
+//   通常病棟・通常患者 : 転棟 / 削除 (Trash 退避)
+//   通常病棟・(移) 患者: 完全削除 のみ (転棟は不可)
+//   削除済み病棟        : 転棟して復元 / 完全削除 + 注意書き
+export function renderLifecycleActions(p) {
+  const host = document.getElementById("detailLifecycleActions");
+  if (!host) return;
+  host.textContent = "";
+  if (!p) return;
+  const idx = selectedNo - 1;
+  const trash = isTrashActive();
+
+  if (trash) {
+    const note = document.createElement("div");
+    note.className = "lifecycleNote";
+    note.textContent = t("trash.detail.note");
+    host.appendChild(note);
+  }
+
+  const title = document.createElement("div");
+  title.className = "lifecycleTitle";
+  title.textContent = t("patient.lifecycle.actions.title");
+  host.appendChild(title);
+
+  const row = document.createElement("div");
+  row.className = "lifecycleBtnRow";
+
+  // 削除/完全削除 (即時 await): confirm → API → 失敗は通知して中断 / 成功はホームへ。
+  const runDelete = (confirmKey, apiFn) => async () => {
+    if (_lifecycleBusy) return;
+    if (!confirm(t(confirmKey))) return;
+    _lifecycleBusy = true;
+    for (const b of row.querySelectorAll("button")) b.disabled = true;
+    try {
+      const res = await apiFn(idx);
+      if (!res || !res.ok) { alert(t("patient.delete.failed")); return; }
+      afterLifecycleDone();
+    } finally {
+      _lifecycleBusy = false;
+    }
+  };
+
+  if (trash) {
+    row.appendChild(lifecycleBtn(t("patient.restore"), "lifecycleRestore", () => {
+      // 復元先 (通常病棟) を選んで restore API を呼ぶ。movePatients は使わない。
+      openMovePatientModal(idx, afterLifecycleDone, {
+        mode: "restore",
+        onPick: async (wsId, label) => {
+          const res = await restoreDeletedPatientToWorkspace(idx, wsId, label);
+          if (!res || !res.ok) alert(t("patient.restore.failed"));
+        },
+      });
+    }));
+    row.appendChild(lifecycleBtn(
+      t("patient.delete.permanentBtn"), "lifecycleDelete",
+      runDelete("patient.delete.permanent.confirm", permanentlyDeletePatient), "delete",
+    ));
+  } else if (isPatientTransferred(p)) {
+    // (移) 患者の削除は Trash へ送らず完全削除
+    row.appendChild(lifecycleBtn(
+      t("patient.delete.permanentBtn"), "lifecycleDelete",
+      runDelete("patient.delete.permanent.confirm", permanentlyDeletePatient), "delete",
+    ));
+  } else if (isPatientEmpty(p)) {
+    // 空スロット (初期 50 患者など): 転棟は出さない (移す中身が無い)。削除は Trash
+    // 退避でなく単純な空スロット除去 (30日保存しない。データ層でも空は permanent に回る)。
+    row.appendChild(lifecycleBtn(
+      t("patient.delete"), "lifecycleDelete",
+      runDelete("patient.delete.emptySlot.confirm", permanentlyDeletePatient), "delete",
+    ));
+  } else {
+    row.appendChild(lifecycleBtn(t("patient.move"), "lifecycleMove", () => {
+      openMovePatientModal(idx, afterLifecycleDone);
+    }));
+    row.appendChild(lifecycleBtn(
+      t("patient.delete"), "lifecycleDelete",
+      runDelete("patient.delete.toTrash.confirm", deletePatientToTrash), "delete",
+    ));
+  }
+  host.appendChild(row);
+}
+
+// ============================
 // renderDetail
 // ============================
 
@@ -278,6 +398,7 @@ export function renderDetail(syncDetailMemoDisplay) {
   // 患者メタボタン (ステータス色/形 + 部屋+氏名 + タグ概要)
   renderPatientMetaBtn();
   renderTransferredBanner(p);
+  renderLifecycleActions(p);
   refreshFormatGroupToggle();
 
   if (sText) sText.value = p.s;
@@ -410,6 +531,9 @@ export function initStatusButtons(_renderHomeFn) {
     e.stopPropagation();
     openPatientSheet(selectedNo - 1, () => {
       renderPatientMetaBtn();
+      // 氏名/部屋/ステータス編集で「空スロット↔実在患者」が変わると患者管理ボタンの
+      // 出し分け (空=転棟なし) も変わるので、シート内編集のたびに再描画する。
+      renderLifecycleActions(appState.patients[selectedNo - 1]);
       renderQrIfNeeded();
     });
   });

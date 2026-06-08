@@ -83,6 +83,29 @@
       grid-column: 1 / -1;
     }
 
+    /* 削除済み病棟 (Trash) の注意書きバナー / 空メッセージ。home/memo/shared 共通。 */
+    .trashBanner {
+      padding: 10px 12px;
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 10px;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #9a3412;
+      margin-bottom: 4px;
+    }
+    .trashEmpty {
+      padding: 24px 12px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    /* グリッド内 (ホーム) では全幅で 1 本 */
+    .grid .trashBanner,
+    .grid .trashEmpty {
+      grid-column: 1 / -1;
+    }
+
     .patientBtn {
       position: relative;
       width: 100%;

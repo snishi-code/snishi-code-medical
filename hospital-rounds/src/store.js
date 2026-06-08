@@ -265,6 +265,13 @@ export function makeDefaultPatient() {
     //   transferredTo: 移動先ワークスペースの label (表示用)。
     transferredAt: 0,
     transferredTo: "",
+    // 削除済み病棟 (Trash) への退避マーカー (Phase 2 患者ライフサイクル)。
+    //   deletedAt: 退避した時刻 (ms epoch)。0 = 未削除。30日超で自動 purge。
+    //   deletedFromWorkspaceId / deletedFromWorkspaceLabel: 復元先の既定 (退避元病棟)。
+    // 転棟 (transferred*) とは別物: 削除退避は元病棟に (移) を残さず Trash へ移す。
+    deletedAt: 0,
+    deletedFromWorkspaceId: "",
+    deletedFromWorkspaceLabel: "",
     // この患者で active なフォーマットグループ ID。null = 通常 (= 全 pin チップ
     // が見える)。設定されている場合、各パネルの strip はそのグループに属する
     // フォーマットだけを表示する (= 患者固有の「お気に入り切替」)。
@@ -307,6 +314,8 @@ export function isPatientEmpty(p) {
   }
   // 「移動済」マーカーが立っているスロットは履歴として残してあるので空ではない
   if (p.transferredAt) return false;
+  // 「削除済み退避」マーカーが立っているスロット (Trash 内) も空ではない
+  if (p.deletedAt) return false;
   return true;
 }
 
@@ -342,6 +351,9 @@ function normalizePatientArray(arr) {
       updatedAt: (r && typeof r.updatedAt === "number") ? r.updatedAt : 0,
       transferredAt: (r && typeof r.transferredAt === "number") ? r.transferredAt : 0,
       transferredTo: (r && typeof r.transferredTo === "string") ? r.transferredTo : "",
+      deletedAt: (r && typeof r.deletedAt === "number") ? r.deletedAt : 0,
+      deletedFromWorkspaceId: (r && typeof r.deletedFromWorkspaceId === "string") ? r.deletedFromWorkspaceId : "",
+      deletedFromWorkspaceLabel: (r && typeof r.deletedFromWorkspaceLabel === "string") ? r.deletedFromWorkspaceLabel : "",
       activeFormatGroupId: (r && typeof r.activeFormatGroupId === "string") ? r.activeFormatGroupId : "",
       formatValues: (r && r.formatValues && typeof r.formatValues === "object") ? r.formatValues : {},
       origin: (r && r.origin === "external") ? "external" : "",
