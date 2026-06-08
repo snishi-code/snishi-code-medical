@@ -321,6 +321,7 @@
   "header.settings": "設定",
   "header.menu": "メニュー",
   "menu.help": "説明",
+  "panel.free.label": "補足・メモ（任意）",
   "patientSheet.title": "患者",
   "patientSheet.editAria": "{label}（タップして患者情報を編集）",
   "patientSheet.editTitle": "患者情報を編集",

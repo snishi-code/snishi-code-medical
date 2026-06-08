@@ -161,6 +161,34 @@ function normalizeFormat(raw) {
   return { id, name, panel, joiner, labelSep, titleWrap, tags, items };
 }
 
+// Phase 3: タップ中心入力のため、各パネル (S/O/A/P) に「既定フォーマットカード」を
+// 最低 1 つ常設する。既存設定で欠けているパネルだけ DEFAULT_FORMATS から補い、デフォルト
+// グループの formatIds + expandFormatIds に加える (= 患者画面に常時タップ可能なカードとして
+// 出す)。非破壊・冪等: 既にそのパネルのフォーマットがあれば触らない (ユーザーのカスタムを
+// 壊さない)。新規ユーザーは defaults.json で 5 つ揃っているのでここは no-op。
+function backfillPanelDefaults(out) {
+  const formats = Array.isArray(out.formats) ? out.formats : (out.formats = []);
+  const groups = Array.isArray(out.formatGroups) ? out.formatGroups : [];
+  const def = groups.find(g => g.isDefault) || groups[0] || null;
+  const havePanels = new Set(formats.map(f => f && f.panel));
+  const seeds = Array.isArray(DEFAULT_FORMATS) ? DEFAULT_FORMATS : [];
+  for (const panel of FORMAT_PANELS) {
+    if (havePanels.has(panel)) continue;
+    const seed = seeds.find(f => f.panel === panel);
+    if (!seed) continue;
+    const created = normalizeFormat({ ...seed, id: newFormatId() });
+    if (!created) continue;
+    formats.push(created);
+    havePanels.add(panel);
+    if (def) {
+      if (!Array.isArray(def.formatIds)) def.formatIds = [];
+      if (!Array.isArray(def.expandFormatIds)) def.expandFormatIds = [];
+      if (!def.formatIds.includes(created.id)) def.formatIds.push(created.id);
+      if (!def.expandFormatIds.includes(created.id)) def.expandFormatIds.push(created.id);
+    }
+  }
+}
+
 function normalizeSettings(raw) {
   const out = defaultSettings();
   if (!raw || typeof raw !== "object") return out;
@@ -233,6 +261,9 @@ function normalizeSettings(raw) {
       if (v === "restricted" || v === "free") out.qrRedistribution[k] = v;
     }
   }
+  // Phase 3: 各パネルに既定フォーマットカードを常設する補完 (formats + formatGroups が
+  // 確定した後に実行)。
+  backfillPanelDefaults(out);
   return out;
 }
 

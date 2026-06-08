@@ -180,6 +180,12 @@
     .formatInputBody.text .formatInputLabel {
       flex: 0 0 64px;
     }
+    /* ラベル空 (規定文 text item「特に新しい訴えなし」等): ラベル列を畳んで本文を
+       左詰めにする (Phase 3 task5)。text body は flex なので display:none で詰める。
+       mixed (grid) は max-content の空セルが幅 0 に畳まれるのでセルは残す (列ズレ回避)。 */
+    .formatInputBody.text .formatInputLabel.formatInputLabelEmpty {
+      display: none;
+    }
 
     .formatInputValue {
       min-width: 0;
@@ -197,7 +203,11 @@
 
     .formatInputText {
       resize: vertical;
-      min-height: 32px;
+      min-height: 40px;
+      /* 内容に応じて縦に伸びる (Phase 3 task6)。field-sizing 未対応ブラウザは
+         resize:vertical で手動調整 (graceful degradation)。 */
+      field-sizing: content;
+      max-height: 320px;
     }
 
     .formatInputUnit {
@@ -253,6 +263,42 @@
       width: auto;
       min-width: 88px;
       margin: 0;
+    }
+
+    /* スマホ幅: 入力ポップアップを大きく押しやすく (Phase 3 task7)。老眼・現場で
+       値入力・正常/反映/キャンセルが確実に押せるよう文字とタップ領域を拡大する。 */
+    @media (max-width: 640px) {
+      .popupMenu.formatInputMenu { width: min(96vw, 520px); padding: 16px; }
+      .formatInputBody.text .formatInputRow { margin-bottom: 12px; }
+      .formatInputValue,
+      .formatInputMemo,
+      .formatInputText { font-size: 17px; padding: 10px 12px; }
+      .formatInputNormalBtn { width: 44px !important; height: 44px; }
+      .formatInputLabel { font-size: 16px; }
+      .popupMenu.formatInputMenu .formatInputActions button {
+        min-height: 48px;
+        min-width: 104px;
+        font-size: 17px;
+      }
+    }
+
+    /* Phase 3: 自由記述は主入力でなく「補足メモ (任意)」として控えめに置く。既定
+       フォーマットカードが主入力。既存患者の自由記述 (s/oFree/a.text/p.text) はここに
+       表示され消えない (互換)。 */
+    .panelFreeLabel {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted, #6b7280);
+      margin: 8px 0 4px;
+    }
+    .panelFreeText {
+      field-sizing: content;
+      min-height: 40px;
+      max-height: 320px;
+      background: #fafafa;
+    }
+    .panelFreeText:focus {
+      background: #fff;
     }
 
     /* ============================
