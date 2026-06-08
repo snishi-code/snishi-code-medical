@@ -621,6 +621,48 @@ await test("t() returns key on missing entry", async () => {
 });
 
 // ============================
+// 9b) QR 運用文言の不変条件 (Phase 4): カメラ/貼り付け前提 + 患者画面 QR 平文
+// ============================
+section("QR wording invariants (Phase 4)");
+
+const _strings = JSON.parse(readFileSync(join(srcDir, "strings.ja.json"), "utf8"));
+
+await test("ユーザー向け文言に USB QR リーダー前提の語が残っていない", () => {
+  // USB QR リーダー / HID 打鍵運用は外す。カメラ + 貼り付け前提に統一する (Phase 4)。
+  const forbidden = /QR ?リーダー|キーボードウェッジ|HID|打鍵/;
+  const hits = [];
+  for (const [k, v] of Object.entries(_strings)) {
+    if (typeof v === "string" && forbidden.test(v)) hits.push(`${k}: ${v}`);
+  }
+  assert.deepEqual(hits, [], "禁止語を含む文言:\n" + hits.join("\n"));
+});
+
+await test("アプリ内ヘルプ (docs-bundle.js) に USB QR リーダー前提の語が残っていない", () => {
+  // 説明書バンドルは生成物 (scripts/build-docs.py で vault から再生成)。再生成漏れで
+  // 旧 QR リーダー文言が in-app ヘルプに残らないよう歩哨にする (Phase 4)。
+  const bundle = readFileSync(join(srcDir, "docs-bundle.js"), "utf8");
+  const forbidden = /QR ?コードリーダー|QR ?リーダー|キーボードウェッジ|HID|打鍵/;
+  assert.ok(!forbidden.test(bundle), "docs-bundle.js に USB QR リーダー前提の語が残っている (build-docs.py で再生成が必要)");
+});
+
+await test("qrReceive.overlayHint は カメラ と 貼り付け を案内し、リーダー を案内しない", () => {
+  const hint = _strings["qrReceive.overlayHint"];
+  assert.ok(typeof hint === "string" && hint.length, "overlayHint がある");
+  assert.ok(hint.includes("カメラ"), "カメラ を案内する");
+  assert.ok(hint.includes("貼り付け"), "貼り付け を案内する");
+  assert.ok(!hint.includes("リーダー"), "リーダー を案内しない");
+});
+
+await test("患者画面 QR は暗号化マトリクスに含まれない (常に平文 / 電子カルテ貼付)", async () => {
+  const c = await import("../src/constants.js");
+  // QR_KINDS = 暗号化/再配布の対象 kind (アプリ間共有 QR)。患者画面 QR (PT) は含めない
+  // = 電子カルテへ貼り付ける平文を維持する構造的不変条件。
+  assert.ok(Array.isArray(c.QR_KINDS));
+  assert.ok(!c.QR_KINDS.includes("PT"), "患者画面 QR (PT) は暗号化対象に入らない");
+  assert.deepEqual([...c.QR_KINDS].sort(), ["FMT", "FS", "HM", "MM", "SH", "ST"], "共有 QR の暗号化対象 kind は不変 (仕様を壊さない)");
+});
+
+// ============================
 // 10) defaults.json: 既定値が JSON 由来で読み込めること
 // ============================
 section("defaults.json");

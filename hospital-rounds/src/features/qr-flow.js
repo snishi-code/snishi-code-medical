@@ -250,11 +250,10 @@ export function createQrFlow(cfg) {
   }
 
   // ============================
-  // テキスト受信パネル (カメラ非対応端末 / HID キーボードウェッジ型リーダー
-  // / 手貼り付け用)。createQrFlow が動的に注入する。生 QR テキストを 1 ページ
-  // ずつ取り込み、多ページは順に貼り付けて読ませる (進捗は ingestPage の status
-  // をそのまま流用)。永続受信ボックス (recvMemo/recvShared) とは別物で、ここは
-  // 「生 QR の一時入力欄」。
+  // テキスト受信パネル (カメラ非対応端末 / 手貼り付け用)。createQrFlow が動的に
+  // 注入する。生 QR テキストを 1 ページずつ取り込み、多ページは順に貼り付けて読ませる
+  // (進捗は ingestPage の status をそのまま流用)。永続受信ボックス (recvMemo/recvShared)
+  // とは別物で、ここは「生 QR の一時入力欄」。
   // ============================
   function wireTextRecv() {
     const wrap = document.getElementById(cfg.ids.wrapId);
@@ -361,7 +360,7 @@ export function createQrFlow(cfg) {
       }
     }
     if (inlineReceive) {
-      // カメラの有無に関わらずテキスト受信欄を用意 (リーダー / 貼り付け / カメラ非対応端末)
+      // カメラの有無に関わらずテキスト受信欄を用意 (貼り付け / カメラ非対応端末用)
       wireTextRecv();
     }
 

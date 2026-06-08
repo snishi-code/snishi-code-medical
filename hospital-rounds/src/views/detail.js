@@ -34,9 +34,10 @@ let qrVisible = false;
 // 患者画面 QR (平文 SOAP) のページ上限。qr-protocol.js の MAX_BYTES と整合。
 const MAX_BYTES_PER_QR = 750;
 
-// 患者画面 QR は EMR に接続された QR スキャナで「そのまま打鍵」される用途
-// なので、各ページの内容は SOAP テキストそのままにする。多ページ時のページ
-// 番号は QR カード UI 側 (qrPageMeta) に出すだけで、ペイロードには埋め込まない。
+// 患者画面 QR は、電子カルテ端末の標準カメラ (Windows 11 など) で読み取り、表示された
+// 平文を電子カルテへ貼り付ける用途。各ページの内容は SOAP テキストそのまま (暗号化しない)。
+// 多ページ時のページ番号は QR カード UI 側 (qrPageMeta) に出すだけで、ペイロードには
+// 埋め込まない (貼り付けた本文にページ番号が混ざらないように)。
 function splitTextToFitQr(raw, ecl) {
   const s = String(raw ?? "");
   if (utf8ByteLength(s) <= MAX_BYTES_PER_QR) {
