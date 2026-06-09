@@ -451,12 +451,15 @@
           <div id="detailTransferredBannerHost"></div>
         </div>
         <div class="detailTopActions">
-          <!-- 詳細画面の主要操作は「セット切替」と「QR」だけに固定 (場所を覚えてもらう)。
-               メモ/共有/設定/説明 はヘッダーの ≡ メニューへ集約済み。 -->
-          <!-- セット切替: アイコン廃止。セット名 + ▾ (切替可の明示) のみ -->
-          <button class="formatGroupToggleBtn" id="detailFormatGroupBtn" type="button" data-i18n-title="formatGroup.toggle.title" data-i18n-aria="formatGroup.toggle.title" title="セットを切替" aria-label="セットを切替">
-            <span class="formatGroupToggleLabel" id="detailFormatGroupLabel"></span>
-            <svg class="formatGroupToggleChevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          <!-- 詳細画面の主要操作は「戻す/進む」と「QR」。フォーマットセット切替は患者シート
+               (患者メタボタン) 内へ移設。メモ/共有/設定/説明 はヘッダーの ≡ メニューへ集約済み。 -->
+          <!-- 戻す/進む: Word でなじみのある曲がり矢印 (Lucide undo-2 / redo-2)。患者ごとの
+               入力編集を 1 操作ずつ戻す/進む。履歴が無いとき disabled。 -->
+          <button class="iconBtn" id="detailUndoBtn" type="button" disabled aria-disabled="true" data-i18n-title="undo.aria" data-i18n-aria="undo.aria" title="戻す" aria-label="戻す">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+          </button>
+          <button class="iconBtn" id="detailRedoBtn" type="button" disabled aria-disabled="true" data-i18n-title="redo.aria" data-i18n-aria="redo.aria" title="進む" aria-label="進む">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5 5.5 5.5 0 0 0 9.5 20H13"/></svg>
           </button>
           <button class="iconBtn" id="qrToggleBtn" type="button" title="QRコード表示" aria-label="QRコード表示" aria-pressed="false">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>

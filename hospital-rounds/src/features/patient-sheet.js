@@ -13,6 +13,7 @@
 import { appState, markUpdated, scheduleSave } from "../store.js";
 import { getStatusOptions, renderTagSelectionInto, getPatientTags, setPatientTags, getAllTags } from "./tags.js";
 import { makeRoomInput } from "./room.js";
+import { resolveActiveGroup, openFormatGroupPicker } from "./format-groups.js";
 import { t } from "../i18n.js";
 
 function field(labelKey, contentEl, extraClass) {
@@ -130,6 +131,28 @@ export function openPatientSheet(patientIdx, onChange) {
     onSelectionMutated: () => { if (onChange) onChange(); },
   });
   body.appendChild(field("patientSheet.tags", tagBox, "patientSheetTagsField"));
+
+  // ── フォーマットセット (この患者の表示切替) ──
+  // 旧: 詳細ヘッダーのセット切替トグル。誤タップ削減のため患者シート内へ移設 (Phase 6)。
+  // 現在のセット名を出し、タップでピッカー (単一選択 = 選んだら閉じる) を開く。ピッカーは
+  // selectedNo (この患者 = 開いている詳細) の activeFormatGroupId を書く。
+  const setBtn = document.createElement("button");
+  setBtn.type = "button";
+  setBtn.className = "secondary patientSheetSetBtn";
+  const renderSetLabel = () => {
+    const g = resolveActiveGroup(p);
+    setBtn.textContent = (g && g.name) ? g.name : t("formatGroup.option.none.label");
+  };
+  renderSetLabel();
+  setBtn.setAttribute("aria-label", t("patientSheet.formatSet.change"));
+  setBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    // ピッカーは別オーバーレイ。患者シートの上に重ねると z-index で隠れてタップが
+    // 奪われるため、シートを閉じてからピッカーを開く (単一選択 = 選んだら閉じる)。
+    overlay.classList.remove("active");
+    openFormatGroupPicker(() => { if (onChange) onChange(); });
+  });
+  body.appendChild(field("patientSheet.formatSet", setBtn, "patientSheetSetField"));
 
   // ── 下部: ステータス (sticky で常に親指の届く位置に) ──
   const statusBar = document.createElement("div");

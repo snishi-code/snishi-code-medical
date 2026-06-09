@@ -67,30 +67,9 @@ export function resolveActiveGroup(patient) {
   return getDefaultFormatGroup();
 }
 
-// 現在開いている患者の active group に応じて、ヘッダー上のトグルボタンの
-// 表示 (グループ名 or 「通常」) と active styling を更新する。
-// 詳細画面の renderDetail から呼ばれる。
-export function refreshFormatGroupToggle() {
-  const btn = document.getElementById("detailFormatGroupBtn");
-  const lbl = document.getElementById("detailFormatGroupLabel");
-  if (!btn || !lbl) return;
-  const p = appState.patients[selectedNo - 1];
-  const g = resolveActiveGroup(p);
-  if (!g) {
-    // グループが 1 つも無い異常時のみ (通常はデフォルトグループが必ず存在)
-    lbl.textContent = t("formatGroup.option.none.label");
-    btn.classList.remove("active");
-    btn.title = t("formatGroup.toggle.title");
-    return;
-  }
-  lbl.textContent = g.name;
-  // デフォルト以外を明示選択している時だけ「上書き中」スタイルを当てる
-  const override = !g.isDefault;
-  btn.classList.toggle("active", override);
-  btn.title = override
-    ? t("formatGroup.toggle.active.title", { name: g.name })
-    : t("formatGroup.toggle.title");
-}
+// セット切替は患者シート (patient-sheet.js) 内へ移設 (Phase 6)。詳細ヘッダーのトグル
+// ボタンは撤去したため refreshFormatGroupToggle は廃止。現在のセット表示・変更は
+// patient-sheet.js が resolveActiveGroup + openFormatGroupPicker で行う。
 
 // ============================
 // 患者画面: ピッカー (この患者の active group を選ぶ)
@@ -437,14 +416,6 @@ export function initFormatGroups(callbacks) {
     _currentEdit.target.name = name;
     openQrSetOverlay(_currentEdit.target);
   });
-
-  // 患者画面ヘッダーの「束」ボタン → ピッカーを開く
-  const triggerBtn = document.getElementById("detailFormatGroupBtn");
-  if (triggerBtn) {
-    triggerBtn.addEventListener("click", () => {
-      openFormatGroupPicker(() => {
-        if (callbacks?.renderDetail) callbacks.renderDetail();
-      });
-    });
-  }
+  // セット切替の入口は患者シート (patient-sheet.js) へ移設したため、詳細ヘッダーの
+  // トリガー配線は撤去 (Phase 6)。ピッカー本体 openFormatGroupPicker は患者シートが使う。
 }

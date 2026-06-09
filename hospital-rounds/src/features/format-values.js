@@ -19,6 +19,110 @@
 
 import { DEFAULT_ITEM_KIND, DEFAULT_LABEL_SEP_OTHER, FORMAT_PANELS } from "../constants.js";
 
+// ============================
+// text item の provenance (Phase 6)
+//
+// text item の保存値は「正常文由来 (preset)」か「手入力由来 (manual)」かを区別する。
+// これにより、ワンタップ正常チェックが手入力した臨床メモを誤って上書き/消去しない。
+//   保存形 (text):
+//     非空 = { value, source }  source ∈ "preset" | "manual"
+//     空   = ""  (= 未入力。source は持たない)
+//   legacy = 素の文字列 (旧 bundle のデータ)。読み取り時に現在の正常文と比較して推論する。
+// 正常文の基準は「呼び出し側が渡す現在の format/item の normal」= settings.formats が正本
+// (初期値 JSON や i18n 文字列は基準にしない)。
+// QR 平文出力 (composeFormatFromValues) は value だけを出すので source は wire に出ない。
+// ============================
+
+// text 保存値から「現在の値文字列」を取り出す (object なら .value、文字列ならそのまま)。
+export function readTextValue(stored) {
+  if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+    return String(stored.value ?? "");
+  }
+  return String(stored ?? "");
+}
+
+// text 保存値を { value, source } に正規化する。明示 source を持つ object は信頼し、
+// legacy 文字列は現在の正常文と比較して source を推論する (空→empty / =normal→preset /
+// それ以外→manual)。source は "empty" | "preset" | "manual"。
+export function normalizeTextEntry(stored, currentNormal) {
+  const normal = String(currentNormal ?? "");
+  if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+    const value = String(stored.value ?? "");
+    const src = stored.source;
+    if (src === "preset" || src === "manual") return { value, source: value === "" ? "empty" : src };
+    // source 欠落の object は legacy 同様に推論
+    return { value, source: value === "" ? "empty" : (value === normal ? "preset" : "manual") };
+  }
+  const value = String(stored ?? "");
+  return { value, source: value === "" ? "empty" : (value === normal ? "preset" : "manual") };
+}
+
+// ワンタップ正常チェックの判定 (純関数・ミューテーションしない)。呼び出し側 (formats.js)
+// が戻り値の action に従って書き込み/編集起動する。
+//   empty                         → write  (正常文を preset として入れる)
+//   preset かつ値が現在の正常文     → clear  (空欄に戻す)
+//   それ以外 (manual / 正常文以外)  → openEditor (上書きせず入力ポップアップを開く)
+// 「設定で正常文を変更し、保存済み preset の値が現 normal と一致しない」場合も openEditor
+// (黙って上書き/消去せず、明示編集に委ねる = fail-safe)。
+export function decidePresetToggle(stored, currentNormal) {
+  const normal = String(currentNormal ?? "");
+  const { value, source } = normalizeTextEntry(stored, normal);
+  if (source === "empty") return { action: "write", value: { value: normal, source: "preset" } };
+  if (source === "preset" && value === normal) return { action: "clear", value: "" };
+  return { action: "openEditor" };
+}
+
+// ポップアップ/インライン編集の保存時に text item の確定値を作る。draft 値が prev と
+// 変わった item だけ manual entry 化し、未変更は既存 entry を保持する (ポップアップを開いて
+// 別 item だけ編集 → 未タッチの preset を manual に降格させない)。空は "" (未入力)。
+export function commitDraftTextEntry(prevStored, draftValue) {
+  // draftValue は編集後の文字列 / 未編集なら元 entry のことがあるので readTextValue で正規化。
+  const next = readTextValue(draftValue);
+  if (next === "") return "";
+  if (next === readTextValue(prevStored)) return prevStored; // 未変更は出所を保持
+  return { value: next, source: "manual" };
+}
+
+// ============================
+// フォーマット自動付与タグの delta (Phase 6 / Undo 対応)
+//
+// フォーマット入力時に format.tags を患者タグへ merge する (applyFormatTags)。Undo で
+// 「入力は戻したのにタグだけ残る」を防ぐため、その操作で **新規に付くタグだけ** を delta と
+// して扱い、Undo で除去 / Redo で再付与する。タグ列全体を巻き戻すと、間に手編集したタグを
+// 失う (= 識別情報のサイレント巻き戻り) ため、必ず delta 単位で扱う。以下は純関数。
+// ============================
+
+// fmtTags のうち、known に存在し existing にまだ無いもの = この操作で新規に付くタグ。
+// 入力順を保持し重複は除く。
+export function computeFormatTagsToAdd(fmtTags, knownTags, existingTags) {
+  const known = new Set(Array.isArray(knownTags) ? knownTags : []);
+  const existing = new Set(Array.isArray(existingTags) ? existingTags : []);
+  const out = [];
+  const seen = new Set();
+  for (const tg of (Array.isArray(fmtTags) ? fmtTags : [])) {
+    if (!known.has(tg) || existing.has(tg) || seen.has(tg)) continue;
+    seen.add(tg);
+    out.push(tg);
+  }
+  return out;
+}
+
+// tags に toAdd を追加 (既存はスキップ・順序保持)。新しい配列を返す。
+export function mergeTagsAdd(tags, toAdd) {
+  const out = Array.isArray(tags) ? tags.slice() : [];
+  const set = new Set(out);
+  for (const tg of (Array.isArray(toAdd) ? toAdd : [])) {
+    if (!set.has(tg)) { set.add(tg); out.push(tg); }
+  }
+  return out;
+}
+
+// tags から toRemove を除く。新しい配列を返す。
+export function mergeTagsRemove(tags, toRemove) {
+  const drop = new Set(Array.isArray(toRemove) ? toRemove : []);
+  return (Array.isArray(tags) ? tags : []).filter(tg => !drop.has(tg));
+}
+
 // number/fraction の保存値を { value, note } に正規化する。旧文字列値も読める。
 export function readNumericEntry(stored) {
   if (stored && typeof stored === "object" && !Array.isArray(stored)) {
@@ -72,7 +176,8 @@ export function composeFormatFromValues(format, values) {
       if (!value.replace("/", "").trim()) return;
       parts.push(combineLabelValueMemo(item.label, labelSep, `${value}${item.unit || ""}`, note));
     } else {
-      const value = String(rawEntry ?? "").trim();
+      // text: provenance (preset/manual) は内部判定専用。出力は value だけ (source は wire に出さない)。
+      const value = readTextValue(rawEntry).trim();
       if (!value) return;
       const lab = String(item.label || "").trim();
       parts.push(lab ? `${lab}${labelSep}${value}` : value);

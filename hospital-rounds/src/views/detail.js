@@ -2,7 +2,7 @@
 
 import { appState, settings, selectedNo, markUpdated, scheduleSave, isPatientEmpty } from "../store.js";
 import { renderFormatStrip, renderExpandedFormats } from "../features/formats.js";
-import { refreshFormatGroupToggle } from "../features/format-groups.js";
+import { beginFieldEdit, commitFieldEdit, captureUndoPoint, refreshUndoButtons } from "../features/patient-undo.js";
 import { STATUS } from "../constants.js";
 import { buildTabPayload } from "../payload.js";
 import { utf8ByteLength } from "../payload.js";
@@ -396,7 +396,9 @@ export function renderDetail(syncDetailMemoDisplay) {
   renderPatientMetaBtn();
   renderTransferredBanner(p);
   renderLifecycleActions(p);
-  refreshFormatGroupToggle();
+  // セット切替トグルはヘッダーから撤去 (患者シートへ移設)。代わりに戻す/進むボタンの
+  // 活性状態を現在患者の履歴で更新する (Phase 6)。
+  refreshUndoButtons();
 
   if (detailSharedText) detailSharedText.value = p.shared || "";
   // S/O/A/P 自由記述欄は撤去 (修正2)。旧フィールド p.s / p.oFree / p.a.text / p.p.text は
@@ -427,7 +429,11 @@ export function initDetailEvents(renderHomeFn) {
   // 氏名編集は患者シート (openPatientSheet) に集約 (詳細ヘッダーから個別入力欄を撤去)。
   // S/O/A/P 自由記述欄も撤去 (修正2)。入力は展開カード + 大入力シート経由で formatValues へ。
 
+  // プロブレムリスト/共有 textarea: focus〜blur を 1 編集セッションとして Undo 1 ステップに
+  // する (連続キー入力ごとには撮らない)。focus で編集前クローンを保持、blur で変化があれば確定。
   if (detailMemoText) {
+    detailMemoText.addEventListener("focus", () => beginFieldEdit("memo"));
+    detailMemoText.addEventListener("blur", () => commitFieldEdit());
     detailMemoText.addEventListener("input", () => {
       const p = appState.patients[selectedNo - 1];
       p.memo = String(detailMemoText.value ?? "");
@@ -437,6 +443,8 @@ export function initDetailEvents(renderHomeFn) {
   }
 
   if (detailSharedText) {
+    detailSharedText.addEventListener("focus", () => beginFieldEdit("shared"));
+    detailSharedText.addEventListener("blur", () => commitFieldEdit());
     detailSharedText.addEventListener("input", () => {
       const p = appState.patients[selectedNo - 1];
       p.shared = String(detailSharedText.value ?? "");
@@ -468,10 +476,12 @@ export function initDetailEvents(renderHomeFn) {
       const cur = String(area.value || "");
       const sep = cur && !cur.endsWith("\n") ? "\n" : "";
       const next = cur + sep + buildTimestampHeader() + "\n" + text;
+      captureUndoPoint("memo"); // 追記の直前に Undo 起点 (1 操作)
       area.value = next;
       p.memo = next;
       markUpdated(selectedNo);
       scheduleSave();
+      refreshUndoButtons();
     });
   }
 }

@@ -55,6 +55,113 @@ test("展開カードの正常チェックは入力欄の左側に出る", async
   expect(order).toEqual(["label", "normal", "value"]);
 });
 
+test("身体所見カードはラベル幅が違ってもチェック列/値列が縦に揃う", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await boot(page);
+  await goToHome(page);
+  await openPatient(page, 0);
+
+  const phys = page.locator("#oExpanded .formatExpanded", { hasText: "身体所見" });
+  // General(7字) と 肺音(2字) などラベル幅が違う複数行で、チェック列・値列の x が揃うこと。
+  const normalBtns = phys.locator(".formatCardNormalBtn");
+  const valueBtns = phys.locator(".formatCardValue");
+  const n = await normalBtns.count();
+  expect(n).toBeGreaterThan(2);
+
+  const xOf = async (loc, idx) => (await loc.nth(idx).boundingBox()).x;
+  const baseNormalX = await xOf(normalBtns, 0);
+  const baseValueX = await xOf(valueBtns, 0);
+  for (let i = 1; i < n; i++) {
+    expect(Math.abs((await xOf(normalBtns, i)) - baseNormalX)).toBeLessThan(1.5);
+    expect(Math.abs((await xOf(valueBtns, i)) - baseValueX)).toBeLessThan(1.5);
+  }
+});
+
+test("空欄→チェックで正常文、再チェックで空欄に戻る (General)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await boot(page);
+  await goToHome(page);
+  await openPatient(page, 0);
+
+  const phys = page.locator("#oExpanded .formatExpanded", { hasText: "身体所見" });
+  const firstRow = phys.locator(".formatCardItem").first(); // General (normal=良好)
+  const btn = firstRow.locator(".formatCardNormalBtn");
+  const val = firstRow.locator(".formatCardValue");
+
+  await expect(btn).toHaveAttribute("aria-pressed", "false");
+  await btn.click();
+  await expect(val).toHaveText("良好");
+  await expect(btn).toHaveAttribute("aria-pressed", "true");
+
+  await btn.click(); // 再タップ → 空欄
+  await expect(btn).toHaveAttribute("aria-pressed", "false");
+  await expect(val).toHaveClass(/empty/);
+
+  // QR にもクリア済みの General は出ない
+  await openQrPreview(page);
+  expect(await page.locator("#qrTextPreview").textContent()).not.toContain("良好");
+});
+
+test("手入力済みのチェックは上書きせず入力ポップアップを開き手入力を保持 (General)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await boot(page);
+  await goToHome(page);
+  await openPatient(page, 0);
+
+  const phys = page.locator("#oExpanded .formatExpanded", { hasText: "身体所見" });
+  const firstRow = phys.locator(".formatCardItem").first(); // General
+  // まず General に手入力 (正常文「良好」とは別の値) を入れる
+  await firstRow.locator(".formatCardValue").click();
+  await expect(page.locator("#formatInputOverlay")).toHaveClass(/active/);
+  await page.locator("#formatInputBody .formatInputRow").first().locator(".formatInputValue").fill("やや倦怠感あり");
+  await page.locator("#formatInputApplyBtn").click();
+  await expect(page.locator("#formatInputOverlay")).not.toHaveClass(/active/);
+  await expect(firstRow.locator(".formatCardValue")).toHaveText("やや倦怠感あり");
+
+  // チェックを押す → 良好で上書きせず、入力ポップアップが開き手入力が残る
+  await firstRow.locator(".formatCardNormalBtn").click();
+  await expect(page.locator("#formatInputOverlay")).toHaveClass(/active/);
+  await expect(page.locator("#formatInputBody .formatInputRow").first().locator(".formatInputValue"))
+    .toHaveValue("やや倦怠感あり");
+  // 念のためカード側も上書きされていない
+  await page.locator("#formatInputCancelBtn").click();
+  await expect(firstRow.locator(".formatCardValue")).toHaveText("やや倦怠感あり");
+});
+
+test("手入力で正常文と同一文字列にしてもタップで消えず編集が開く (Phase6 provenance)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await boot(page);
+  await goToHome(page);
+  await openPatient(page, 0);
+
+  const phys = page.locator("#oExpanded .formatExpanded", { hasText: "身体所見" });
+  const firstRow = phys.locator(".formatCardItem").first(); // General (normal=良好)
+  // ポップアップで「良好」(=正常文と同一文字列) を手入力して保存 → source=manual
+  await firstRow.locator(".formatCardValue").click();
+  await expect(page.locator("#formatInputOverlay")).toHaveClass(/active/);
+  await page.locator("#formatInputBody .formatInputRow").first().locator(".formatInputValue").fill("良好");
+  await page.locator("#formatInputApplyBtn").click();
+  await expect(page.locator("#formatInputOverlay")).not.toHaveClass(/active/);
+
+  // 値は「良好」だが手入力由来なのでチェックは緑にならない (aria-pressed=false)
+  await expect(firstRow.locator(".formatCardValue")).toHaveText("良好");
+  await expect(firstRow.locator(".formatCardNormalBtn")).toHaveAttribute("aria-pressed", "false");
+
+  // チェックをタップ → 文字列一致でも消さず、入力ポップアップが開き「良好」が残る
+  await firstRow.locator(".formatCardNormalBtn").click();
+  await expect(page.locator("#formatInputOverlay")).toHaveClass(/active/);
+  await expect(page.locator("#formatInputBody .formatInputRow").first().locator(".formatInputValue"))
+    .toHaveValue("良好");
+  await page.locator("#formatInputCancelBtn").click();
+  await expect(firstRow.locator(".formatCardValue")).toHaveText("良好");
+
+  // QR 平文に provenance メタ (source/preset/manual) が混ざらない
+  await openQrPreview(page);
+  const qr = await page.locator("#qrTextPreview").textContent();
+  expect(qr).toContain("良好");
+  expect(qr).not.toMatch(/source|preset|manual/);
+});
+
 test("自由記述欄『補足・メモ（任意）』が患者画面に存在しない (修正2)", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await boot(page);

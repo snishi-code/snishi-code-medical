@@ -98,27 +98,39 @@
 
     /* 展開カード本体 (修正3): 小さな inline input は持たず、値の「読み表示」+
        タップで大入力シートを開く面。老眼・スマホ不慣れ向けに大きく押しやすく。 */
+    /* カード全体を 1 つの grid にし、行ごとに列が独立しないようにする。grid なら
+       「ラベル / 正常チェック / 値」の各列が全行で同じ track 幅に揃う (flex だと行ごと
+       にラベル幅が変わりチェック列がずれる)。各行 (.formatCardItem) は display:contents
+       で自身の box を畳み、子をこの grid の cell として配置する。
+       列構成はカード内の item に応じて hasLabel / hasNormal を body に付けて切替える:
+       - 身体所見 (ラベル+正常):  label / normal / value の 3 列
+       - バイタル (ラベルのみ):    label / value の 2 列 (空の正常列を作らない)
+       - 所見・S/A/P (正常のみ):   normal / value の 2 列 (空のラベル列を作らない) */
     .formatCardBody {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .formatCardItem {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 6px 8px;
       align-items: center;
-      gap: 8px;
-      min-width: 0;
     }
+    .formatCardBody.hasLabel {
+      grid-template-columns: minmax(64px, 8rem) minmax(0, 1fr);
+    }
+    .formatCardBody.hasNormal {
+      grid-template-columns: 44px minmax(0, 1fr);
+    }
+    .formatCardBody.hasLabel.hasNormal {
+      grid-template-columns: minmax(64px, 8rem) 44px minmax(0, 1fr);
+    }
+    .formatCardItem { display: contents; }
     .formatCardItemLabel {
-      flex: 0 0 auto;
       font-weight: 700;
       font-size: 15px;
       color: var(--text);
-      min-width: 48px;
+      min-width: 0;
+      word-break: break-word;
     }
     /* 値表示 = タップ領域。空のときはプレースホルダ調。44px 以上で押しやすく。 */
     .formatCardValue {
-      flex: 1 1 auto;
       min-width: 0;
       width: auto;
       text-align: left;
@@ -145,7 +157,6 @@
     }
     /* ワンタップ正常チェック (text item)。押下済み (=normal と一致) は緑塗り。 */
     .formatCardNormalBtn {
-      flex: 0 0 auto;
       width: 44px;
       height: 44px;
       padding: 0;
@@ -162,6 +173,9 @@
     .formatCardNormalBtn.on {
       background: var(--status-green-bg, #dcfce7);
     }
+    /* hasNormal 列を持つカードで、この行に正常チェックが無い (text 以外 / normal 未設定)
+       場合の空セル。値列を正しい開始位置に揃えるため 44px の透明スペーサーを置く。 */
+    .formatCardNormalSpacer { width: 44px; height: 1px; }
 
     /* ============================
        フォーマット入力モーダル
