@@ -86,8 +86,9 @@ export function renderSharedScreen(renderHomeFn, opts, navigateToPatientFn) {
     }
 
     const inp = document.createElement("textarea");
-    // 既定の rows=2 だとメモページの input (1行) より縦に高くなるため 1 行に揃える (#9)。
-    // resize:vertical は CSS 側で残しているのでユーザーは必要時に伸ばせる。
+    // 共有本文。改行をそのまま入力・表示し、内容に応じて縦に伸びる (CSS field-sizing)。
+    // 未対応ブラウザ向けに rows=1 を初期値にし、resize:vertical で手動調整できる (P5 P0)。
+    // メモページ本文も textarea になったので read/edit・両画面で見た目が揃う。
     inp.rows = 1;
     inp.value = String(p?.shared ?? "");
     inp.addEventListener("input", () => {

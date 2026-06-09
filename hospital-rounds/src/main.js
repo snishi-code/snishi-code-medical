@@ -31,7 +31,8 @@ import { initEventLog, logEvent, EVENT } from "./features/eventlog.js";
 import { initSnapshots, captureSnapshot, REASON } from "./features/snapshots.js";
 import { DOCS_BUNDLE } from "./docs-bundle.js";
 import { setDataChangeHandler } from "./features/drag.js";
-import { initFormats, setOnTextChanged as setOnFormatTextChanged, setFormatStoreAdapter } from "./features/formats.js";
+import { initFormats, setOnTextChanged as setOnFormatTextChanged, setFormatStoreAdapter, setFormatUndoCapture } from "./features/formats.js";
+import { undo as patientUndo, redo as patientRedo, captureUndoPoint, refreshUndoButtons, setUndoRefresh } from "./features/patient-undo.js";
 import { initMovePatient } from "./features/move-patient.js";
 import { purgeExpiredPatientLifecycleRecords } from "./features/patient-lifecycle.js";
 import { initQrFormat, closeQrFormatOverlay, setOnFormatApplied, setFormatStoreAdapter as setQrFormatStoreAdapter } from "./features/qr-format.js";
@@ -259,6 +260,14 @@ setOnFormatTextChanged(() => {
   doRenderDetail();
   if (typeof renderQrIfNeeded === "function") renderQrIfNeeded();
 });
+
+// 患者画面 Undo/Redo (Phase 6)。フォーマット値の中央 API が値を変える直前にこの hook が
+// 呼ばれ、現在患者の編集前状態を patient-undo へ積む。差し替え後の再描画は refreshPatientUI。
+setFormatUndoCapture((_p, opts) => captureUndoPoint("format", undefined, opts));
+setUndoRefresh(refreshPatientUI);
+document.getElementById("detailUndoBtn")?.addEventListener("click", () => { patientUndo(); });
+document.getElementById("detailRedoBtn")?.addEventListener("click", () => { patientRedo(); });
+refreshUndoButtons();
 
 initMovePatient({
   renderHome: doRenderHome,

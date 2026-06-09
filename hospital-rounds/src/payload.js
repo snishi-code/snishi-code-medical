@@ -28,7 +28,8 @@ function buildPanelOut(p, panel, group) {
 
 export function buildSoapParts(no) {
   const p = appState.patients[no - 1];
-  // 実効グループ (active 指定 or デフォルト): 展開(A)値の合成と規定文 fallback に使う
+  // 実効グループ (active 指定 or デフォルト): 展開フォーマット値の合成に使う
+  // (規定文による空欄 fallback は撤去済み。出力はタップ/入力した欄だけ)。
   const group = resolveActiveGroup(p);
   const sOut = buildPanelOut(p, "S", group);
   const oOut = buildPanelOut(p, "O", group);

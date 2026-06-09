@@ -493,6 +493,109 @@ await test("composeFormatFromValues: titleWrap 空ならタイトルなし / 非
 });
 
 // ============================
+// 7b-1) text provenance (Phase 6): preset/manual/legacy の中央判定
+// ============================
+section("text provenance (Phase 6)");
+
+await test("readTextValue: entry object も legacy 文字列も値を取り出す", () => {
+  assert.equal(fv.readTextValue({ value: "良好", source: "preset" }), "良好");
+  assert.equal(fv.readTextValue({ value: "", source: "manual" }), "");
+  assert.equal(fv.readTextValue("素の文字列"), "素の文字列");
+  assert.equal(fv.readTextValue(undefined), "");
+});
+
+await test("normalizeTextEntry: source 明示は信頼 / legacy は現在の正常文で推論", () => {
+  // 明示 source を信頼 (手入力が偶然 normal と同一文字列でも manual のまま)
+  assert.deepEqual(fv.normalizeTextEntry({ value: "良好", source: "manual" }, "良好"),
+    { value: "良好", source: "manual" });
+  assert.deepEqual(fv.normalizeTextEntry({ value: "良好", source: "preset" }, "良好"),
+    { value: "良好", source: "preset" });
+  // legacy 文字列: 空→empty / =normal→preset / それ以外→manual
+  assert.deepEqual(fv.normalizeTextEntry("", "良好"), { value: "", source: "empty" });
+  assert.deepEqual(fv.normalizeTextEntry("良好", "良好"), { value: "良好", source: "preset" });
+  assert.deepEqual(fv.normalizeTextEntry("倦怠感あり", "良好"), { value: "倦怠感あり", source: "manual" });
+  // 空 entry は値が空なら source=empty に正規化
+  assert.deepEqual(fv.normalizeTextEntry({ value: "", source: "manual" }, "良好"),
+    { value: "", source: "empty" });
+});
+
+await test("normalizeTextEntry: 正常文を変更すると判定基準も追従 (settings.formats が正本)", () => {
+  // legacy "良好" は、現在の normal が "正常" なら preset でなく manual 扱い
+  assert.deepEqual(fv.normalizeTextEntry("良好", "正常"), { value: "良好", source: "manual" });
+  assert.deepEqual(fv.normalizeTextEntry("正常", "正常"), { value: "正常", source: "preset" });
+});
+
+await test("decidePresetToggle: 空→write / preset→clear / manual→openEditor", () => {
+  assert.deepEqual(fv.decidePresetToggle("", "良好"),
+    { action: "write", value: { value: "良好", source: "preset" } });
+  assert.deepEqual(fv.decidePresetToggle({ value: "良好", source: "preset" }, "良好"),
+    { action: "clear", value: "" });
+  // 手入力 (manual) は normal と同一文字列でも上書き/消去しない
+  assert.deepEqual(fv.decidePresetToggle({ value: "良好", source: "manual" }, "良好"),
+    { action: "openEditor" });
+  // legacy 手入力 (normal 以外) も openEditor
+  assert.deepEqual(fv.decidePresetToggle("倦怠感あり", "良好"), { action: "openEditor" });
+  // 設定で正常文を変えた後、保存済み preset の値が現 normal と不一致 → openEditor (黙って消さない)
+  assert.deepEqual(fv.decidePresetToggle({ value: "良好", source: "preset" }, "正常"),
+    { action: "openEditor" });
+});
+
+await test("commitDraftTextEntry: 変化した item だけ manual 化 / 未変化は出所保持", () => {
+  // 空入力 → "" (未入力)
+  assert.equal(fv.commitDraftTextEntry("", ""), "");
+  // 編集して値が変わった → manual entry
+  assert.deepEqual(fv.commitDraftTextEntry("", "倦怠感あり"), { value: "倦怠感あり", source: "manual" });
+  // 未変更 (draft が元 preset entry のまま) → 元 entry を保持 (preset を manual に降格させない)
+  const preset = { value: "良好", source: "preset" };
+  assert.equal(fv.commitDraftTextEntry(preset, preset), preset);
+  // 編集後の文字列が元値と同じでも未変更扱い (出所保持)
+  assert.equal(fv.commitDraftTextEntry(preset, "良好"), preset);
+});
+
+await test("composeFormatFromValues: text entry は value だけ出力 (provenance は wire に出ない)", () => {
+  const f = { id: "f", name: "所見", panel: "O", joiner: ", ", labelSep: "：", titleWrap: "",
+    items: [{ label: "", kind: "text", normal: "特記すべき異常なし" }] };
+  const { text } = fv.composeFormatFromValues(f, { 0: { value: "特記すべき異常なし", source: "preset" } });
+  assert.equal(text, "特記すべき異常なし");
+  assert.ok(!/source|preset|manual/.test(text), "出力に provenance メタが混ざらない");
+  // ラベル付き manual も値だけ
+  const f2 = { id: "g", name: "身体所見", panel: "O", joiner: ", ", labelSep: "：", titleWrap: "",
+    items: [{ label: "General", kind: "text", normal: "良好" }] };
+  assert.equal(fv.composeFormatFromValues(f2, { 0: { value: "倦怠感あり", source: "manual" } }).text,
+    "General：倦怠感あり");
+});
+
+await test("formatValueHasInput: text entry object も正しく判定", () => {
+  assert.equal(fv.formatValueHasInput({ value: "良好", source: "preset" }), true);
+  assert.equal(fv.formatValueHasInput({ value: "", source: "manual" }), false);
+});
+
+await test("computeFormatTagsToAdd: 設定にあり未付与のタグだけを delta にする", () => {
+  // fmtTags のうち known にあり existing に無いものだけ (順序保持・重複除去)
+  assert.deepEqual(fv.computeFormatTagsToAdd(["発熱", "術後"], ["発熱", "術後", "他"], []), ["発熱", "術後"]);
+  // 既に付いているタグは除く (= Undo で消す delta に含めない → 手で付けたものを守る)
+  assert.deepEqual(fv.computeFormatTagsToAdd(["発熱", "術後"], ["発熱", "術後"], ["発熱"]), ["術後"]);
+  // 設定に存在しないタグは無視 (新規生成しない)
+  assert.deepEqual(fv.computeFormatTagsToAdd(["未登録"], ["発熱"], []), []);
+  // 重複入力は 1 回だけ
+  assert.deepEqual(fv.computeFormatTagsToAdd(["発熱", "発熱"], ["発熱"], []), ["発熱"]);
+  assert.deepEqual(fv.computeFormatTagsToAdd([], ["発熱"], []), []);
+});
+
+await test("mergeTagsAdd / mergeTagsRemove: delta の付与・除去 (手編集タグは保持)", () => {
+  // 付与: 既存は保ったまま追加 (重複しない)
+  assert.deepEqual(fv.mergeTagsAdd(["手動"], ["発熱"]), ["手動", "発熱"]);
+  assert.deepEqual(fv.mergeTagsAdd(["発熱"], ["発熱"]), ["発熱"]);
+  // 除去: delta だけ消し、手で付けたタグ ("手動") は残る = Undo でタグ列を巻き戻さない
+  assert.deepEqual(fv.mergeTagsRemove(["手動", "発熱"], ["発熱"]), ["手動"]);
+  assert.deepEqual(fv.mergeTagsRemove(["手動"], ["発熱"]), ["手動"]);
+  // add→remove で元へ戻る (Undo/Redo の対称性)
+  const base = ["手動"];
+  const added = fv.mergeTagsAdd(base, ["発熱"]);
+  assert.deepEqual(fv.mergeTagsRemove(added, ["発熱"]), ["手動"]);
+});
+
+// ============================
 // 7b-2) 展開フォーマット不変条件 (修正1: ワンタップ入力カードを守る)
 // ============================
 section("format group expand invariant (修正1)");
@@ -601,6 +704,27 @@ await test("backfill: defaultSettings は S/O/A/P 各パネルに既定フォー
     const fid = settings.formats.find(f => f.panel === panel).id;
     assert.ok(def.expandFormatIds.includes(fid), `${panel} 既定が展開カードに入る`);
   }
+  const simpleOFmt = settings.formats.find(f => f.panel === "O" && f.name === "所見");
+  assert.ok(simpleOFmt, "O 欄にも S/A/P 相当のシンプルな展開フォーマットがある");
+  assert.ok(def.expandFormatIds.includes(simpleOFmt.id), "O 欄のシンプル所見が展開カードに入る");
+});
+
+await test("normalizeSettings: 既存設定にも O 欄のシンプル所見を補填する", () => {
+  const oldSettings = storeForPayload.defaultSettings();
+  const oldSimpleO = oldSettings.formats.find(f => f.panel === "O" && f.name === "所見");
+  assert.ok(oldSimpleO, "fixture setup has current O 所見");
+  oldSettings.formats = oldSettings.formats.filter(f => f.id !== oldSimpleO.id);
+  for (const g of oldSettings.formatGroups) {
+    g.formatIds = g.formatIds.filter(id => id !== oldSimpleO.id);
+    g.expandFormatIds = g.expandFormatIds.filter(id => id !== oldSimpleO.id);
+  }
+
+  const normalized = storeForPayload.normalizeSettings(oldSettings);
+  const restored = normalized.formats.find(f => f.panel === "O" && f.name === "所見");
+  const def = normalized.formatGroups.find(g => g.isDefault);
+  assert.ok(restored, "旧設定にも O 所見が追加される");
+  assert.ok(def.formatIds.includes(restored.id), "O 所見がデフォルトセットに含まれる");
+  assert.ok(def.expandFormatIds.includes(restored.id), "O 所見が展開カードとして表示される");
 });
 
 await test("buildTabPayload: タップ(formatValues)した欄だけ QR に出る / 未タップ欄は空 (fallback 撤去)", () => {
@@ -773,9 +897,10 @@ section("defaults.json");
 await test("DEFAULT_FORMATS comes from defaults.json", async () => {
   const c = await import("../src/constants.js");
   assert.ok(Array.isArray(c.DEFAULT_FORMATS));
-  // Phase 3: 各パネル (S/O/A/P) に既定フォーマットを常設 (O は 2 つ)。
-  assert.equal(c.DEFAULT_FORMATS.length, 5);
+  // Phase 3: 各パネル (S/O/A/P) に既定フォーマットを常設 (O は 3 つ)。
+  assert.equal(c.DEFAULT_FORMATS.length, 6);
   assert.equal(c.DEFAULT_FORMATS[0].name, "バイタル");
+  assert.ok(c.DEFAULT_FORMATS.some(f => f.panel === "O" && f.name === "所見"));
   // 全パネルに最低 1 つ既定フォーマットがある
   const panels = new Set(c.DEFAULT_FORMATS.map(f => f.panel));
   for (const panel of ["S", "O", "A", "P"]) {

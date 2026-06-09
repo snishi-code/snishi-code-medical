@@ -35,6 +35,8 @@ import { resolveActiveGroup, getDefaultFormatGroup } from "./format-groups.js";
 import { bindHandleDrag } from "./drag.js";
 import {
   readNumericEntry, composeFormatFromValues,
+  readTextValue, normalizeTextEntry, decidePresetToggle, commitDraftTextEntry,
+  computeFormatTagsToAdd,
 } from "./format-values.js";
 import { icon } from "../icons.js";
 import { t, applyI18n } from "../i18n.js";
@@ -125,6 +127,13 @@ export function formatsForPanel(panel) {
 let _onTextChanged = null;
 export function setOnTextChanged(fn) { _onTextChanged = fn; }
 
+// 患者入力を変更する直前に呼ぶ Undo 起点フック (Phase 6)。main.js が patient-undo へ
+// 配線する。未配線時は no-op (= Undo 無効でも入力は通常どおり動く)。opts.tagsAdded は
+// この操作で自動付与されるタグ delta (Undo で除去 / Redo で再付与する対象)。
+let _captureUndo = null;
+export function setFormatUndoCapture(fn) { _captureUndo = fn; }
+function captureFormatUndo(patient, opts) { if (_captureUndo) _captureUndo(patient, opts); }
+
 // 新規フォーマット作成ウィジェット (タグの makeAddTagWidget と同じ「+」ボタンスタイル)。
 function makeAddFormatWidget(panel, onAdded) {
   const wrap = document.createElement("span");
@@ -184,12 +193,20 @@ export function quickAccessFormatsForPanel(panel, group) {
   return out;
 }
 
-// パネルごとに 1 つ作る format ランチャー (☰)。グループ外 (C) も含む全フォーマットへの
-// 入口。タップで入力モーダルを開く (カーソル位置に挿入)。
+// パネルごとに 1 つ作る format ランチャー (☰)。既にカードとして見えている展開
+// フォーマットは候補から除外し (再選択の意味が薄く重複に見えるため)、まだカードに
+// 出ていないフォーマット (クイック chip / グループ外 C) への入口に絞る (P5 P1)。
+// 非展開フォーマットへの到達性は維持する。タップで入力モーダルを開く。
 function makeFormatPicker(panel, onChange) {
   return makeTagPicker({
     launcher: true,
-    entries: () => formatsForPanel(panel).map(f => ({ value: f.id, label: f.name })),
+    entries: () => {
+      const p = appState.patients[selectedNo - 1];
+      const shown = new Set(shownCardFormatsForPanel(panel, p).map(f => f.id));
+      return formatsForPanel(panel)
+        .filter(f => !shown.has(f.id))
+        .map(f => ({ value: f.id, label: f.name }));
+    },
     onChange,
     iconOnly: true,
     iconHtml: FORMAT_PICKER_HAMBURGER_SVG,
@@ -247,38 +264,48 @@ const EXPANDED_HOST_ID = { S: "sExpanded", O: "oExpanded", A: "aExpanded", P: "p
 // チェック(正常)アイコン (lucide: check)。
 const CHECK_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
+// 患者画面にカードとして並ぶフォーマットを順序付きで返す: 常時出す展開カード
+// (実効グループ + デフォルトフォールバック) + 値が入っている非展開フォーマット
+// (クイック/ランチャーで入力 → 「展開」されたもの)。renderExpandedFormats と ☰ ランチャー
+// の除外判定が同じ集合を参照するための単一ソース (P5 P1)。
+export function shownCardFormatsForPanel(panel, patient) {
+  if (!patient) return [];
+  const fv = (patient.formatValues && typeof patient.formatValues === "object") ? patient.formatValues : {};
+  const group = resolveActiveGroup(patient);
+  const expand = effectiveExpandedFormatsForPanel(panel, group);
+  const shown = new Set(expand.map(f => f.id));
+  const extras = formatsForPanel(panel)
+    .filter(f => !shown.has(f.id) && composeFormatFromValues(f, fv[f.id] || {}).hasValue);
+  return [...expand, ...extras];
+}
+
 export function renderExpandedFormats(panel, hostEl) {
   if (!hostEl) return;
   hostEl.textContent = "";
   const p = appState.patients[selectedNo - 1];
   if (!p) return;
   if (!p.formatValues || typeof p.formatValues !== "object") p.formatValues = {};
-  const fv = p.formatValues;
-  const group = resolveActiveGroup(p);
-  // 常時出す展開カード (実効グループ + デフォルトフォールバック)。
-  const expand = effectiveExpandedFormatsForPanel(panel, group);
-  const shown = new Set(expand.map(f => f.id));
-  // 値が入っている非展開フォーマット (クイック/ランチャーで入力 → 「展開」されたもの)。
-  const extras = formatsForPanel(panel)
-    .filter(f => !shown.has(f.id) && composeFormatFromValues(f, fv[f.id] || {}).hasValue);
-  for (const format of [...expand, ...extras]) hostEl.appendChild(buildExpandedWidget(format, p));
+  for (const format of shownCardFormatsForPanel(panel, p)) hostEl.appendChild(buildExpandedWidget(format, p));
 }
 
 // number/fraction/text 各 item の「カード上の値表示」テキストと空判定。
+// 空欄は「未入力」等の文言をカード本文に出さない (まだ何も入っていない入力面として
+// 薄く見せるだけ。CSS .formatCardValue.empty が破線プレースホルダ表示)。タップ可能性は
+// aria-label / title / 44px タップ面で担保する (P5 P1)。
 function cardItemDisplay(format, item, kind, stored) {
   if (kind === "number") {
     const { value, note } = readNumericEntry(stored);
     const v = value.trim();
-    if (!v) return { text: t("format.card.empty"), empty: true };
+    if (!v) return { text: "", empty: true };
     return { text: `${v}${item.unit || ""}${note.trim() ? " " + note.trim() : ""}`, empty: false };
   }
   if (kind === "fraction") {
     const { value, note } = readNumericEntry(stored);
-    if (!value.replace("/", "").trim()) return { text: t("format.card.empty"), empty: true };
+    if (!value.replace("/", "").trim()) return { text: "", empty: true };
     return { text: `${value}${item.unit || ""}${note.trim() ? " " + note.trim() : ""}`, empty: false };
   }
-  const v = String(stored ?? "").trim();
-  if (!v) return { text: t("format.card.empty"), empty: true };
+  const v = readTextValue(stored).trim();
+  if (!v) return { text: "", empty: true };
   return { text: v, empty: false };
 }
 
@@ -303,24 +330,80 @@ function buildExpandedWidget(format, patient) {
   body.className = "formatCardBody";
   wrap.appendChild(body);
 
-  (format.items || []).forEach((item, i) => {
-    body.appendChild(buildCardItemRow(format, item, i, stored, patient));
+  // カード単位で列構成を決める (grid の track をカード内で統一して縦に揃える)。
+  // hasLabelCol: ラベルを持つ item が 1 つでもある / hasNormalCol: ワンタップ正常を
+  // 出す text item (normal あり) が 1 つでもある。これで「空のラベル列/正常列」を作らない。
+  const items = format.items || [];
+  const hasLabelCol = items.some(it => String(it?.label ?? "").trim() !== "");
+  const hasNormalCol = items.some(it => (it?.kind || DEFAULT_ITEM_KIND) === "text" && it?.normal);
+  body.classList.toggle("hasLabel", hasLabelCol);
+  body.classList.toggle("hasNormal", hasNormalCol);
+
+  items.forEach((item, i) => {
+    body.appendChild(buildCardItemRow(format, item, i, stored, patient, hasLabelCol, hasNormalCol));
   });
   return wrap;
 }
 
-// カードの 1 行: ラベル + 値表示 (タップで大入力シート) + (text なら) ワンタップ正常。
-function buildCardItemRow(format, item, i, stored, patient) {
+// カードの 1 行: ラベル + (text なら) ワンタップ正常 + 値表示 (タップで大入力シート)。
+// 入力シートと同じくチェックを値の左側に置き、どの項目への正常入力か分かりやすくする。
+// row は display:contents なので、子は親 (.formatCardBody) の grid セルになる。列を全行で
+// 揃えるため、カードが持つ列 (hasLabelCol / hasNormalCol) に対し、この行に該当要素が無い
+// ときも空のプレースホルダセルを置いて列位置を保つ。
+function buildCardItemRow(format, item, i, stored, patient, hasLabelCol, hasNormalCol) {
   const kind = item.kind || DEFAULT_ITEM_KIND;
   const row = document.createElement("div");
   row.className = "formatCardItem";
 
   const labelText = String(item.label ?? "").trim();
-  if (labelText) {
+  if (hasLabelCol) {
+    // ラベル列があるカードでは、この行にラベルが無くても空セルで列を維持する。
     const lab = document.createElement("div");
     lab.className = "formatCardItemLabel";
     lab.textContent = labelText;
     row.appendChild(lab);
+  }
+
+  // text item で normal があればワンタップの正常チェック (キーボードを出さない)。
+  if (kind === "text" && item.normal) {
+    const normalBtn = document.createElement("button");
+    normalBtn.type = "button";
+    normalBtn.className = "formatCardNormalBtn";
+    // 緑/aria/tooltip は provenance (source) を基準にする。手入力が偶然 normal と同一
+    // 文字列でも source=manual なら緑にせず、再タップで消さない (decidePresetToggle が編集起動)。
+    const { source } = normalizeTextEntry(stored[i], item.normal);
+    const isPreset = source === "preset";
+    normalBtn.classList.toggle("on", isPreset);
+    normalBtn.title = source === "empty" ? t("format.normal.tooltip.has", { value: item.normal })
+      : isPreset ? t("format.normal.tooltip.clear")
+      : t("format.normal.tooltip.edit");
+    normalBtn.setAttribute("aria-label", t("common.normal"));
+    normalBtn.setAttribute("aria-pressed", isPreset ? "true" : "false");
+    normalBtn.innerHTML = CHECK_SVG;
+    normalBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      // 現在の正常文 (item.normal = settings.formats 由来) を基準に provenance で分岐。
+      const decision = decidePresetToggle(stored[i], item.normal);
+      if (decision.action === "openEditor") {
+        // 手入力済み (source=manual) → 上書きせず入力ポップアップを開く。保存値は変えない。
+        openFormatSheet(format, format.panel, i);
+        return;
+      }
+      // write (空欄→正常文 preset) / clear (preset→空欄)。値が変わるので Undo 起点を撮る。
+      // write のときだけ自動付与タグの delta を計算し、Undo がそれも撤回できるよう履歴へ渡す。
+      const tagsAdded = (decision.action === "write") ? formatTagsToAdd(format) : [];
+      captureFormatUndo(patient, { tagsAdded });
+      writeFormatValue(patient, format, i, decision.value);
+      if (decision.action === "write") applyFormatTags(format);
+      if (_onTextChanged) _onTextChanged(); // 再描画 (カード値更新 + 新カード反映 + QR)
+    });
+    row.appendChild(normalBtn);
+  } else if (hasNormalCol) {
+    // 正常列を持つカードで、この行に正常チェックが無いとき (number 等) は空セルで列を維持。
+    const spacer = document.createElement("div");
+    spacer.className = "formatCardNormalSpacer";
+    spacer.setAttribute("aria-hidden", "true");
+    row.appendChild(spacer);
   }
 
   // 値表示は大きいタップ領域。タップで該当 item にフォーカスした大入力シートを開く (修正3)。
@@ -333,26 +416,6 @@ function buildCardItemRow(format, item, i, stored, patient) {
   valueBtn.setAttribute("aria-label", t("format.cell.edit.aria", { label: labelText || format.name }));
   valueBtn.addEventListener("click", () => openFormatSheet(format, format.panel, i));
   row.appendChild(valueBtn);
-
-  // text item で normal があればワンタップの正常チェック (キーボードを出さない)。
-  if (kind === "text" && item.normal) {
-    const normalBtn = document.createElement("button");
-    normalBtn.type = "button";
-    normalBtn.className = "formatCardNormalBtn";
-    const isNormal = String(stored[i] ?? "") === String(item.normal);
-    normalBtn.classList.toggle("on", isNormal);
-    normalBtn.title = t("format.normal.tooltip.has", { value: item.normal });
-    normalBtn.setAttribute("aria-label", t("common.normal"));
-    normalBtn.setAttribute("aria-pressed", isNormal ? "true" : "false");
-    normalBtn.innerHTML = CHECK_SVG;
-    normalBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      writeFormatValue(patient, format, i, item.normal || "");
-      applyFormatTags(format);
-      if (_onTextChanged) _onTextChanged(); // 再描画 (カード値更新 + 新カード反映 + QR)
-    });
-    row.appendChild(normalBtn);
-  }
   return row;
 }
 
@@ -401,7 +464,9 @@ function openFormatSheet(format, panel, focusIndex) {
   const stored = (p?.formatValues?.[format.id] && typeof p.formatValues[format.id] === "object")
     ? p.formatValues[format.id] : {};
   const draft = { ...stored };
-  _currentSheet = { format, draft };
+  // orig = 編集前の保存値スナップショット。保存時に text item を「変わったものだけ manual 化」
+  // するための比較基準 (未タッチの preset を manual に降格させない)。
+  _currentSheet = { format, draft, orig: { ...stored } };
 
   (format.items || []).forEach((item, i) => {
     const kind = item.kind || DEFAULT_ITEM_KIND;
@@ -424,11 +489,21 @@ function openFormatSheet(format, panel, focusIndex) {
 
 function applyFormatSheet() {
   if (!_currentSheet) { closeFormatSheet(); return; }
-  const { format, draft } = _currentSheet;
+  const { format, draft, orig } = _currentSheet;
   const p = appState.patients[selectedNo - 1];
   if (p) {
     if (!p.formatValues || typeof p.formatValues !== "object") p.formatValues = {};
-    p.formatValues[format.id] = { ...draft };
+    // 値を確定する直前に Undo 起点を撮る。自動付与タグの delta も履歴へ渡す (Undo で撤回)。
+    captureFormatUndo(p, { tagsAdded: formatTagsToAdd(format) });
+    // text item は手入力由来 (manual) として確定 (変わった item だけ)。number/fraction はそのまま。
+    const next = {};
+    for (let i = 0; i < (format.items || []).length; i++) {
+      const kind = format.items[i].kind || DEFAULT_ITEM_KIND;
+      if (!(i in draft)) continue;
+      next[i] = (kind === "text") ? commitDraftTextEntry(orig[i], draft[i]) : draft[i];
+    }
+    // draft に残る (items 範囲外の) 余剰キーは捨てる (format.items 基準で再構築)。
+    p.formatValues[format.id] = next;
     applyFormatTags(format);
     markUpdated(selectedNo);
     scheduleSave();
@@ -632,7 +707,8 @@ function buildTextRow(host, item, opts = {}) {
   val.className = "formatInputValue formatInputText";
   val.rows = 1;
   setupTextInput(val);
-  if (opts.value != null) val.value = String(opts.value);
+  // opts.value は entry object ({value,source}) か文字列。readTextValue で値だけ取り出す。
+  val.value = readTextValue(opts.value);
   if (opts.onInput) val.addEventListener("input", () => opts.onInput(val.value));
 
   // 正常文ボタン (チェック)。ラベルと入力欄の間に置く (ラベルのすぐ右が自然)。
@@ -644,10 +720,13 @@ function buildTextRow(host, item, opts = {}) {
   // チェックマーク SVG (lucide: check)
   normalBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
   if (!item.normal) normalBtn.disabled = true;
-  // 正常文を流し込むだけ (focus はしない)。連打してもキーボードが出ず画面が
-  // 飛ばないよう、val.focus() を呼ばない (「ぽちぽち正常を押す」体験を壊さない)。
+  // 正常文を流し込む (focus はしない)。連打してもキーボードが出ず画面が飛ばないよう
+  // val.focus() を呼ばない (「ぽちぽち正常を押す」体験を壊さない)。すでに正常文と一致して
+  // いれば再タップで空欄に戻す (カード側の安全挙動に揃える。ポップアップは編集画面なので
+  // 手入力済みからの上書きは許容)。
   normalBtn.addEventListener("click", () => {
-    val.value = item.normal || "";
+    const normal = item.normal || "";
+    val.value = (val.value === normal) ? "" : normal;
     if (opts.onInput) opts.onInput(val.value);
   });
   row.appendChild(normalBtn);
@@ -671,24 +750,21 @@ export function composeExpandedForPanel(panel, _group, formatValues) {
   return pieces.join("\n");
 }
 
-function applyFormatTags(format) {
-  const fmtTags = Array.isArray(format?.tags) ? format.tags : [];
-  if (!fmtTags.length) return;
+// この操作で「新規に付くタグ」を計算する (純判定。設定にあるタグのみ・既存は除く)。
+// Undo がこの delta だけを撤回できるよう、書き込みの直前に算出して履歴へ渡す。
+function formatTagsToAdd(format) {
   const idx = (selectedNo | 0) - 1;
-  if (idx < 0) return;
-  const existing = getPatientTags(idx);
-  const set = new Set(existing);
-  // 設定上に存在するタグのみ追加 (タグが削除されていたら無視。新規生成はしない)
-  const known = new Set(getAllTags());
-  let changed = false;
-  for (const t of fmtTags) {
-    if (!known.has(t)) continue;
-    if (!set.has(t)) {
-      set.add(t);
-      changed = true;
-    }
-  }
-  if (changed) setPatientTags(idx, Array.from(set));
+  if (idx < 0) return [];
+  return computeFormatTagsToAdd(format?.tags, getAllTags(), getPatientTags(idx));
+}
+
+function applyFormatTags(format) {
+  const idx = (selectedNo | 0) - 1;
+  if (idx < 0) return [];
+  const toAdd = formatTagsToAdd(format);
+  if (!toAdd.length) return [];
+  setPatientTags(idx, [...getPatientTags(idx), ...toAdd]); // toAdd は既存除外済 (重複なし)
+  return toAdd;
 }
 
 // ============================
