@@ -21,7 +21,8 @@ import { renderMemoScreen, setMemoEditMode } from "./views/memo.js";
 import { renderSharedScreen, setSharedEditMode } from "./views/shared-list.js";
 import { renderSettings, initSettingsView } from "./views/settings-view.js";
 
-import { showView, createNavigators, createDocsOpener, setOnViewChange } from "./features/navigation.js";
+import { showView, createNavigators, createDocsOpener, setOnViewChange, setHistoryPush } from "./features/navigation.js";
+import { initAppHistory, pushView, closeTransientPopups } from "./features/app-history.js";
 import { createRenderers } from "./features/renderers.js";
 // header-menu.js (ハンバーガー) は v8.6 で廃止。import 削除済み。
 import { initAppTitle, refreshAppWsLabel, refreshAppUserName } from "./features/app-title.js";
@@ -31,7 +32,7 @@ import { initEventLog, logEvent, EVENT } from "./features/eventlog.js";
 import { initSnapshots, captureSnapshot, REASON } from "./features/snapshots.js";
 import { DOCS_BUNDLE } from "./docs-bundle.js";
 import { setDataChangeHandler } from "./features/drag.js";
-import { initFormats, setOnTextChanged as setOnFormatTextChanged, setFormatStoreAdapter, setFormatUndoCapture, closeFormatInputModal, notePatientViewEntered, cancelInlineFormatEdit } from "./features/formats.js";
+import { initFormats, setOnTextChanged as setOnFormatTextChanged, setFormatStoreAdapter, setFormatUndoCapture, notePatientViewEntered } from "./features/formats.js";
 import { focusPopupInput } from "./features/popup-behavior.js";
 import { undo as patientUndo, redo as patientRedo, captureUndoPoint, refreshUndoButtons, setUndoRefresh } from "./features/patient-undo.js";
 import { initMovePatient } from "./features/move-patient.js";
@@ -131,67 +132,26 @@ setDataChangeHandler(() => {
 });
 
 // ============================
-// Boot 3: History / nav buttons
+// Boot 3: History / 戻る操作の中央化
 // ============================
-history.replaceState({ view: "home" }, "", "");
-
-// ============================
-// ポップアップ ライフサイクル安全化
-// ============================
-// 「閉じられる一時ポップアップ」= active な .popupMenuOverlay のうち data-no-backdrop-close
-// (初期化/免責/確認系の app ゲート) でないもの。formatInputOverlay (患者入力) は内部 state の
-// cleanup が要るので専用 close を通す。
-function closablePopups() {
-  return [...document.querySelectorAll(".popupMenuOverlay.active")]
-    .filter(ov => !ov.hasAttribute("data-no-backdrop-close"));
-}
-function closeOnePopupWithCleanup(ov) {
-  if (!ov) return;
-  if (ov.id === "formatInputOverlay") { closeFormatInputModal(); return; } // _currentSheet も破棄
-  ov.classList.remove("active");
-}
-// 画面遷移時: view 横断の一時ポップアップを全部閉じる (患者入力シートは cleanup 付き)。
-function closeTransientPopups() {
-  for (const ov of closablePopups()) closeOnePopupWithCleanup(ov);
-}
-// 戻る操作用: 最前面の閉じられるポップアップを 1 つ閉じる。閉じたら true。
-function closeTopClosablePopup() {
-  const open = closablePopups();
-  if (!open.length) return false;
-  // 最前面 = z-index 最大 (同値なら DOM 後方)。
-  let top = open[0], topZ = -Infinity;
-  for (const ov of open) {
-    const z = parseInt(getComputedStyle(ov).zIndex, 10);
-    const zz = Number.isFinite(z) ? z : 0;
-    if (zz >= topZ) { topZ = zz; top = ov; }
-  }
-  closeOnePopupWithCleanup(top);
-  return true;
-}
-
-// 画面遷移フックを navigation へ配線: 一時ポップアップを閉じ、detail 入場時は誤タップガードを張る。
-setOnViewChange((which) => {
-  closeTransientPopups();
-  // 展開カードの inline 編集も view 横断で残さない (画面/患者をまたいだ未保存ドラフトを破棄)。
-  // 戻ってくれば detail 全体が再描画されるので silent (個別パネル再描画は不要)。
-  cancelInlineFormatEdit({ silent: true });
-  if (which === "detail") notePatientViewEntered();
-});
-
-window.addEventListener("popstate", (e) => {
-  // 戻る: 閉じられるポップアップ / 展開カードの inline 編集が開いていたら、まずそれを閉じて
-  // 画面遷移を消費する (患者入力が画面・患者をまたいで残らない = 臨床安全)。次の戻るで通常遷移。
-  if (closeTopClosablePopup() || cancelInlineFormatEdit()) {
-    const cur = document.documentElement.dataset.view || "home";
-    history.pushState({ view: cur }, "", ""); // 戻るを消費して現在 view を維持
-    return;
-  }
-  const v = (e.state && e.state.view) || "home";
-  showView(v, false);
+// 戻る操作・履歴・終了確認・一時ポップアップ閉鎖は features/app-history.js に集約する。
+// showView の history push を pushView (同一 view dedupe) 経由にし、root guard + popstate +
+// 終了確認を配線する。renderView は戻る遷移時の view 別再描画ディスパッチ。
+function renderView(v) {
   if (v === "home") doRenderHome();
   else if (v === "memo") doRenderMemo();
   else if (v === "shared") doRenderShared();
   else if (v === "detail") doRenderDetail();
+  else if (v === "settings") renderSettings();
+}
+setHistoryPush(pushView);
+initAppHistory({ renderView });
+
+// 画面遷移フックを navigation へ配線: 一時ポップアップを閉じ (app-history、内部で展開カードの
+// inline 編集も silent 破棄)、detail 入場時は誤タップガードを張る。
+setOnViewChange((which) => {
+  closeTransientPopups();
+  if (which === "detail") notePatientViewEntered();
 });
 
 // ヘッダー右は ≡ メニュー1つに集約 (誤タップ削減・場所固定)。タップで

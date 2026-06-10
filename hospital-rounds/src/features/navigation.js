@@ -9,6 +9,12 @@ import { captureSnapshot, REASON } from "./snapshots.js";
 let _onViewChange = null;
 export function setOnViewChange(fn) { _onViewChange = fn; }
 
+// history への view push を中央モジュール (features/app-history.js) に委譲するためのフック。
+// 未配線時は直接 pushState (フォールバック)。navigation は app-history を import しない
+// (一方向依存で循環回避。app-history が showView を import する側)。
+let _historyPush = (which) => history.pushState({ view: which }, "", "");
+export function setHistoryPush(fn) { if (typeof fn === "function") _historyPush = fn; }
+
 export function showView(which, pushState = true) {
   // 画面遷移時は入力欄のフォーカスを外す。前画面 (別患者の SOAP/メモ等) の
   // textarea/input にフォーカスが残ったまま遷移すると、遷移先でキーボードが勝手に
@@ -27,7 +33,7 @@ export function showView(which, pushState = true) {
   // スキップ。直近 2 枚だけ保持)。fire-and-forget。
   captureSnapshot(REASON.NAV);
   if (pushState) {
-    history.pushState({ view: which }, "", "");
+    _historyPush(which);
   }
   const homeView = document.getElementById("homeView");
   const memoView = document.getElementById("memoView");
