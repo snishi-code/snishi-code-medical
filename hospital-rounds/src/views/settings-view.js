@@ -16,6 +16,7 @@ import { logEvent, EVENT } from "../features/eventlog.js";
 import { getStatusOptions } from "../features/tags.js";
 import { icon } from "../icons.js";
 import { t } from "../i18n.js";
+import { focusPopupInput } from "../features/popup-behavior.js";
 
 // アイコンは icons.js を単一ソースに (drift 防止)
 const MEMO_SVG = icon("memo", 16);
@@ -359,7 +360,7 @@ function openInlineTagEditor(chipWrap, idx) {
   });
   inp.addEventListener("blur", () => finalize(true));
   chipWrap.appendChild(inp);
-  setTimeout(() => { inp.focus(); inp.select(); }, 0);
+  focusPopupInput(inp, { select: true });
 }
 
 function renderTagsList() {
@@ -547,7 +548,7 @@ function buildUserRow(r, isCurrent, totalCount) {
         if (await userNameExists(next, r.id)) {
           alert(t("io.user.name.duplicate"));
           done = false;
-          setTimeout(() => { inp.focus(); inp.select(); }, 0);
+          focusPopupInput(inp, { select: true });
           return;
         }
         if (r.id === getCurrentUserId()) {
@@ -569,7 +570,7 @@ function buildUserRow(r, isCurrent, totalCount) {
       if (e.key === "Enter") { e.preventDefault(); finalize(true); }
       else if (e.key === "Escape") { e.preventDefault(); finalize(false); }
     });
-    setTimeout(() => { inp.focus(); inp.select(); }, 0);
+    focusPopupInput(inp, { select: true });
   }
 
   return row;
@@ -791,7 +792,7 @@ function buildWorkspaceRow(r, isActive) {
       if (e.key === "Enter") { e.preventDefault(); finalize(true); }
       else if (e.key === "Escape") { e.preventDefault(); finalize(false); }
     });
-    setTimeout(() => { inp.focus(); inp.select(); }, 0);
+    focusPopupInput(inp, { select: true });
   }
 
   return row;

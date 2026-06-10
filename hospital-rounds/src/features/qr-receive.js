@@ -17,6 +17,7 @@
 import { scanQRStream, isScannerSupported } from "./qr-scan.js";
 import { decodePage } from "./qr-protocol.js";
 import { t } from "../i18n.js";
+import { openPopup, focusPopupInput } from "./popup-behavior.js";
 
 // kind → { kindLabel, receivePage(text, ctrl) }
 const _receivers = new Map();
@@ -64,12 +65,13 @@ function el(id) { return document.getElementById(id); }
 export function openQrReceiveOverlay() {
   const overlay = el("qrReceiveOverlay");
   if (!overlay) return;
-  overlay.classList.add("active");
   const area = el("qrReceiveArea");
   if (area) area.value = "";
   const status = el("qrReceiveStatus");
   if (status) status.textContent = "";
-  area?.focus();
+  // 中央ルール: ポップアップを開いただけでは入力欄に focus しない (openPopup 既定)。
+  // 貼り付けはユーザーが入力欄をタップしてから行う。
+  openPopup(overlay);
 }
 
 export function closeQrReceiveOverlay() {
@@ -97,7 +99,7 @@ export function initQrReceive() {
     const r = routePage(raw, baseCtrl);
     if (r.consumed && area) area.value = "";
     if (r.done) r.apply();
-    else area?.focus();
+    else focusPopupInput(area); // 読取後、続きの分割を貼り付けるため入力欄へ戻す (明示アクション)
   });
 
   // カメラ

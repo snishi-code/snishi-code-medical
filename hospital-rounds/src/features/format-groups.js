@@ -26,6 +26,7 @@ import {
   isLastExpandInPanel, missingExpandPanelsForGroup, repairGroupExpandInvariant,
 } from "./format-values.js";
 import { t } from "../i18n.js";
+import { openPopup } from "./popup-behavior.js";
 
 // 展開フォーマット不変条件のヘルパは pure データ層 (format-values.js) が正本。
 // 仕様上「format-groups.js から参照できる」ことを満たすため、ここから re-export する。
@@ -225,8 +226,9 @@ function openEditModal() {
     defChk.disabled = !!_currentEdit.target.isDefault;
   }
   renderFormatsCheckList();
-  overlay.classList.add("active");
-  if (nameInp) setTimeout(() => nameInp.focus(), 50);
+  // 中央ルール: 編集モーダルは名前 + フォーマット選択リストを持つので、開いた瞬間に
+  // 名前欄へ自動フォーカスしない (触っていない欄にキーボードが飛び出すのを防ぐ)。
+  openPopup(overlay);
 }
 
 function closeEditModal() {

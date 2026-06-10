@@ -59,6 +59,12 @@ export function exitAllEdits() {
   for (const t of [...activeToggles]) t.exit();
 }
 
+// memo/shared 鉛筆編集など、いずれかの編集トグルが編集中か。
+// 戻る操作で「まず編集解除し、画面遷移はしない」を判定するために使う (app-history)。
+export function isAnyEditing() {
+  return activeToggles.size > 0;
+}
+
 // 文書全体で「コンテナ外クリック」を監視。
 // バブル後に評価することで、対象要素のハンドラ（navTo* など）が先に動作する。
 document.addEventListener("click", (e) => {

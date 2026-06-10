@@ -23,6 +23,7 @@ import { switchUser, createUserAndSwitch } from "../store.js";
 import { refreshAppUserName, refreshAppWsLabel } from "./app-title.js";
 import { icon } from "../icons.js";
 import { t } from "../i18n.js";
+import { focusPopupInput } from "./popup-behavior.js";
 
 function vibrate() { try { navigator.vibrate?.(60); } catch (_) {} }
 
@@ -142,7 +143,7 @@ function startRename(row, r, isCurrent) {
         if (await userNameExists(next, r.id)) {
           alert(t("io.user.name.duplicate"));
           done = false; // 再編集を許可
-          setTimeout(() => { inp.focus(); inp.select(); }, 0);
+          focusPopupInput(inp, { select: true });
           return;
         }
         await renameUser(r.id, next);
@@ -159,7 +160,7 @@ function startRename(row, r, isCurrent) {
     if (e.key === "Enter") { e.preventDefault(); finalize(true); }
     else if (e.key === "Escape") { e.preventDefault(); finalize(false); }
   });
-  setTimeout(() => { inp.focus(); inp.select(); }, 0);
+  focusPopupInput(inp, { select: true });
 }
 
 // 「+ 新規」ボタン: クリックで input に展開 → Enter/blur で commit
@@ -200,7 +201,7 @@ function initAddWidget() {
         if (!res.ok) {
           if (res.reason === "duplicate") alert(t("io.user.name.duplicate"));
           done = false;
-          setTimeout(() => { inp.focus(); inp.select(); }, 0);
+          focusPopupInput(inp, { select: true });
           return;
         }
         // 切替が起きるので一覧は閉じる。ヘッダーは _onUserChanged が更新するが念のため。
@@ -220,7 +221,7 @@ function initAddWidget() {
       if (e.key === "Enter") { e.preventDefault(); finalize(true); }
       else if (e.key === "Escape") { e.preventDefault(); finalize(false); }
     });
-    setTimeout(() => inp.focus(), 0);
+    focusPopupInput(inp);
   }
 }
 

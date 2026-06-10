@@ -686,6 +686,17 @@
       </div>
     </div>
 
+    <!-- アプリ終了確認 (home で戻る操作をした時)。features/app-history.js が表示制御。
+         背景タップ不可・OK/キャンセル のみ (連打 bypass を防ぐため × も持たせない)。 -->
+    <div class="popupMenuOverlay" id="exitConfirmOverlay" data-no-backdrop-close>
+      <div class="popupMenu">
+        <div class="popupTitle" data-i18n="app.exit.confirm.title">アプリを終了しますか？</div>
+        <div style="font-size:13px;color:#333;line-height:1.5;margin-bottom:12px;" data-i18n="app.exit.confirm.body">「戻る」でアプリから離れます。よろしいですか？</div>
+        <button class="primary" id="exitConfirmOkBtn" type="button" data-i18n="app.exit.confirm.ok">終了する</button>
+        <button class="secondary" id="exitConfirmCancelBtn" type="button" data-i18n="common.cancel">キャンセル</button>
+      </div>
+    </div>
+
     <!-- フォーマットグループ選択 (この患者のみで active 化される) -->
     <div class="popupMenuOverlay" id="formatGroupPickerOverlay">
       <div class="popupMenu formatGroupPickerMenu">

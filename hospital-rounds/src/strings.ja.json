@@ -421,5 +421,8 @@
   "userSelect.current": "現在のユーザー",
   "disclaimer.title": "これは個人メモです",
   "disclaimer.body": "本アプリは医師個人の業務支援メモであり、正式な医療記録ではありません。\n正式な診療記録は電子カルテにご記載ください。\n\n入力不可:\n・フルネーム / 患者 ID / 生年月日 / 住所 / 連絡先 / 画像\n\n表示は月 1 回程度です。",
-  "disclaimer.ack": "確認しました"
+  "disclaimer.ack": "確認しました",
+  "app.exit.confirm.title": "アプリを終了しますか？",
+  "app.exit.confirm.body": "「戻る」でアプリから離れます。よろしいですか？",
+  "app.exit.confirm.ok": "終了する"
 }
