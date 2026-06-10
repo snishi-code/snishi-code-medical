@@ -297,8 +297,9 @@
       min-width: 0;
     }
 
-    /* 短文注記欄 (number/fraction の値の隣)。実入力欄なので iOS の focus ズーム
-       防止のため 16px (他の入力欄と同じ)。 */
+    /* 注記欄 (number/fraction の値の隣)。Phase 7: textarea にして改行可・内容に応じて縦に
+       伸びる (プロブレムリストの # 番号の内容など複数行を書ける)。iOS の focus ズーム防止
+       のため 16px。未対応ブラウザは resize:vertical で degrade。長文は折り返してはみ出さない。 */
     .formatInputMemo {
       min-width: 0;
       width: 100%;
@@ -307,6 +308,14 @@
       border-radius: 6px;
       font-size: 16px;
       box-sizing: border-box;
+      font-family: inherit;
+      line-height: 1.4;
+      resize: vertical;
+      min-height: 34px;
+      max-height: 240px;
+      field-sizing: content;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
 
     /* 規定文ボタン: 小さなチェックアイコンに変更 (旧 v6.0.0 同様、行内右端) */

@@ -28,7 +28,10 @@ export const DEFAULT_FORMATS = APP_DEFAULTS.formats;
 // (実 ID は実行時生成のため、defaultSettings() で index → 生成 ID に解決する)。
 export const DEFAULT_FORMAT_GROUPS = APP_DEFAULTS.formatGroups;
 
-export const FORMAT_PANELS = Object.freeze(["S", "O", "A", "P"]);
+// Phase 7: 患者入力本文は problem / S / O / A / P / shared の6パネルすべてを
+// settings.formats + patient.formatValues で扱う (旧 memo/shared 文字列・旧自由記述は撤去)。
+// problem = プロブレムリスト、shared = 共有。意味が明確で保守時に読みやすい panel 名。
+export const FORMAT_PANELS = Object.freeze(["problem", "S", "O", "A", "P", "shared"]);
 // item ごとに kind を持つ
 //   text     : label + 規定文 (normal) + textarea 入力。labelSep は既定で「：」
 //   number   : label + 単位 (unit) + 数値入力 + memo。labelSep は既定で " "

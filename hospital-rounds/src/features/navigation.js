@@ -1,6 +1,6 @@
 "use strict";
 
-import { appState, selectedNo, saveSettings } from "../store.js";
+import { saveSettings } from "../store.js";
 import { exitAllEdits } from "./edit-toggle.js";
 import { captureSnapshot, REASON } from "./snapshots.js";
 
@@ -47,28 +47,9 @@ export function showView(which, pushState = true) {
   window.scrollTo(0, 0);
 }
 
-export function syncDetailMemoDisplay() {
-  const detailMemoText = document.getElementById("detailMemoText");
-  if (!detailMemoText) return;
-  const p = appState.patients[selectedNo - 1];
-  detailMemoText.value = String(p?.memo ?? "");
-}
-
-export function lastMemoNo() {
-  for (let i = appState.patients.length; i >= 1; i--) {
-    const m = String(appState.patients[i - 1]?.memo ?? "").trim();
-    if (m) return i;
-  }
-  return 0;
-}
-
-export function lastSharedNo() {
-  for (let i = appState.patients.length; i >= 1; i--) {
-    const m = String(appState.patients[i - 1]?.shared ?? "").trim();
-    if (m) return i;
-  }
-  return 0;
-}
+// Phase 7: syncDetailMemoDisplay / lastMemoNo / lastSharedNo は撤去。
+// 詳細の memo/shared textarea は撤去され、臨床入力は formatValues に集約されたため、
+// これらの旧 patient.memo/shared 文字列フィールド前提のヘルパは不要になった。
 
 // ============================
 // Nav buttons (header tabs)

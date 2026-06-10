@@ -175,7 +175,12 @@ for (const [name, raw] of Object.entries(fixtures)) {
     if (samplePid) {
       const found = store.appState.patients.find(p => p.pid === samplePid);
       assert.ok(found, `patient ${samplePid} present after hydration`);
-      assert.equal(typeof found.oFree, "string", "patient has oFree string");
+      // Phase 7: 一回限り移行 (applyBundleToLive 内) が旧 memo/shared/s/oFree/a/p を
+      // formatValues へ移して delete する。ハイドレート後は旧フィールドが残らない。
+      assert.equal(found.oFree, undefined, "legacy oFree removed by migration");
+      assert.equal(found.memo, undefined, "legacy memo removed by migration");
+      assert.equal(found.shared, undefined, "legacy shared removed by migration");
+      assert.ok(found.formatValues && typeof found.formatValues === "object", "patient has formatValues");
     }
   });
 }
@@ -212,33 +217,8 @@ await test("status NONE + tag set is NOT empty", async () => {
   assert.equal(store.isPatientEmpty(p), false);
 });
 
-await test("status NONE + SOAP s is NOT empty", async () => {
-  const store = await freshStore();
-  const p = store.makeDefaultPatient();
-  p.s = "発熱あり";
-  assert.equal(store.isPatientEmpty(p), false);
-});
-
-await test("status NONE + memo is NOT empty", async () => {
-  const store = await freshStore();
-  const p = store.makeDefaultPatient();
-  p.memo = "メモ";
-  assert.equal(store.isPatientEmpty(p), false);
-});
-
-await test("status NONE + shared is NOT empty", async () => {
-  const store = await freshStore();
-  const p = store.makeDefaultPatient();
-  p.shared = "共有";
-  assert.equal(store.isPatientEmpty(p), false);
-});
-
-await test("status NONE + oFree text is NOT empty", async () => {
-  const store = await freshStore();
-  const p = store.makeDefaultPatient();
-  p.oFree = "BP 128/76";
-  assert.equal(store.isPatientEmpty(p), false);
-});
+// Phase 7: 旧自由記述フィールド (s/memo/shared/oFree) は撤去。臨床入力は formatValues に
+// 集約されたので、空判定も formatValues ベース (下のテスト群が新モデルをカバーする)。
 
 await test("status NONE + formatValues 文字列値 (旧形式) is NOT empty", async () => {
   const store = await freshStore();
@@ -453,32 +433,36 @@ await test("formatIdsForPanel: panel が正本で formatId を解決", () => {
   assert.deepEqual(fv.formatIdsForPanel("A", formats), []);
 });
 
-await test("clearPanelClinicalInput: 自由記述 + 同 panel の展開値を消し、他 panel は残す", () => {
+await test("clearPanelClinicalInput: 同 panel の展開値を消し、他 panel は残す", () => {
+  // Phase 7: 臨床入力は全て formatValues。clearPanelClinicalInput は panel 所属の
+  // 展開値だけを消す (自由記述フィールドは撤去)。
   const formats = [
     { id: "fmtO", panel: "O" }, { id: "fmtS", panel: "S" },
   ];
   const p = {
-    s: "S自由記述", oFree: "O自由記述",
-    a: { text: "A自由記述" }, p: { text: "P自由記述" },
     formatValues: {
       fmtO: { 0: { value: "96", note: "O2 2L" } },
       fmtS: { 0: "発熱" },
     },
   };
   fv.clearPanelClinicalInput(p, "O", formats);
-  assert.equal(p.oFree, "", "O 自由記述が消える");
   assert.equal(p.formatValues.fmtO, undefined, "O 所属の展開値が消える");
-  // 他 panel は無傷
-  assert.equal(p.s, "S自由記述");
-  assert.deepEqual(p.formatValues.fmtS, { 0: "発熱" });
-  assert.equal(p.a.text, "A自由記述");
-  assert.equal(p.p.text, "P自由記述");
+  assert.deepEqual(p.formatValues.fmtS, { 0: "発熱" }, "他 panel は無傷");
 });
 
-await test("clearPanelClinicalInput: A panel は p.a.text を消す (オブジェクトは保つ)", () => {
-  const p = { a: { text: "所見あり" }, formatValues: {} };
-  fv.clearPanelClinicalInput(p, "A", []);
-  assert.deepEqual(p.a, { text: "" });
+await test("clearPanelClinicalInput: problem / shared パネルも同じ仕組みでクリアする", () => {
+  const formats = [
+    { id: "fmtPb", panel: "problem" }, { id: "fmtSh", panel: "shared" },
+  ];
+  const p = {
+    formatValues: {
+      fmtPb: { 0: { value: "1", note: "HF" } },
+      fmtSh: { 0: "申し送り" },
+    },
+  };
+  fv.clearPanelClinicalInput(p, "problem", formats);
+  assert.equal(p.formatValues.fmtPb, undefined, "problem 所属の展開値が消える");
+  assert.deepEqual(p.formatValues.fmtSh, { 0: "申し送り" }, "shared は無傷");
 });
 
 await test("composeFormatFromValues: titleWrap 空ならタイトルなし / 非空ならタイトルあり", () => {
@@ -692,15 +676,15 @@ function panelOf(out, label) {
   return m ? m[1] : null;
 }
 
-await test("backfill: defaultSettings は S/O/A/P 各パネルに既定フォーマット + 既定グループ展開を持つ", () => {
+await test("backfill: defaultSettings は 6パネル (problem/S/O/A/P/shared) に既定フォーマット + 既定グループ展開を持つ", () => {
   const settings = setupDefaultSettings();
-  for (const panel of ["S", "O", "A", "P"]) {
+  for (const panel of ["problem", "S", "O", "A", "P", "shared"]) {
     assert.ok(settings.formats.some(f => f.panel === panel), `${panel} の既定フォーマットがある`);
   }
   const def = settings.formatGroups.find(g => g.isDefault);
   assert.ok(def, "既定グループがある");
   // 各パネルの既定フォーマットが expandFormatIds (= 常時カード) に入っている
-  for (const panel of ["S", "O", "A", "P"]) {
+  for (const panel of ["problem", "S", "O", "A", "P", "shared"]) {
     const fid = settings.formats.find(f => f.panel === panel).id;
     assert.ok(def.expandFormatIds.includes(fid), `${panel} 既定が展開カードに入る`);
   }
@@ -779,6 +763,145 @@ await test("buildTabPayload: 非展開(クイック/ランチャー)フォーマ
   storeForPayload.setAppState({ v: 3, title: "", patients: [p] });
   const out = payloadMod.buildTabPayload(1);
   assert.equal(panelOf(out, "O"), "発赤あり", "非展開フォーマットの値も O パネルに出る");
+});
+
+// ============================
+// Phase 7: problem / shared パネル化 + 一回限り移行
+// ============================
+section("Phase 7: problem/shared 入力モデル");
+
+const fvMod = await import(pathToFileURL(join(srcDir, "features", "format-values.js")).href);
+const migMod = await import(pathToFileURL(join(srcDir, "features", "one-time-input-model-migration.js")).href);
+
+await test("combineLabelValueMemo: # + number + note → '#1 HF'", () => {
+  assert.equal(fvMod.combineLabelValueMemo("#", "", "1", "HF"), "#1 HF");
+});
+
+await test("problem 既定: # number + 複数行 note が #1 HF... に合成される", () => {
+  const settings = setupDefaultSettings();
+  const pb = settings.formats.find(f => f.panel === "problem");
+  const values = { 0: { value: "1", note: "HF" }, 1: { value: "2", note: "CKD\n詳細あり" } };
+  assert.equal(fvMod.composeFormatFromValues(pb, values).text, "#1 HF\n#2 CKD\n詳細あり");
+});
+
+await test("buildTabPayload: problem は患者画面QRに出る / shared は出ない", () => {
+  const settings = setupDefaultSettings();
+  const pb = settings.formats.find(f => f.panel === "problem");
+  const sh = settings.formats.find(f => f.panel === "shared");
+  const p = { ...storeForPayload.makeDefaultPatient(), formatValues: {
+    [pb.id]: { 0: { value: "1", note: "HF" } },
+    [sh.id]: { 0: { value: "院外申し送り", source: "manual" } },
+  } };
+  storeForPayload.setAppState({ v: 3, title: "", patients: [p] });
+  const out = payloadMod.buildTabPayload(1);
+  assert.ok(out.startsWith("#1 HF"), "problem 本文が患者画面QRの先頭に出る");
+  assert.equal(out.includes("院外申し送り"), false, "shared は患者画面QRに出ない");
+  assert.ok(out.includes("(S)"), "SOAP 見出しがある");
+});
+
+await test("migratePatientsInputModel: memo→problem / shared→shared / 旧フィールド削除 / 冪等", () => {
+  const settings = setupDefaultSettings();
+  const pb = settings.formats.find(f => f.panel === "problem");
+  const sh = settings.formats.find(f => f.panel === "shared");
+  const p = { formatValues: {}, memo: "#1 HF\n#2 CKD", shared: "申し送り事項",
+    s: "", oFree: "", a: { text: "" }, p: { text: "" } };
+  const res = migMod.migratePatientsInputModel([p], settings);
+  assert.equal(res.changed, true);
+  for (const k of ["memo", "shared", "s", "oFree", "a", "p"]) {
+    assert.equal(k in p, false, `旧フィールド ${k} が削除される`);
+  }
+  assert.equal(fvMod.composeFormatFromValues(pb, p.formatValues[pb.id]).text, "#1 HF\n#2 CKD");
+  assert.equal(fvMod.composeFormatFromValues(sh, p.formatValues[sh.id]).text, "申し送り事項");
+  // 冪等: 再実行は no-op (旧キーが無い)
+  assert.equal(migMod.migratePatientsInputModel([p], settings).changed, false);
+});
+
+await test("migration: パース不能行は救済 text 項目へ (データを失わない)", () => {
+  const settings = setupDefaultSettings();
+  const pb = settings.formats.find(f => f.panel === "problem");
+  let salvageIdx = -1;
+  pb.items.forEach((it, i) => { if (it.kind === "text") salvageIdx = i; });
+  const p = { formatValues: {}, memo: "#1 HF\n自由メモ行\n#2 CKD" };
+  migMod.migratePatientsInputModel([p], settings);
+  const vals = p.formatValues[pb.id];
+  assert.deepEqual(vals[0], { value: "1", note: "HF" });
+  assert.deepEqual(vals[1], { value: "2", note: "CKD" });
+  assert.equal(fvMod.readTextValue(vals[salvageIdx]), "自由メモ行", "パース不能行は救済 text へ");
+});
+
+await test("migration: 非空 dormant (s/oFree/a.text/p.text) は log に出して削除", () => {
+  const settings = setupDefaultSettings();
+  const p = { formatValues: {}, s: "古い自覚症状", oFree: "" };
+  const res = migMod.migratePatientsInputModel([p], settings);
+  assert.equal("s" in p, false, "dormant s も削除される");
+  assert.ok(res.salvageLog.length > 0, "非空 dormant は移行ログに記録される");
+});
+
+await test("migration → 新形式 export に旧フィールドが残らない", () => {
+  const settings = setupDefaultSettings();
+  const p = { pid: "p1", status: "none", name: "山田", room: "", tags: [], formatValues: {},
+    memo: "#1 HF", shared: "申し送り", s: "x", oFree: "y", a: { text: "z" }, p: { text: "w" } };
+  migMod.migratePatientsInputModel([p], settings);
+  // JSON 化しても旧フィールドが出ない (export 相当)
+  const json = JSON.stringify(p);
+  for (const k of ["\"memo\"", "\"shared\"", "\"oFree\"", "\"s\":", "\"a\":", "\"p\":"]) {
+    assert.equal(json.includes(k), false, `export JSON に ${k} が残らない`);
+  }
+});
+
+await test("migration fail-safe: 対象フォーマットが無ければ非空 memo/shared を消さず保持する", () => {
+  // problem/shared フォーマットを持たない設定 (= resolve 不能)。fail-open だと旧データを消すが、
+  // fail-safe では消さずに保持し failures に記録する (一時移行は現データを守る境界)。
+  const noTargets = { formats: [{ id: "fO", panel: "O", items: [] }] };
+  const p = { formatValues: {}, memo: "#1 HF", shared: "申し送り", s: "古いS" };
+  const res = migMod.migratePatientsInputModel([p], noTargets);
+  assert.equal(p.memo, "#1 HF", "移行できない memo は保持される (データを失わない)");
+  assert.equal(p.shared, "申し送り", "移行できない shared は保持される");
+  assert.equal("s" in p, false, "dormant s は削除 (原則削除・移行対象でない)");
+  assert.ok(res.failures.length >= 2, "移行できなかった memo/shared が failures に出る");
+});
+
+await test("migration fail-safe: problem に自由記述(救済)欄が無いと、救済が必要な memo を保持 (all-or-nothing)", () => {
+  // problem フォーマットが # number だけで text 救済欄が無い形。パース不能行があると全文を移しきれない
+  // ので、number スロットだけ入れて memo を消す (= 救済行消失) のでなく、丸ごと保持する。
+  const settings = {
+    formats: [
+      { id: "fPb", panel: "problem", joiner: "\n", labelSep: "", items: [
+        { label: "#", kind: "number", unit: "" }, { label: "#", kind: "number", unit: "" }] },
+      { id: "fSh", panel: "shared", joiner: "\n", labelSep: "：", items: [{ label: "", kind: "text", normal: "" }] },
+    ],
+  };
+  const p = { formatValues: {}, memo: "#1 HF\n自由メモ行" };
+  const res = migMod.migratePatientsInputModel([p], settings);
+  assert.equal(p.memo, "#1 HF\n自由メモ行", "救済欄が無いので memo は保持される");
+  assert.equal(p.formatValues.fPb, undefined, "中途半端に number だけ入れない (all-or-nothing)");
+  assert.ok(res.failures.some(f => f.includes("救済")), "救済欄不足が failures に出る");
+});
+
+await test("migration fail-safe: shared に text item が無いと shared を保持 (index 0 に無理に入れない)", () => {
+  const settings = {
+    formats: [
+      { id: "fPb", panel: "problem", joiner: "\n", labelSep: "", items: [
+        { label: "#", kind: "number", unit: "" }, { label: "", kind: "text", normal: "" }] },
+      // shared フォーマットの item が number だけ (text 受け皿なし)
+      { id: "fSh", panel: "shared", joiner: "\n", labelSep: " ", items: [{ label: "X", kind: "number", unit: "" }] },
+    ],
+  };
+  const p = { formatValues: {}, shared: "申し送り" };
+  const res = migMod.migratePatientsInputModel([p], settings);
+  assert.equal(p.shared, "申し送り", "text 受け皿が無いので shared は保持される");
+  assert.equal(p.formatValues.fSh, undefined, "number item に無理に入れない");
+  assert.ok(res.failures.some(f => f.includes("shared")), "shared 受け皿不足が failures に出る");
+});
+
+await test("import 順序: 旧 memo だけの患者は移行後に空判定で残る (取りこぼさない)", () => {
+  // Phase 7 後の isPatientEmpty は旧 memo/shared を見ない。import で「移行前に空判定」すると
+  // memo/shared だけの病棟を空扱いで落とす。移行を先に行えば中身ありと判定される (本検証点)。
+  const settings = setupDefaultSettings();
+  const p = { pid: "p1", status: "none", name: "", room: "", tags: [], formatValues: {}, memo: "#1 HF" };
+  assert.equal(storeForPayload.isPatientEmpty(p), true, "移行前は空と誤判定される");
+  migMod.migratePatientsInputModel([p], settings);
+  assert.equal(storeForPayload.isPatientEmpty(p), false, "移行後は中身ありと判定される (= import で残る)");
 });
 
 // ============================
@@ -897,15 +1020,20 @@ section("defaults.json");
 await test("DEFAULT_FORMATS comes from defaults.json", async () => {
   const c = await import("../src/constants.js");
   assert.ok(Array.isArray(c.DEFAULT_FORMATS));
-  // Phase 3: 各パネル (S/O/A/P) に既定フォーマットを常設 (O は 3 つ)。
-  assert.equal(c.DEFAULT_FORMATS.length, 6);
-  assert.equal(c.DEFAULT_FORMATS[0].name, "バイタル");
+  // Phase 7: 6パネル (problem/S/O/A/P/shared) に既定フォーマット。O は 3 つなので計 8。
+  assert.equal(c.DEFAULT_FORMATS.length, 8);
+  assert.ok(c.DEFAULT_FORMATS.some(f => f.panel === "problem" && f.name === "プロブレムリスト"));
+  assert.ok(c.DEFAULT_FORMATS.some(f => f.panel === "shared" && f.name === "共有"));
   assert.ok(c.DEFAULT_FORMATS.some(f => f.panel === "O" && f.name === "所見"));
-  // 全パネルに最低 1 つ既定フォーマットがある
+  // 全6パネルに最低 1 つ既定フォーマットがある
   const panels = new Set(c.DEFAULT_FORMATS.map(f => f.panel));
-  for (const panel of ["S", "O", "A", "P"]) {
+  for (const panel of ["problem", "S", "O", "A", "P", "shared"]) {
     assert.ok(panels.has(panel), `${panel} パネルの既定フォーマットがある`);
   }
+  // problem 既定 = # number ×5 + 末尾の自由記述 text (受診メモ/スキャン/救済の受け皿)
+  const pb = c.DEFAULT_FORMATS.find(f => f.panel === "problem");
+  assert.equal(pb.items.filter(it => it.kind === "number").length, 5);
+  assert.ok(pb.items.some(it => it.kind === "text"));
   assert.equal(c.DEFAULT_PATIENT_COUNT, 50);
 });
 
@@ -1019,7 +1147,9 @@ await test("PANEL/KIND/MODE enum tables are stable (bump WIRE_V if you add to th
   const p = await import("../src/features/qr-protocol.js");
   // 順序を変えると旧 wire の index が破壊される。本テストは「うっかり順序を
   // 変えないための歩哨」。enum を増やす時は WIRE_V を bump する必要がある。
-  assert.deepEqual([...p.PANEL_BY_INDEX], ["S", "O", "A", "P"]);
+  // Phase 7: problem/shared を追加。順序を変えると旧 wire の index が破壊されるので
+  // FMT/FS/ST の WIRE_V を bump 済み (problem=0,S=1,O=2,A=3,P=4,shared=5)。
+  assert.deepEqual([...p.PANEL_BY_INDEX], ["problem", "S", "O", "A", "P", "shared"]);
   // v8: "date" kind は撤去 (fraction に統合)。MODE_BY_INDEX (タグ・カテゴリ用) も撤去 (v7.7)
   assert.deepEqual([...p.KIND_BY_INDEX], ["text", "number", "fraction"]);
 });
@@ -1045,7 +1175,7 @@ await test("formatToWire / formatFromWire round-trip with tag dict", async () =>
 
   // 短キーと enum 数値化の確認
   assert.equal(wire.n, "バイタル");
-  assert.equal(wire.p, 1, "panel O = index 1");
+  assert.equal(wire.p, 2, "panel O = index 2 (Phase 7: problem=0,S=1,O=2)");
   assert.deepEqual(wire.t, [1, 3], "tags use 1-based dict indices");
   // v8: pn(pinned) / d(isDefault) は wire から撤去 (グループ側で管理)
   assert.equal(wire.pn, undefined, "pinned is no longer emitted");
@@ -1078,10 +1208,11 @@ await test("formatToWire with null dict embeds tag strings (for FMT QR)", async 
 await test("patientToWire / patientFromWire round-trip", async () => {
   const p = await import("../src/features/qr-protocol.js");
   const dict = ["内科", "外科"];
+  // Phase 7: 第3引数は注入された content 文字列 (旧 fieldName で patient[field] を読む方式は撤去)。
   const wire = p.patientToWire(
-    { room: "201", name: "テスト", tags: ["外科"], memo: "メモ本体" },
+    { room: "201", name: "テスト", tags: ["外科"] },
     dict,
-    "memo",
+    "メモ本体",
   );
   assert.equal(wire.r, "201");
   assert.equal(wire.n, "テスト");
@@ -1095,10 +1226,14 @@ await test("patientToWire / patientFromWire round-trip", async () => {
   assert.equal(restored.content, "メモ本体");
 });
 
-await test("patientToWire returns empty {} when all fields blank", async () => {
+await test("patientToWire: content=null (HM) は c を載せない / content='' は空判定", async () => {
   const p = await import("../src/features/qr-protocol.js");
-  const wire = p.patientToWire({ room: "", name: "", tags: [], memo: "" }, [], "memo");
-  assert.deepEqual(wire, {});
+  // HM: content 省略 (null)。room/name があれば c 無しで載る。
+  const hm = p.patientToWire({ room: "201", name: "テスト", tags: [] }, [], null);
+  assert.equal(hm.r, "201");
+  assert.equal("c" in hm, false, "HM は c を載せない");
+  // 全フィールド空 (content="") は {} を返す
+  assert.deepEqual(p.patientToWire({ room: "", name: "", tags: [] }, [], ""), {});
 });
 
 // v7.7+: tagGroup wire 変換テストは撤去 (タグ・カテゴリ機能撤去のため)
@@ -1124,18 +1259,23 @@ await test("qr-settings encode/decode round-trip with formats", async () => {
   assert.deepEqual(restoredFormats[0].tags, store.settings.formats[0].tags);
 });
 
-await test("qr-patient-list v3 round-trip via encodePatientList + decodePatientList", async () => {
+await test("qr-patient-list v3 round-trip via encodePatientList + decodePatientList (contentOf 注入)", async () => {
   const store = await freshStore();
   store.appState.patients[0].name = "山田";
   store.appState.patients[0].room = "301";
   store.appState.patients[0].tags = ["内科"];
-  store.appState.patients[0].memo = "経過良好";
   store.settings.qrRedistribution.MM = "free";
 
   const m = await import("../src/features/qr-patient-list.js");
-  const json = m.encodePatientList({ fieldName: "memo", includeEmpty: false, kind: "MM" });
+  // Phase 7: fieldName 廃止。content は contentOf(patient) で注入する (本番は
+  // composeExpandedForPanel("problem"))。ここでは plumbing 検証のため固定文字列を返す。
+  const json = m.encodePatientList({
+    contentOf: (pt) => (pt.room === "301" ? "経過良好" : ""),
+    includeEmpty: false,
+    kind: "MM",
+  });
   const parsed = JSON.parse(json);
-  assert.equal(parsed.v, 3, "WIRE_V is 3");
+  assert.equal(parsed.v, 3, "WIRE_V is 3 (patient-list は panel を載せないため据置)");
   assert.ok(Array.isArray(parsed.td), "tag dict is present");
   assert.ok(parsed.p.length > 0, "patient array non-empty");
 
@@ -1145,6 +1285,8 @@ await test("qr-patient-list v3 round-trip via encodePatientList + decodePatientL
   assert.ok(found, "patient round-trips");
   assert.equal(found.room, "301");
   assert.equal(found.content, "経過良好");
+  // contentOf が空を返す患者は MM では載らない
+  assert.equal(decoded.patients.length, 1, "content の無い患者は除外される");
 });
 
 // ============================
@@ -1195,9 +1337,9 @@ await test("unpackPayload reads plain / C1 / E2 uniformly", async () => {
 });
 
 // ============================
-// 14) formatGroup wire + ST v5 / FS / FMT round-trip
+// 14) formatGroup wire + ST v6 / FS / FMT round-trip
 // ============================
-section("QR formatGroup wire + ST v5 / FS / FMT");
+section("QR formatGroup wire + ST v6 / FS / FMT");
 
 await test("formatGroupToWire / formatGroupFromWire round-trip (index refs, out-of-range dropped)", async () => {
   const p = await import("../src/features/qr-protocol.js");
@@ -1227,14 +1369,14 @@ await test("formatGroupToWire / formatGroupFromWire round-trip (index refs, out-
   assert.deepEqual(restored.expandFormatIds, [], "xf referenced dropped format → removed");
 });
 
-await test("ST v5 encode/decode round-trip (formats + formatGroups)", async () => {
+await test("ST v6 encode/decode round-trip (formats + formatGroups)", async () => {
   const store = await freshStore();
   store.settings.tags = ["内科", "外科"];
   const qs = await import("../src/features/qr-settings.js");
 
   const payload = qs.encodeSettingsPayload();
   const obj = JSON.parse(payload);
-  assert.equal(obj.v, 5, "ST WIRE_V is 5");
+  assert.equal(obj.v, 6, "ST WIRE_V is 6 (Phase 7: panel enum 拡張で bump)");
   assert.ok(Array.isArray(obj.f) && obj.f.length, "formats carried");
   assert.ok(Array.isArray(obj.fg) && obj.fg.length, "formatGroups carried");
 
@@ -1251,33 +1393,31 @@ await test("ST v5 encode/decode round-trip (formats + formatGroups)", async () =
   }
 });
 
-await test("ST v5 reflects empty tags (whole-settings semantics, not differential)", async () => {
+await test("ST v6 reflects empty tags (whole-settings semantics, not differential)", async () => {
   const store = await freshStore();
   store.settings.tags = []; // 送信元のタグは 0 個
   const qs = await import("../src/features/qr-settings.js");
   const payload = qs.encodeSettingsPayload();
   const obj = JSON.parse(payload);
-  assert.ok(Array.isArray(obj.td) && obj.td.length === 0, "v5 always carries td, even empty");
+  assert.ok(Array.isArray(obj.td) && obj.td.length === 0, "v6 always carries td, even empty");
   const decoded = qs.decodeSettingsPayload(payload);
   // 受信側に既存タグがあっても「設定全体」として空に揃う
   assert.ok(Array.isArray(decoded.tags), "tags applied even when empty");
   assert.equal(decoded.tags.length, 0, "empty tags reflected (clears receiver tags)");
 });
 
-await test("ST v4 payload (no formatGroups) is still readable + default set rebuilt", async () => {
+await test("ST: 旧版 (v4/v5) payload は明示エラーで弾く (Phase 7: 後方互換撤去)", async () => {
   const store = await freshStore();
-  store.settings.tags = ["内科"];
   const proto = await import("../src/features/qr-protocol.js");
   const qs = await import("../src/features/qr-settings.js");
-  const v4 = JSON.stringify({
-    v: 4,
-    td: ["内科"],
-    f: store.settings.formats.map(f => proto.formatToWire(f, ["内科"])),
-  });
-  const decoded = qs.decodeSettingsPayload(v4);
-  assert.ok(decoded.formats.length && decoded.formats.every(f => f.id), "v4 formats get ids");
-  assert.ok(decoded.formatGroups.length >= 1, "default set rebuilt for v4");
-  assert.equal(decoded.formatGroups.filter(g => g.isDefault).length, 1, "exactly one default");
+  for (const v of [4, 5]) {
+    const old = JSON.stringify({
+      v,
+      td: [],
+      f: store.settings.formats.map(f => proto.formatToWire(f, [])),
+    });
+    assert.throws(() => qs.decodeSettingsPayload(old), /./, `v${v} は弾かれる`);
+  }
 });
 
 await test("FS (set QR) encode/decode round-trip with referenced formats + rename refs", async () => {
@@ -1292,7 +1432,7 @@ await test("FS (set QR) encode/decode round-trip with referenced formats + renam
   };
   const payload = qset.encodeSetPayload(group, store.settings.formats, store.settings.tags);
   const obj = JSON.parse(payload);
-  assert.equal(obj.v, 1, "FS WIRE_V is 1");
+  assert.equal(obj.v, 2, "FS WIRE_V is 2 (Phase 7: panel enum 拡張で bump)");
   assert.equal(obj.f.length, 2, "only referenced formats carried");
   assert.deepEqual(obj.g.fi, [1, 2], "group references formats by 1-based index");
 
@@ -1330,7 +1470,7 @@ await test("FMT (format QR) encode/decode round-trip", async () => {
   };
   const payload = qf.encodeFormatPayload(fmt);
   const obj = JSON.parse(payload);
-  assert.equal(obj.v, 2, "FMT WIRE_V is 2");
+  assert.equal(obj.v, 3, "FMT WIRE_V is 3 (Phase 7: panel enum 拡張で bump)");
   const decoded = qf.decodeFormatPayload(payload);
   assert.equal(decoded.name, "FMTテスト");
   assert.equal(decoded.panel, "A");
@@ -1379,7 +1519,7 @@ await test("single-page raw-text path: encode → pack(C1) → page → assemble
   assert.equal(decoded.name, "発熱", "decode reaches the format object (apply-ready)");
 });
 
-await test("ST v5 full pipeline (encrypt ON) stays ≤ 750B per page and round-trips", async () => {
+await test("ST v6 full pipeline (encrypt ON) stays ≤ 750B per page and round-trips", async () => {
   const store = await freshStore();
   const proto = await import("../src/features/qr-protocol.js");
   const cp = await import("../src/features/crypto-payload.js");
@@ -1581,6 +1721,124 @@ await test("purgeSnapshotsForWorkspaces は空配列・未知 ID で {ok:true,co
   assert.deepEqual(await snapshotsMod.purgeSnapshotsForWorkspaces([]), { ok: true, count: 0 });
   assert.deepEqual(await snapshotsMod.purgeSnapshotsForWorkspaces(["ws_does_not_exist"]), { ok: true, count: 0 });
   assert.deepEqual(await snapshotsMod.purgeSnapshotsForWorkspaces(null), { ok: true, count: 0 });
+});
+
+// ============================
+// Phase 7: importArchive 移行 (fake-indexeddb)
+// ============================
+section("Phase 7: importArchive 移行 (fake-indexeddb)");
+
+await test("importArchive: 旧 memo/shared だけの病棟が取りこぼされず、移行先の設定IDで合成できる", async () => {
+  // 旧形式アーカイブ: 患者は memo/shared だけ (name/room 無し)。Phase 7 後の isPatientEmpty は
+  // これを「空」と誤判定するので、移行を空判定より前に行う必要がある (本テストの主検証点①)。
+  // また移行は「最終的に保存される設定 (includeSettings → archive.settings)」の ID で書き、
+  // formatValues がその設定で合成できること (ID ズレ無し) を確認する (検証点②)。
+  const archive = {
+    format: "hospital-rounds-archive", schema: 1,
+    settings: storeForIdb.defaultSettings(), // problem/shared 既定を含む
+    workspaces: [
+      { label: "旧病棟P7", title: "旧病棟P7", patients: [
+        { pid: "px7", status: "none", name: "", room: "", tags: [], memo: "#1 HF", shared: "申し送り" },
+      ] },
+    ],
+  };
+  const created = await storeForIdb.importArchive(archive, { includeSettings: true });
+  assert.equal(created, 1, "旧 memo/shared だけの病棟も取り込まれる (移行→空判定の順)");
+
+  const list = await storageMod.listBundles();
+  const rec = list.find(w => (w.label || "") === "旧病棟P7");
+  assert.ok(rec, "新規病棟が作られた");
+  const bundle = await storageMod.loadBundle(rec.id);
+  const patients = getSection(bundle, SECTION.PATIENTS) || [];
+  const pb = storeForIdb.settings.formats.find(f => f.panel === "problem");
+  const sh = storeForIdb.settings.formats.find(f => f.panel === "shared");
+  const pt = patients.find(p => p.formatValues && p.formatValues[pb.id]);
+  assert.ok(pt, "移行済み患者がいる (取りこぼされていない)");
+  assert.equal(pt.memo, undefined, "旧 memo が保存後に残らない");
+  assert.equal(pt.shared, undefined, "旧 shared が残らない");
+  // 適用された global settings (= 移行に使った設定) の ID で合成できる = ID がズレていない
+  assert.equal(fvMod.composeFormatFromValues(pb, pt.formatValues[pb.id]).text, "#1 HF");
+  assert.equal(fvMod.composeFormatFromValues(sh, pt.formatValues[sh.id]).text, "申し送り");
+});
+
+await test("importDeviceArchive: 旧 memo/shared だけの病棟が、保存後の user 設定ID と一致して移行される", async () => {
+  // 端末まるごとアーカイブ: あるユーザーの病棟が旧 memo/shared だけ。移行は そのユーザーの設定
+  // (us) の ID で書き、その us を **必ず保存** してから病棟を作る。保存後の設定を読み戻した ID で
+  // formatValues が合成できる (= ID が孤立していない) ことを確認する (Codex round2 の検証点)。
+  const userName = "DeviceP7";
+  const archive = {
+    format: "hospital-rounds-device-archive", schema: 1,
+    users: [
+      { name: userName, settings: storeForIdb.defaultSettings(), workspaces: [
+        { label: "端末病棟P7", title: "端末病棟P7", patients: [
+          { pid: "pd7", status: "none", name: "", room: "", tags: [], memo: "#1 HF", shared: "申し送り" },
+        ] },
+      ] },
+    ],
+  };
+  const res = await storeForIdb.importDeviceArchive(archive);
+  assert.ok(res.workspaces >= 1, "旧 memo/shared だけの病棟も取り込まれる (取りこぼさない)");
+
+  // 作られたユーザーの **保存済み** 設定を読み戻し、その ID で formatValues が合成できる (ID 一致)。
+  const users = await storageMod.loadUsers();
+  const u = users.find(x => (x.name || "").trim() === userName);
+  assert.ok(u, "ユーザーが作られた");
+  const savedSettings = storeForIdb.normalizeSettings(await storageMod.loadGlobalSettings(u.id));
+  const pb = savedSettings.formats.find(f => f.panel === "problem");
+  const sh = savedSettings.formats.find(f => f.panel === "shared");
+
+  const allWs = await storageMod.listAllWorkspaces();
+  const wsRec = allWs.find(w => w.userId === u.id && (w.label || "") === "端末病棟P7");
+  assert.ok(wsRec, "ユーザー配下に病棟がある");
+  const bundle = await storageMod.loadBundle(wsRec.id);
+  const patients = getSection(bundle, SECTION.PATIENTS) || [];
+  const pt = patients.find(p => p.formatValues && p.formatValues[pb.id]);
+  assert.ok(pt, "移行済み患者が保存設定の problem ID で参照できる (= 孤立していない)");
+  assert.equal(pt.memo, undefined, "旧 memo が残らない");
+  assert.equal(fvMod.composeFormatFromValues(pb, pt.formatValues[pb.id]).text, "#1 HF");
+  assert.equal(fvMod.composeFormatFromValues(sh, pt.formatValues[sh.id]).text, "申し送り");
+});
+
+// problem に自由記述(救済)欄が無い設定。memo のパース不能行は移行できない (failures) → import は
+// fail-closed で throw し、病棟を作らない (成功扱いにしない)。
+const degenerateArchiveSettings = {
+  formats: [
+    { name: "PB", panel: "problem", joiner: "\n", labelSep: "", items: [{ label: "#", kind: "number", unit: "" }] },
+    { name: "SH", panel: "shared", joiner: "\n", labelSep: "：", items: [{ label: "", kind: "text", normal: "" }] },
+  ],
+};
+
+await test("importArchive: 移行 failure のある memo-only 病棟は成功扱いにせず throw / 病棟を作らない", async () => {
+  const archive = {
+    format: "hospital-rounds-archive", schema: 1,
+    settings: degenerateArchiveSettings,
+    workspaces: [
+      { label: "受け皿不足P7", title: "受け皿不足P7", patients: [
+        { pid: "pf7", status: "none", name: "", room: "", tags: [], memo: "自由メモ行" }, // パース不能 → 救済必要 → 移行不能
+      ] },
+    ],
+  };
+  const before = (await storageMod.listBundles()).length;
+  await assert.rejects(() => storeForIdb.importArchive(archive, { includeSettings: true }), /移行できず/, "移行 failure で throw");
+  const after = (await storageMod.listBundles()).length;
+  assert.equal(after, before, "throw 時に病棟は作られない (fail-closed・取りこぼし成功にしない)");
+});
+
+await test("importDeviceArchive: 移行 failure のあるユーザーは成功扱いにせず throw する", async () => {
+  const archive = {
+    format: "hospital-rounds-device-archive", schema: 1,
+    users: [
+      { name: "FailUserP7", settings: degenerateArchiveSettings, workspaces: [
+        { label: "FailWsP7", title: "FailWsP7", patients: [
+          { pid: "pfd7", status: "none", name: "", room: "", tags: [], shared: "申し送り", memo: "自由メモ行" },
+        ] },
+      ] },
+    ],
+  };
+  await assert.rejects(() => storeForIdb.importDeviceArchive(archive), /移行できず/, "移行 failure で throw");
+  // dangling user を作らない (移行失敗チェックを user 作成の前に行う)
+  const users = await storageMod.loadUsers();
+  assert.ok(!users.some(u => (u.name || "").trim() === "FailUserP7"), "失敗時はユーザーも作られない");
 });
 
 // ============================

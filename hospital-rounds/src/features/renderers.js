@@ -8,14 +8,14 @@
 //
 // なぜ factory にするか:
 //   - doRenderMemo → navigateToPatient → doRenderDetail のように相互参照する
-//   - showView / setSelectedNo / syncDetailMemoDisplay / refresh QR 群を外から
+//   - showView / setSelectedNo / refresh QR 群を外から
 //     注入することで、テストや別アプリへの移植が容易になる
 //   - main.js を「組み立て役」に戻す。ここに居るべきロジックを抽出
 //
 // 注入する依存:
 //   renderHome / renderDetail / renderMemoScreen / renderSharedScreen
 //     - 各 view のレンダ関数 (views/*.js のもの)
-//   setSelectedNo / showView / syncDetailMemoDisplay
+//   setSelectedNo / showView
 //     - store と navigation feature の primitives
 //   refreshSharedQrIfActive / refreshMemoQrIfActive / refreshHomeQrIfActive
 //   / refreshSettingsQrIfActive
@@ -30,7 +30,6 @@ export function createRenderers(deps) {
     renderSharedScreen,
     setSelectedNo,
     showView,
-    syncDetailMemoDisplay,
     refreshSharedQrIfActive,
     refreshMemoQrIfActive,
     refreshHomeQrIfActive,
@@ -46,7 +45,7 @@ export function createRenderers(deps) {
   }
 
   function doRenderDetail() {
-    renderDetail(syncDetailMemoDisplay);
+    renderDetail();
   }
 
   function navigateToPatient(i) {

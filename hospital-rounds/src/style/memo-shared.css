@@ -88,15 +88,39 @@
 
     .memoRow textarea {
       resize: vertical;
-      /* 本文 (プロブレムリスト/共有) は textarea。改行をそのまま表示し、内容に応じて
-         縦に伸びる (field-sizing)。未対応ブラウザは min-height + resize:vertical で
-         degrade。患者画面 (detailMemoText/detailSharedText) と同じ「見たまま編集」体験
-         に揃える (P5 P0)。長文は textarea の soft-wrap で行内に折り返り、はみ出さない。 */
+      /* 編集モードの氏名等は textarea ではないが、将来用に残す degrade 指定。 */
       min-height: 38px;
       max-height: 40vh;
       line-height: 1.4;
       field-sizing: content;
       font-family: inherit;
+    }
+
+    /* Phase 7: プロブレムリスト/共有の一覧本文は読み取り表示 (div)。改行をそのまま表示し
+       内容に応じて縦に伸びる (div の自然高さ)。タップで患者画面へ遷移する。長文は折り返して
+       はみ出さない。 */
+    .memoRow .memoRowBody {
+      flex: 1;
+      margin: 0;
+      font-weight: 500;
+      font-size: 16px;
+      line-height: 1.4;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 38px;
+      cursor: pointer;
+    }
+    .memoRow .memoRowBody.empty {
+      color: var(--muted);
+      font-weight: 400;
+    }
+    .memoRow .memoRowBody:focus-visible {
+      outline: 2px solid var(--blue);
+      outline-offset: 1px;
     }
 
     /* スマホ幅・read (非編集) モード: 患者見出しを上、本文を下に積む2段表示。
@@ -121,7 +145,9 @@
       }
       .memoRow.read input,
       .memoRow.read textarea,
-      .memoRow.edit textarea {
+      .memoRow.edit textarea,
+      .memoRow.read .memoRowBody,
+      .memoRow.edit .memoRowBody {
         width: 100%;
       }
       /* edit 時、氏名欄は見出し行が専有の1段になったぶん横幅を使えるようにする

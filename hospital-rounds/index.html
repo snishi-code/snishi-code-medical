@@ -267,6 +267,18 @@
 
       <div class="card">
         <div class="cardHead">
+          <div class="label" data-i18n="header.memo">プロブレムリスト</div>
+          <button class="iconBtn" id="addFormatBtnproblem" type="button" data-i18n-title="format.new" data-i18n-aria="format.new" title="フォーマット追加" aria-label="フォーマット追加">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+        <div class="cardBody">
+          <div id="setFormats_problem"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardHead">
           <div class="label">S</div>
           <button class="iconBtn" id="addFormatBtnS" type="button" title="フォーマット追加" aria-label="フォーマット追加">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -310,6 +322,18 @@
         </div>
         <div class="cardBody">
           <div id="setFormats_P"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardHead">
+          <div class="label" data-i18n="header.shared">共有</div>
+          <button class="iconBtn" id="addFormatBtnshared" type="button" data-i18n-title="format.new" data-i18n-aria="format.new" title="フォーマット追加" aria-label="フォーマット追加">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+        <div class="cardBody">
+          <div id="setFormats_shared"></div>
         </div>
       </div>
 
@@ -490,14 +514,15 @@
       </div>
 
       <div class="viewScroll">
-      <div class="card" id="detailMemoCard">
+      <div class="card" id="detailProblemCard">
         <div class="cardHead">
           <div class="label" style="display:flex;align-items:center;" data-i18n-title="header.memo" data-i18n-aria="header.memo" title="プロブレムリスト" aria-label="プロブレムリスト">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           </div>
+          <div class="formatStrip" id="problemFormatStrip"></div>
         </div>
         <div class="cardBody">
-          <textarea id="detailMemoText" style="min-height:60px"></textarea>
+          <div class="formatExpandedHost" id="problemExpanded"></div>
         </div>
       </div>
 
@@ -543,13 +568,14 @@
 
       <div class="card" id="detailSharedCard">
         <div class="cardHead">
-          <div class="label" style="display:flex;align-items:center;" title="共有" aria-label="共有">
+          <div class="label" style="display:flex;align-items:center;" data-i18n-title="header.shared" data-i18n-aria="header.shared" title="共有" aria-label="共有">
             <!-- lucide: users (people/team) -->
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           </div>
+          <div class="formatStrip" id="sharedFormatStrip"></div>
         </div>
         <div class="cardBody">
-          <textarea id="detailSharedText" style="min-height:90px"></textarea>
+          <div class="formatExpandedHost" id="sharedExpanded"></div>
         </div>
       </div>
 

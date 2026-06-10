@@ -18,23 +18,23 @@ import { t } from "../i18n.js";
 // wire format の詳細は qr-protocol.js の Wire Format Authority コメントを参照。
 // ここでは設定エンベロープ部分を組み立てる。
 //
-// 形式 (v5):
+// 形式 (v6):
 //   {
-//     "v": 5,
+//     "v": 6,
 //     "td": ["内科","外科"],          // tag dictionary
 //     "f":  [<formatToWire>, ...],    // formats
 //     "fg": [<formatGroupToWire>, ...] // フォーマットセット (f への 1-based index 参照)
 //     "ct": {memo:false,s:true,...}   // clearTargets
 //   }
 //
-// v4 (formatGroups なし) は引き続き受信できる。受信時は formats を新 ID 採番し、
-// fg があれば新 ID に解決、無ければ makeDefaultFormatGroups で既定セットを再構築する。
+// Phase 7: panel enum 拡張 (problem/shared 追加 → PANEL_BY_INDEX) のため WIRE_V を 5→6 に
+// bump。旧版 QR (v4/v5) は明示エラーで弾く (実運用導入前なので互換不要)。
 //
 // v7.7+ で tge / tgs / tga (タグ・カテゴリ機能) は撤去。旧 bundle のそれらは無視。
 // 端末固有値 (deviceId 等) は wire に載せない。
 // ============================
 
-const WIRE_V = 5;
+const WIRE_V = 6;
 
 // settings (live state) → v5 payload 文字列。テスト容易化のため export。
 export function encodeSettingsPayload() {
@@ -61,31 +61,30 @@ export function encodeSettingsPayload() {
   return JSON.stringify(out);
 }
 
-// v5/v4 payload 文字列 → 適用可能な settings 断片 ({tags?, formats?, formatGroups?, clearTargets?})。
+// v6 payload 文字列 → 適用可能な settings 断片 ({tags?, formats?, formatGroups?, clearTargets?})。
 // formats は新 ID 採番済み、formatGroups はその ID を参照済み (= そのまま setSettings 可)。
 export function decodeSettingsPayload(payload) {
   const obj = JSON.parse(String(payload || ""));
   if (!obj || typeof obj !== "object") throw new Error(t("qrSettings.invalid"));
   const v = obj.v;
-  if (v !== 4 && v !== WIRE_V) throw new Error(t("qrSettings.versionMismatch", { a: v, b: WIRE_V }));
+  if (v !== WIRE_V) throw new Error(t("qrSettings.versionMismatch", { a: v, b: WIRE_V }));
 
   const tagDict = Array.isArray(obj.td) ? obj.td.filter(s => typeof s === "string") : [];
   const out = {};
-  // v5 は td を常に送る (設定全体) ので tags を常に適用 = 空配列ならタグ消去も反映。
-  // v4 は td があるときだけ (後方互換: 旧版は空タグ時に td を省略していた)。
-  if (v === WIRE_V || tagDict.length) out.tags = tagDict.slice();
+  // td は常に送る (設定全体) ので tags を常に適用 = 空配列ならタグ消去も反映。
+  out.tags = tagDict.slice();
 
-  // formats: 新 ID 採番 (v4/v5 共通)。formatGroups がこの ID を参照する。
+  // formats: 新 ID 採番。formatGroups がこの ID を参照する。
   let formats = null;
   if (Array.isArray(obj.f)) {
     formats = obj.f.map(w => ({ id: newFormatId(), ...formatFromWire(w, tagDict) }));
     out.formats = formats;
   }
 
-  // formatGroups: v5 の fg があれば新 format ID に解決、無ければ既定セットを再構築。
+  // formatGroups: fg があれば新 format ID に解決、無ければ既定セットを再構築。
   // formats と必ずセットで返す (groups は format ID を参照するため不可分)。
   if (formats) {
-    if (v === WIRE_V && Array.isArray(obj.fg)) {
+    if (Array.isArray(obj.fg)) {
       const groups = obj.fg.map(w => ({ id: newGroupId(), ...formatGroupFromWire(w, formats) }));
       out.formatGroups = ensureOneDefaultGroup(groups);
     } else {

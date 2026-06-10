@@ -134,7 +134,7 @@ export function buildTimestampHeader() {
 // 文字列 enum 値に復元するためのテーブル。新規 enum 値を末尾に追加する
 // 時は WIRE_V を bump する必要がある (旧版が未知 index を解釈できない)。
 
-export const PANEL_BY_INDEX = Object.freeze(FORMAT_PANELS.slice());      // ["S","O","A","P"]
+export const PANEL_BY_INDEX = Object.freeze(FORMAT_PANELS.slice());      // ["problem","S","O","A","P","shared"] (Phase 7)
 export const KIND_BY_INDEX  = Object.freeze(FORMAT_ITEM_KINDS.slice());  // ["text","number","fraction"] (v8: "date" は撤去)
 // v7.7+: MODE_BY_INDEX は撤去 (タグ・カテゴリ機能撤去のため)
 
@@ -318,23 +318,25 @@ export function uniqueName(base, existing) {
 // ============================
 // Patient ↔ wire (HM/MM/SH 用)
 // ============================
-//   patientToWire は HM では fieldName=null で content を省く。
-//   MM/SH では fieldName="memo"/"shared" を渡して content を載せる。
+//   Phase 7: content は呼び出し側が注入する (旧 fieldName で patient[field] を読む方式を廃止)。
+//   HM では content=null/undefined で content を省く。MM/SH では合成済みテキスト
+//   (composeExpandedForPanel("problem"/"shared")) を渡して載せる。
 
-export function patientToWire(patient, tagDict, fieldName) {
+export function patientToWire(patient, tagDict, content) {
   const p = patient || {};
   const room = String(p.room || "").trim();
   const name = String(p.name || "").trim();
   const tagIdxs = tagsToWire(Array.isArray(p.tags) ? p.tags : [], tagDict);
-  const content = fieldName ? String(p[fieldName] ?? "").trim() : "";
+  const hasContent = content != null; // HM は null/undefined (content 省略)
+  const c = hasContent ? String(content).trim() : "";
 
-  const isEmpty = !room && !name && tagIdxs.length === 0 && !content;
+  const isEmpty = !room && !name && tagIdxs.length === 0 && !c;
   if (isEmpty) return {};
   const obj = {};
   if (room) obj.r = room;
   if (name) obj.n = name;
   if (tagIdxs.length) obj.t = tagIdxs;
-  if (fieldName) obj.c = content;
+  if (hasContent) obj.c = c;
   return obj;
 }
 

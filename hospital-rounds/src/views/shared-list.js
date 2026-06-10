@@ -1,7 +1,9 @@
 "use strict";
 
-import { appState, selectedNo, markUpdated, scheduleSave } from "../store.js";
+import { appState, markUpdated, scheduleSave } from "../store.js";
+import { composeExpandedForPanel } from "../features/formats.js";
 import { makePatientTagPicker, makeSharedTagFilterPicker, patientMatchesSharedFilter } from "../features/tags.js";
+import { t } from "../i18n.js";
 import { makeRoomInput, formatPatientLabel, ensureRoomOrder, setRoomOrderLocked } from "../features/room.js";
 import { refreshSharedQrIfActive } from "../features/qr-shared.js";
 import { statusClass } from "../features/status-ui.js";
@@ -85,22 +87,24 @@ export function renderSharedScreen(renderHomeFn, opts, navigateToPatientFn) {
       row.appendChild(numBtn);
     }
 
-    const inp = document.createElement("textarea");
-    // 共有本文。改行をそのまま入力・表示し、内容に応じて縦に伸びる (CSS field-sizing)。
-    // 未対応ブラウザ向けに rows=1 を初期値にし、resize:vertical で手動調整できる (P5 P0)。
-    // メモページ本文も textarea になったので read/edit・両画面で見た目が揃う。
-    inp.rows = 1;
-    inp.value = String(p?.shared ?? "");
-    inp.addEventListener("input", () => {
-      p.shared = String(inp.value ?? "");
-      markUpdated(appState.patients.indexOf(p) + 1);
-      scheduleSave();
-      if (selectedNo === appState.patients.indexOf(p) + 1) {
-        const detailSharedText = document.getElementById("detailSharedText");
-        if (detailSharedText) detailSharedText.value = p.shared;
-      }
-    });
-    row.appendChild(inp);
+    // Phase 7: 共有も shared パネルのフォーマット入力に集約されたため、一覧では本文を
+    // 「読み取り表示」する (composeExpandedForPanel)。改行をそのまま表示・縦に伸びる。
+    // タップでその患者の詳細画面へ遷移し、shared パネルの入力で編集する。
+    const body = document.createElement("div");
+    body.className = "memoRowBody";
+    const composed = composeExpandedForPanel("shared", null, p?.formatValues);
+    if (composed) {
+      body.textContent = composed;
+    } else {
+      body.classList.add("empty");
+      body.textContent = t("shared.row.empty");
+    }
+    body.setAttribute("role", "button");
+    body.tabIndex = 0;
+    body.title = t("shared.row.openAria");
+    body.setAttribute("aria-label", t("shared.row.openAria"));
+    body.addEventListener("click", () => { if (navigateToPatientFn) navigateToPatientFn(i); });
+    row.appendChild(body);
     frag.appendChild(row);
   }
   sharedListHost.appendChild(frag);

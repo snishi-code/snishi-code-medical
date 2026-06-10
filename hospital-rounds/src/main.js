@@ -2,7 +2,7 @@
 
 import "./style.css";
 
-import { STATUS, clone } from "./constants.js";
+import { STATUS, clone, FORMAT_PANELS } from "./constants.js";
 import { STORAGE_KEYS } from "./storage.js";
 import {
   appState, settings, selectedNo,
@@ -21,7 +21,7 @@ import { renderMemoScreen, setMemoEditMode } from "./views/memo.js";
 import { renderSharedScreen, setSharedEditMode } from "./views/shared-list.js";
 import { renderSettings, initSettingsView } from "./views/settings-view.js";
 
-import { showView, syncDetailMemoDisplay, createNavigators, createDocsOpener } from "./features/navigation.js";
+import { showView, createNavigators, createDocsOpener } from "./features/navigation.js";
 import { createRenderers } from "./features/renderers.js";
 // header-menu.js (ハンバーガー) は v8.6 で廃止。import 削除済み。
 import { initAppTitle, refreshAppWsLabel, refreshAppUserName } from "./features/app-title.js";
@@ -85,7 +85,6 @@ const renderers = createRenderers({
   renderSharedScreen,
   setSelectedNo,
   showView,
-  syncDetailMemoDisplay,
   refreshSharedQrIfActive,
   refreshMemoQrIfActive,
   refreshHomeQrIfActive,
@@ -439,14 +438,11 @@ document.getElementById("clearAllBtn")?.addEventListener("click", async () => {
   // 保存失敗時の rollback 用に、変更前の患者配列を deep copy で保持する。
   const backup = appState.patients.map(p => clone(p));
   for (const p of appState.patients) {
-    if (ct.memo) p.memo = "";
-    // S/O/A/P は panel 単位で「自由記述 + 同 panel 所属の展開フォーマット値」を
-    // 一括クリアする (settings.formats[].panel が正本。O だけの特別扱いはしない)。
-    if (ct.s) clearPanelClinicalInput(p, "S", settings.formats);
-    if (ct.o) clearPanelClinicalInput(p, "O", settings.formats);
-    if (ct.a) clearPanelClinicalInput(p, "A", settings.formats);
-    if (ct.p) clearPanelClinicalInput(p, "P", settings.formats);
-    if (ct.shared) p.shared = "";
+    // Phase 7: 6パネル (problem/S/O/A/P/shared) を panel 単位で一括クリアする
+    // (settings.formats[].panel が正本。clearTargets のキーも panel 名)。
+    for (const panel of FORMAT_PANELS) {
+      if (ct[panel]) clearPanelClinicalInput(p, panel, settings.formats);
+    }
     if (p.status === STATUS.YELLOW && ct.statusYellow) p.status = STATUS.NONE;
     else if (p.status === STATUS.GREEN && ct.statusGreen) p.status = STATUS.NONE;
     else if (p.status === STATUS.GRAY && ct.statusGray) p.status = STATUS.NONE;
