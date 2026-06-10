@@ -24,11 +24,11 @@ import { t } from "./i18n.js";
 //     "settings": { ... },
 //     "patients": [ ...full clinical records... ],
 //     "roster":   { patients: [{pid,name,room,tags}], tags: [...] },
-//     "memo":     [ {pid, memo} ],
-//     "shared":   [ {pid, shared} ],
 //     "history":  { baseSnapshot, commits, head }
 //   }
 // }
+// Phase 7: 旧 memo/shared 派生セクションは撤去 (臨床入力本文は patients セクションの
+// formatValues に集約された)。
 // ============================
 
 export const BUNDLE_FORMAT = "hospital-rounds-bundle";
@@ -40,10 +40,9 @@ export const SECTION = Object.freeze({
   SETTINGS: "settings",
   PATIENTS: "patients",
   ROSTER: "roster",
-  MEMO: "memo",
-  SHARED: "shared",
-  // v7.7+: HISTORY section (roster commits) は撤去。section 値自体は parseBundle
-  // が旧 bundle を読んだ時に未知フィールドとして温存される (forward compat)
+  // v7.7+: HISTORY section (roster commits) は撤去。Phase 7: MEMO/SHARED 派生セクションも
+  // 撤去 (旧 patient.memo/shared フィールド廃止のため)。section 値自体は parseBundle が
+  // 旧 bundle を読んだ時に未知フィールドとして温存される (forward compat)
 });
 
 // Default sections written by the "save everything" preset (file export +
@@ -108,16 +107,6 @@ export function projectBundle({
   }
   if (want.has(SECTION.ROSTER) && appState?.patients) {
     out.sections.roster = projectRosterView(appState.patients, settings?.tags);
-  }
-  if (want.has(SECTION.MEMO) && appState?.patients) {
-    out.sections.memo = appState.patients
-      .filter(p => p && p.pid && p.memo)
-      .map(p => ({ pid: p.pid, memo: p.memo }));
-  }
-  if (want.has(SECTION.SHARED) && appState?.patients) {
-    out.sections.shared = appState.patients
-      .filter(p => p && p.pid && p.shared)
-      .map(p => ({ pid: p.pid, shared: p.shared }));
   }
   // v7.7+: HISTORY section (roster commits) は撤去。bundle に rosterId / history
   // 含まないが、未知フィールドとして残っている旧 bundle を読んでも parseBundle

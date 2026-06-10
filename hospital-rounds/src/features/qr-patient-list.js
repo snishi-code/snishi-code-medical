@@ -29,11 +29,12 @@ import { t } from "../i18n.js";
 const WIRE_V = 3;
 
 export function encodePatientList(cfg) {
-  // cfg.fieldName: null (HM) | "memo" (MM) | "shared" (SH)
+  // cfg.contentOf: null (HM) | (patient)=>string (MM=problem / SH=shared)。Phase 7:
+  //   patient[field] 直読みでなく、合成済みテキストを返す関数を注入する。
   // cfg.includeEmpty: true (HM) | false (MM/SH)
   // cfg.matchesFilter: 任意フィルタ。指定があれば該当患者だけを対象に
   // cfg.kind: QR 種別 ("HM" / "MM" / "SH")。再配布制限の判定に使う
-  const fieldName = cfg.fieldName || null;
+  const contentOf = typeof cfg.contentOf === "function" ? cfg.contentOf : null;
   const includeEmpty = !!cfg.includeEmpty;
   const matchesFilter = cfg.matchesFilter || (() => true);
 
@@ -55,9 +56,10 @@ export function encodePatientList(cfg) {
       if (includeEmpty) patientArr.push({});
       continue;
     }
-    const wire = patientToWire(p, tagDict, fieldName);
+    const content = contentOf ? contentOf(p) : null;
+    const wire = patientToWire(p, tagDict, content);
     // MM/SH: content が無い患者は載せない
-    if (fieldName && !wire.c) continue;
+    if (contentOf && !wire.c) continue;
     patientArr.push(wire);
   }
 

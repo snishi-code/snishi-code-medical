@@ -3,7 +3,12 @@
 import { settings } from "../store.js";
 import { createQrFlow } from "./qr-flow.js";
 import { encodePatientList, decodePatientList, patientMatchesSharedFilter } from "./qr-patient-list.js";
+import { composeExpandedForPanel } from "./formats.js";
 import { t } from "../i18n.js";
+
+// Phase 7: プロブレムリストQR(MM)=problem panel / 共有QR(SH)=shared panel の合成テキストを注入。
+const problemContentOf = (p) => composeExpandedForPanel("problem", null, p && p.formatValues);
+const sharedContentOf = (p) => composeExpandedForPanel("shared", null, p && p.formatValues);
 
 // ============================
 // メモQR / 共有QR (MM/SH)
@@ -65,7 +70,7 @@ const sharedFlow = createQrFlow({
     scanBtnId: "sharedQrScanBtn",
   },
   encodePayload: () => encodePatientList({
-    fieldName: "shared",
+    contentOf: sharedContentOf,
     includeEmpty: false,
     matchesFilter: patientMatchesSharedFilter,
     kind: "SH",
@@ -89,7 +94,7 @@ const memoFlow = createQrFlow({
     scanBtnId: "memoQrScanBtn",
   },
   encodePayload: () => encodePatientList({
-    fieldName: "memo",
+    contentOf: problemContentOf,
     kind: "MM",
     includeEmpty: false,
     matchesFilter: patientMatchesSharedFilter,

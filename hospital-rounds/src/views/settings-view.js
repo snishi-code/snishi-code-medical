@@ -22,19 +22,19 @@ const MEMO_SVG = icon("memo", 16);
 const SHARED_SVG = icon("people", 16);
 const TRASH_SVG = icon("trash", 16);
 
-const CLEAR_KEY_ORDER = ["memo", "s", "o", "a", "p", "shared", "statusYellow", "statusGreen", "statusGray", "statusBlue"];
+// Phase 7: clearTargets のキーは panel 名 (problem/S/O/A/P/shared) + statusXxx。
+const CLEAR_KEY_ORDER = ["problem", "S", "O", "A", "P", "shared", "statusYellow", "statusGreen", "statusGray", "statusBlue"];
 
 // CLEAR_KEY_ORDER の各 key に対する表示ラベルを i18n から取得。
-// 「メモ」「共有」は専用キー、SOAP パネルは panel.* を再利用、ステータス系は
-// settings.clear.statusXxx の専用キー。
+// panel 名キーは panel.* を再利用 (problem/shared 含む)、ステータス系は settings.clear.statusXxx。
 function clearItemTitle(key) {
-  if (key === "memo") return t("settings.clear.memo");
-  if (key === "shared") return t("settings.clear.shared");
-  if (key === "s" || key === "o" || key === "a" || key === "p") return t("panel." + key.toUpperCase());
-  return t("settings.clear." + key);
+  if (key === "statusYellow" || key === "statusGreen" || key === "statusGray" || key === "statusBlue") {
+    return t("settings.clear." + key);
+  }
+  return t("panel." + key); // problem / S / O / A / P / shared
 }
 
-const PANELS_IN_ORDER = ["S", "O", "A", "P"];
+const PANELS_IN_ORDER = ["problem", "S", "O", "A", "P", "shared"];
 
 function renderFormatListForPanel(panel) {
   const host = document.getElementById("setFormats_" + panel);
@@ -199,10 +199,10 @@ function buildClearTargetLabelContent(key) {
     sw.textContent = opt?.mark || "";
     return sw;
   }
-  if (key === "memo" || key === "shared") {
+  if (key === "problem" || key === "shared") {
     const span = document.createElement("span");
     span.style.cssText = "display:inline-flex;align-items:center;color:var(--text);";
-    span.innerHTML = key === "memo" ? MEMO_SVG : SHARED_SVG;
+    span.innerHTML = key === "problem" ? MEMO_SVG : SHARED_SVG;
     return span;
   }
   return document.createTextNode(clearItemTitle(key));

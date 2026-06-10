@@ -1,8 +1,9 @@
 "use strict";
 
-import { appState, selectedNo, markUpdated, scheduleSave } from "../store.js";
-import { syncDetailMemoDisplay } from "../features/navigation.js";
+import { appState, markUpdated, scheduleSave } from "../store.js";
+import { composeExpandedForPanel } from "../features/formats.js";
 import { makePatientTagPicker, makeSharedTagFilterPicker, patientMatchesSharedFilter } from "../features/tags.js";
+import { t } from "../i18n.js";
 import { makeRoomInput, formatPatientLabel, ensureRoomOrder, setRoomOrderLocked } from "../features/room.js";
 import { refreshMemoQrIfActive } from "../features/qr-shared.js";
 import { statusClass } from "../features/status-ui.js";
@@ -87,21 +88,25 @@ export function renderMemoScreen(renderHomeFn, opts, navigateToPatientFn) {
       row.appendChild(numBtn);
     }
 
-    // 本文は textarea。患者画面 (detailMemoText) と同じく改行をそのまま入力・表示し、
-    // 内容に応じて縦に伸びる (CSS field-sizing)。「見ている本文をそのまま編集する」感覚に
-    // 揃える (P5 P0)。詳細編集欄に文字数上限が無いので、ここでも上限を設けない (片側だけ
-    // 200 字で切れると両画面で挙動が食い違う)。
-    const inp = document.createElement("textarea");
-    inp.autocomplete = "off";
-    inp.rows = 1;
-    inp.value = String(p?.memo ?? "");
-    inp.addEventListener("input", () => {
-      p.memo = String(inp.value ?? "");
-      markUpdated(appState.patients.indexOf(p) + 1);
-      scheduleSave();
-      if (selectedNo === appState.patients.indexOf(p) + 1) syncDetailMemoDisplay();
-    });
-    row.appendChild(inp);
+    // Phase 7: プロブレムリストは problem パネルのフォーマット入力 (構造化) に集約された
+    // ため、一覧では本文を「読み取り表示」する (composeExpandedForPanel)。改行をそのまま
+    // 表示し、内容に応じて縦に伸びる (div の自然な高さ)。タップでその患者の詳細画面へ
+    // 遷移し、展開カード/入力シートで編集する (編集導線 = 患者画面)。
+    const body = document.createElement("div");
+    body.className = "memoRowBody";
+    const composed = composeExpandedForPanel("problem", null, p?.formatValues);
+    if (composed) {
+      body.textContent = composed;
+    } else {
+      body.classList.add("empty");
+      body.textContent = t("memo.row.empty");
+    }
+    body.setAttribute("role", "button");
+    body.tabIndex = 0;
+    body.title = t("memo.row.openAria");
+    body.setAttribute("aria-label", t("memo.row.openAria"));
+    body.addEventListener("click", () => { if (navigateToPatientFn) navigateToPatientFn(i); });
+    row.appendChild(body);
     frag.appendChild(row);
   }
   memoListHost.appendChild(frag);

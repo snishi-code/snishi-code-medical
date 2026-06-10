@@ -99,10 +99,12 @@ function adapterDeleteFormat(id) {
   saveSettings();
 }
 
-// 新しい item オブジェクトを kind に応じたフィールドで生成
+// 新しい item オブジェクトを kind に応じたフィールドで生成。
+// fraction は入力方式 fracMode を持つ (新規は安全側 "text"。BP 等の数字用途は設定で "numeric" へ)。
 function makeNewItem(kind) {
   const k = FORMAT_ITEM_KINDS.includes(kind) ? kind : DEFAULT_ITEM_KIND;
-  if (k === "number" || k === "fraction") return { label: "", kind: k, unit: "" };
+  if (k === "fraction") return { label: "", kind: k, unit: "", fracMode: "text" };
+  if (k === "number") return { label: "", kind: k, unit: "" };
   return { label: "", kind: k, normal: "" }; // text / date
 }
 
@@ -110,7 +112,10 @@ function makeNewItem(kind) {
 function morphItemKind(item, newKind) {
   const k = FORMAT_ITEM_KINDS.includes(newKind) ? newKind : DEFAULT_ITEM_KIND;
   const label = String(item?.label ?? "");
-  if (k === "number" || k === "fraction") {
+  if (k === "fraction") {
+    return { label, kind: k, unit: String(item?.unit ?? ""), fracMode: item?.fracMode === "numeric" ? "numeric" : "text" };
+  }
+  if (k === "number") {
     return { label, kind: k, unit: String(item?.unit ?? "") };
   }
   return { label, kind: k, normal: String(item?.normal ?? "") };
@@ -259,7 +264,11 @@ export function renderFormatStrip(panel, hostEl) {
 // 値が入った非展開フォーマット (クイック/ランチャー入力で「展開」されたもの) もカードとして
 // 出す (= 自由記述欄の代替の可視先)。format.titleWrap が空なら見出しを出さない (修正4)。
 // ============================
-const EXPANDED_HOST_ID = { S: "sExpanded", O: "oExpanded", A: "aExpanded", P: "pExpanded" };
+const EXPANDED_HOST_ID = {
+  problem: "problemExpanded",
+  S: "sExpanded", O: "oExpanded", A: "aExpanded", P: "pExpanded",
+  shared: "sharedExpanded",
+};
 
 // チェック(正常)アイコン (lucide: check)。
 const CHECK_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
@@ -569,12 +578,13 @@ function setupTextInput(inp) {
   });
 }
 
-// 短文注記欄 (grid 4 列目)。number/fraction の値の隣に「O2 2L」「RA」等の
-// 文脈注記を 1 行で入れる。値とは別フィールドだが患者ごとの入力値。
+// 注記欄 (grid 4 列目)。number/fraction の値の隣に「O2 2L」「RA」等の文脈注記を入れる。
+// Phase 7: textarea にして改行可・内容に応じて縦に伸びる (プロブレムリストの # 番号の内容を
+// ここに書く用途。CSS field-sizing:content)。値とは別フィールドだが患者ごとの入力値。
 function buildNoteInput(initial) {
-  const noteInp = document.createElement("input");
-  noteInp.type = "text";
+  const noteInp = document.createElement("textarea");
   noteInp.className = "formatInputMemo";
+  noteInp.rows = 1;
   noteInp.placeholder = t("format.placeholder.memo");
   setupTextInput(noteInp);
   if (initial) noteInp.value = String(initial);
@@ -641,12 +651,15 @@ function buildFractionRow(host, item, opts = {}) {
   const fracGroup = document.createElement("div");
   fracGroup.className = "formatInputFracGroup";
 
-  // fraction の左右は英数字・記号を許容する (例: "CTRX 1g/1")。よって text inputMode。
-  // 血圧 "120/53" のような数値用途も text キーボードで引き続き入力できる (壊さない)。
+  // 入力方式は item.fracMode で切替: "numeric"=数字キーボード (血圧 120/80) /
+  // "text"=英数字・記号 (抗菌薬 "CTRX 1g/1")。未指定は安全側 text。保存値の形式 ("左/右") は不変。
+  const fracNumeric = item.fracMode === "numeric";
+  const setupFracInput = (inp) => fracNumeric ? setupNumericInput(inp, "numeric") : setupTextInput(inp);
+
   const numer = document.createElement("input");
   numer.type = "text";
   numer.className = "formatInputValue formatInputFracNumer";
-  setupTextInput(numer);
+  setupFracInput(numer);
   fracGroup.appendChild(numer);
 
   const slash = document.createElement("span");
@@ -657,7 +670,7 @@ function buildFractionRow(host, item, opts = {}) {
   const denom = document.createElement("input");
   denom.type = "text";
   denom.className = "formatInputValue formatInputFracDenom";
-  setupTextInput(denom);
+  setupFracInput(denom);
   fracGroup.appendChild(denom);
 
   // 初期値 "a/b" を numer / denom に分解 (最初の "/" で分割)。note は別欄。
@@ -734,6 +747,25 @@ function buildTextRow(host, item, opts = {}) {
 
   host.appendChild(row);
   return { item, kind: "text", val };
+}
+
+// Phase 7: スキャン受信した自由文を problem パネルの自由記述 (末尾 text) 項目へ追記する。
+// 患者画面QRカードの「カメラで読取→受診メモへ追記」用。problem に text 項目が無ければ false。
+// 値は manual 由来 (ワンタップ正常で誤消去されない)。caller が Undo 起点・再描画・保存を担当。
+export function appendTextToProblemFreeNote(patient, text) {
+  if (!patient || !text) return false;
+  const fmt = (Array.isArray(settings.formats) ? settings.formats : []).find(f => f && f.panel === "problem");
+  if (!fmt) return false;
+  const items = Array.isArray(fmt.items) ? fmt.items : [];
+  let idx = -1;
+  items.forEach((it, i) => { if ((it?.kind || DEFAULT_ITEM_KIND) === "text") idx = i; });
+  if (idx < 0) return false;
+  if (!patient.formatValues || typeof patient.formatValues !== "object") patient.formatValues = {};
+  if (!patient.formatValues[fmt.id] || typeof patient.formatValues[fmt.id] !== "object") patient.formatValues[fmt.id] = {};
+  const cur = readTextValue(patient.formatValues[fmt.id][idx]);
+  const sep = cur && !cur.endsWith("\n") ? "\n" : "";
+  patient.formatValues[fmt.id][idx] = { value: cur + sep + String(text), source: "manual" };
+  return true;
 }
 
 // payload.js から呼ぶ: パネルに属する「値が入った全フォーマット」を合成して返す。
@@ -921,7 +953,8 @@ function renderFormatEditItems(host) {
     });
     row.appendChild(kindSel);
 
-    // 3) kind ごとの補助入力 (unit / normal)。text は normal、number / fraction は unit
+    // 3) kind ごとの補助入力 (unit / normal)。text は normal、number / fraction は unit。
+    //    fraction はさらに入力方式 (数字 / 文字) を選べる。
     if (item.kind === "number" || item.kind === "fraction") {
       const unit = document.createElement("input");
       unit.type = "text";
@@ -929,7 +962,30 @@ function renderFormatEditItems(host) {
       unit.placeholder = t("format.placeholder.unit");
       unit.value = item.unit || "";
       unit.addEventListener("input", () => { item.unit = String(unit.value || ""); });
-      row.appendChild(unit);
+      if (item.kind === "fraction") {
+        // grid 4列目セルに [単位 | 入力方式] を横並びで入れる (grid 列は増やさない)。
+        const cell = document.createElement("div");
+        cell.className = "formatEditItemFracCell";
+        cell.appendChild(unit);
+        const modeSel = document.createElement("select");
+        modeSel.className = "formatEditItemFracMode";
+        modeSel.title = t("format.fracMode.title");
+        modeSel.setAttribute("aria-label", t("format.fracMode.aria"));
+        for (const m of ["numeric", "text"]) {
+          const opt = document.createElement("option");
+          opt.value = m;
+          opt.textContent = t("format.fracMode." + m);
+          modeSel.appendChild(opt);
+        }
+        modeSel.value = item.fracMode === "numeric" ? "numeric" : "text";
+        modeSel.addEventListener("change", () => {
+          item.fracMode = modeSel.value === "numeric" ? "numeric" : "text";
+        });
+        cell.appendChild(modeSel);
+        row.appendChild(cell);
+      } else {
+        row.appendChild(unit);
+      }
     } else {
       // text
       const normal = document.createElement("input");

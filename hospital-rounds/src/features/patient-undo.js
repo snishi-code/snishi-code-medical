@@ -15,12 +15,13 @@
 //     スコープを切ることで識別情報には一切触れない (Codex 監査指摘の修正)。
 //   - **セッション内メモリのみ**: 永続化しない。リロードで履歴は消える (多くのエディタの
 //     Ctrl-Z と同じ)。snapshots.js (IDB 災害復旧) とは別物・無関係。
-//   - **操作単位**: ワンタップ正常/クリアは 1 ステップ。textarea は focus〜blur の編集
-//     セッションで 1 ステップ (連続キー入力ごとには撮らない)。
+//   - **操作単位**: ワンタップ正常/クリアは 1 ステップ。入力シート (number note textarea や
+//     text 項目を含む) は保存 (applyFormatSheet) 単位で 1 ステップ (formats.js が
+//     captureFormatUndo で起点を撮る)。
 //   - **カーソル方式 redo**: 戻す→進むで往復。新規編集が入ると redo 枝を破棄。
 //   - **fail-closed**: 差し替え後の保存が失敗したら live を元へ戻し、成功扱いにしない。
 //
-// 公開 API: captureUndoPoint / beginFieldEdit / commitFieldEdit / undo / redo /
+// 公開 API: captureUndoPoint / undo / redo /
 //           canUndo / canRedo / refreshUndoButtons / setUndoRefresh
 // ============================================================================
 
@@ -37,10 +38,10 @@ const _hist = new Map(); // pid -> { undo: Entry[], redo: Entry[] }
 
 // 種別ごとに「戻す対象フィールド」を定義する。ここに無いフィールド (name/room/status/
 // tags/activeFormatGroupId など患者識別情報) は Undo で一切触らない。
+// Phase 7: 臨床入力本文は全て formatValues に集約されたため、患者画面 Undo は format
+// スコープ 1 本 (旧 memo/shared 専用スコープは撤去)。プロブレム/共有/受診メモも formatValues。
 const LABEL_FIELDS = {
   format: ["formatValues"],
-  memo: ["memo"],
-  shared: ["shared"],
 };
 function fieldsFor(label) { return LABEL_FIELDS[label] || LABEL_FIELDS.format; }
 // 患者 p から、その label の対象フィールドだけをクローンして取り出す。
@@ -48,10 +49,6 @@ function snapshotFields(p, label) {
   const out = {};
   for (const f of fieldsFor(label)) out[f] = clone(p[f]);
   return out;
-}
-// 現在患者の対象フィールドが snapshot と一致するか (変化検出)。
-function fieldsUnchanged(p, fields) {
-  return Object.keys(fields).every(f => JSON.stringify(p[f]) === JSON.stringify(fields[f]));
 }
 
 let _refresh = null; // 差し替え後の再描画 (= refreshPatientUI)。main.js が注入。
@@ -82,25 +79,6 @@ export function captureUndoPoint(label, preFields, opts) {
   if (!fields) return;
   const tagsAdded = (opts && Array.isArray(opts.tagsAdded)) ? opts.tagsAdded.slice() : [];
   pushUndo(pid, fields, label, tagsAdded);
-  refreshUndoButtons();
-}
-
-// textarea のように input で即時 live を書き換える編集向け: focus で編集前の対象フィールドを
-// 保持し、blur で値が変わっていれば 1 ステップとして確定する (未変更なら捨てる)。
-let _pendingField = null; // { pid, label, fields }
-export function beginFieldEdit(label) {
-  const p = curPatient();
-  const pid = pidOf(p);
-  _pendingField = pid ? { pid, label, fields: snapshotFields(p, label) } : null;
-}
-export function commitFieldEdit() {
-  const pend = _pendingField;
-  _pendingField = null;
-  if (!pend || !pend.fields) return;
-  const p = curPatient();
-  if (!p || pidOf(p) !== pend.pid) return; // 患者が変わっていたら破棄
-  if (fieldsUnchanged(p, pend.fields)) return; // 変化が無ければ Undo 起点を作らない
-  pushUndo(pend.pid, pend.fields, pend.label, []); // textarea 編集はタグ付与なし
   refreshUndoButtons();
 }
 

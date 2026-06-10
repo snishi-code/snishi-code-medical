@@ -69,6 +69,7 @@ import {
 //     k  = kind index (KIND_BY_INDEX への 0-based 参照)
 //     u  = unit         (空は省略)
 //     nm = normal       (空は省略)
+//     fm = fraction 入力方式 (1=numeric。default text は省略。新規フィールド=bump 不要)
 //
 //   フォーマットセット = formatGroup (ST の fg[i] / FS の g):
 //     n  = name
@@ -134,7 +135,7 @@ export function buildTimestampHeader() {
 // 文字列 enum 値に復元するためのテーブル。新規 enum 値を末尾に追加する
 // 時は WIRE_V を bump する必要がある (旧版が未知 index を解釈できない)。
 
-export const PANEL_BY_INDEX = Object.freeze(FORMAT_PANELS.slice());      // ["S","O","A","P"]
+export const PANEL_BY_INDEX = Object.freeze(FORMAT_PANELS.slice());      // ["problem","S","O","A","P","shared"] (Phase 7)
 export const KIND_BY_INDEX  = Object.freeze(FORMAT_ITEM_KINDS.slice());  // ["text","number","fraction"] (v8: "date" は撤去)
 // v7.7+: MODE_BY_INDEX は撤去 (タグ・カテゴリ機能撤去のため)
 
@@ -243,6 +244,9 @@ function itemToWire(it) {
   const o = { l: String(it?.label ?? ""), k: kindToIdx(it?.kind) };
   if (typeof it?.unit === "string" && it.unit) o.u = it.unit;
   if (typeof it?.normal === "string" && it.normal) o.nm = it.normal;
+  // fraction の入力方式。default(text) は省略し numeric の時だけ載せる (原則②)。新規フィールド
+  // 追加なので WIRE_V bump 不要 (旧版は未知キーとして無視 = forward/backward compat)。
+  if (it?.kind === "fraction" && it?.fracMode === "numeric") o.fm = 1;
   return o;
 }
 
@@ -251,6 +255,8 @@ function itemFromWire(w) {
   const o = { label: String(w?.l || ""), kind };
   if (typeof w?.u === "string") o.unit = w.u;
   if (typeof w?.nm === "string") o.normal = w.nm;
+  // fraction の入力方式を復元 (fm=1 → numeric、無し → 安全側 text)。
+  if (kind === "fraction") o.fracMode = (w?.fm === 1) ? "numeric" : "text";
   return o;
 }
 
@@ -318,23 +324,25 @@ export function uniqueName(base, existing) {
 // ============================
 // Patient ↔ wire (HM/MM/SH 用)
 // ============================
-//   patientToWire は HM では fieldName=null で content を省く。
-//   MM/SH では fieldName="memo"/"shared" を渡して content を載せる。
+//   Phase 7: content は呼び出し側が注入する (旧 fieldName で patient[field] を読む方式を廃止)。
+//   HM では content=null/undefined で content を省く。MM/SH では合成済みテキスト
+//   (composeExpandedForPanel("problem"/"shared")) を渡して載せる。
 
-export function patientToWire(patient, tagDict, fieldName) {
+export function patientToWire(patient, tagDict, content) {
   const p = patient || {};
   const room = String(p.room || "").trim();
   const name = String(p.name || "").trim();
   const tagIdxs = tagsToWire(Array.isArray(p.tags) ? p.tags : [], tagDict);
-  const content = fieldName ? String(p[fieldName] ?? "").trim() : "";
+  const hasContent = content != null; // HM は null/undefined (content 省略)
+  const c = hasContent ? String(content).trim() : "";
 
-  const isEmpty = !room && !name && tagIdxs.length === 0 && !content;
+  const isEmpty = !room && !name && tagIdxs.length === 0 && !c;
   if (isEmpty) return {};
   const obj = {};
   if (room) obj.r = room;
   if (name) obj.n = name;
   if (tagIdxs.length) obj.t = tagIdxs;
-  if (fieldName) obj.c = content;
+  if (hasContent) obj.c = c;
   return obj;
 }
 

@@ -11,6 +11,8 @@ import {
 } from "./constants.js";
 import { projectBundle, parseBundle, getSection, SECTION } from "./bundle.js";
 import { formatValueHasInput, repairGroupExpandInvariant } from "./features/format-values.js";
+// TEMP: remove after onishi data migration (Phase 7 一回限り入力モデル移行)
+import { migratePatientsInputModel } from "./features/one-time-input-model-migration.js";
 import { t } from "./i18n.js";
 import { showToast } from "./toast.js";
 import {
@@ -114,7 +116,7 @@ export function defaultSettings() {
 //   text     : { label, kind:"text",     normal }
 //   number   : { label, kind:"number",   unit   }
 //   fraction : { label, kind:"fraction", unit   }   // 日付 "5/20" もこれで入力
-function normalizeFormatItem(item) {
+function normalizeFormatItem(item, panel, formatName) {
   if (!item || typeof item !== "object") return null;
   const label = String(item.label ?? "").trim();
   const rawKind = typeof item.kind === "string" ? item.kind : "";
@@ -127,6 +129,16 @@ function normalizeFormatItem(item) {
   const out = { label, kind };
   if (kind === "number" || kind === "fraction") {
     out.unit = String(item.unit ?? "");
+    if (kind === "fraction") {
+      // 分数の入力方式: "numeric"(数字キーボード・血圧 120/80) / "text"(英数字混在・抗菌薬 1g/1)。
+      // 明示指定は尊重。未指定 (旧データ) は安全側 "text" に倒すが、**既定バイタルの BP 形状だけ**
+      // (panel=O / 名前=バイタル / label=BP / unit=mmHg) は numeric に補正する (実ユーザーの既存
+      // BP を text キーボードのままにしないための narrow 補正。保存後は fracMode が永続化される)。
+      if (item.fracMode === "numeric") out.fracMode = "numeric";
+      else if (item.fracMode === "text") out.fracMode = "text";
+      else out.fracMode = (panel === "O" && formatName === "バイタル" && label === "BP" && out.unit === "mmHg")
+        ? "numeric" : "text";
+    }
   } else {
     // text / date は normal を持つ
     out.normal = String(item.normal ?? "");
@@ -146,8 +158,9 @@ function normalizeFormat(raw) {
   if (!name) return null;
   const panel = FORMAT_PANELS.includes(raw.panel) ? raw.panel : "O";
   const id = (typeof raw.id === "string" && raw.id) ? raw.id : newFormatId();
+  // panel/name を渡すのは fraction の既定 BP 補正 (normalizeFormatItem の narrow heuristic) のため。
   const items = Array.isArray(raw.items)
-    ? raw.items.map(normalizeFormatItem).filter(Boolean)
+    ? raw.items.map(it => normalizeFormatItem(it, panel, name)).filter(Boolean)
     : [];
   const joiner = typeof raw.joiner === "string" ? raw.joiner : ", ";
   // labelSep: 明示指定優先、なければ items から推定
@@ -226,19 +239,17 @@ export function normalizeSettings(raw) {
     if (cleaned.length) out.formats = cleaned;
   }
   if (raw.clearTargets && typeof raw.clearTargets === "object") {
+    // Phase 7: clearTargets は panel キー (problem/S/O/A/P/shared) + statusXxx。
+    // 各 panel は FORMAT_PANELS から、status は固定キーから validation する。
     const ct = raw.clearTargets;
-    out.clearTargets = {
-      memo:   typeof ct.memo   === "boolean" ? ct.memo   : DEFAULT_CLEAR_TARGETS.memo,
-      s:      typeof ct.s      === "boolean" ? ct.s      : DEFAULT_CLEAR_TARGETS.s,
-      o:      typeof ct.o      === "boolean" ? ct.o      : DEFAULT_CLEAR_TARGETS.o,
-      a:      typeof ct.a      === "boolean" ? ct.a      : DEFAULT_CLEAR_TARGETS.a,
-      p:      typeof ct.p      === "boolean" ? ct.p      : DEFAULT_CLEAR_TARGETS.p,
-      shared: typeof ct.shared === "boolean" ? ct.shared : DEFAULT_CLEAR_TARGETS.shared,
-      statusYellow: typeof ct.statusYellow === "boolean" ? ct.statusYellow : DEFAULT_CLEAR_TARGETS.statusYellow,
-      statusGreen:  typeof ct.statusGreen  === "boolean" ? ct.statusGreen  : DEFAULT_CLEAR_TARGETS.statusGreen,
-      statusGray:   typeof ct.statusGray   === "boolean" ? ct.statusGray   : DEFAULT_CLEAR_TARGETS.statusGray,
-      statusBlue:   typeof ct.statusBlue   === "boolean" ? ct.statusBlue   : DEFAULT_CLEAR_TARGETS.statusBlue,
-    };
+    out.clearTargets = {};
+    for (const panel of FORMAT_PANELS) {
+      out.clearTargets[panel] = typeof ct[panel] === "boolean"
+        ? ct[panel] : !!DEFAULT_CLEAR_TARGETS[panel];
+    }
+    for (const k of ["statusYellow", "statusGreen", "statusGray", "statusBlue"]) {
+      out.clearTargets[k] = typeof ct[k] === "boolean" ? ct[k] : !!DEFAULT_CLEAR_TARGETS[k];
+    }
   }
   if (Array.isArray(raw.tags)) {
     out.tags = raw.tags.filter(d => typeof d === "string").map(d => String(d));
@@ -312,12 +323,7 @@ export function makeDefaultPatient() {
     name: "",
     room: "",
     tags: [],
-    s: "",
-    memo: "",
-    shared: "",
-    oFree: "",
-    a: { text: "" },
-    p: { text: "" },
+    // Phase 7: 臨床入力本文は formatValues に一本化 (旧 s/memo/shared/oFree/a/p は撤去)。
     updatedAt: 0,
     // 他ワークスペースへ移動した時に立つマーカー。元データ (name / room) は触らず、
     // 表示・ソート時のみ装飾する。
@@ -348,22 +354,17 @@ export function makeDefaultPatient() {
 }
 
 // 「空患者」= 開いた直後の未使用スロット相当: ステータスが NONE (白) で、かつ name/room/
-// tags/SOAP/memo/shared/oFree がすべて初期値（pid と updatedAt は無視）。
+// tags/formatValues がすべて初期値（pid と updatedAt は無視）。
 // YELLOW/GREEN/BLUE/GRAY はユーザーが明示的にステータスを付けた状態なので、たとえ他の
 // フィールドが空でも「触れたボタン」と見なし削除対象外（特に GRAY は「診察・カルテ記載
 // 終了」の重要マーカーなので消してはならない）。
+// Phase 7: 臨床入力本文は全て formatValues。旧 s/memo/shared/oFree/a/p は撤去したので判定しない。
 export function isPatientEmpty(p) {
   if (!p) return false;
   if (p.status !== STATUS.NONE) return false;
   if (p.name) return false;
   if (p.room) return false;
   if (Array.isArray(p.tags) && p.tags.length > 0) return false;
-  if (p.s) return false;
-  if (p.memo) return false;
-  if (p.shared) return false;
-  if (p.oFree) return false;
-  if (p.a && p.a.text) return false;
-  if (p.p && p.p.text) return false;
   // 展開(A)フォーマットに入力値があれば空ではない (値は文字列でも { value, note }
   // オブジェクトでも formatValueHasInput が正しく判定する)
   if (p.formatValues && typeof p.formatValues === "object") {
@@ -402,12 +403,9 @@ function normalizePatientArray(arr) {
       tags: (r && Array.isArray(r.tags))
         ? r.tags.filter(t => typeof t === "string" && t.trim()).map(t => String(t))
         : [],
-      s: (r && typeof r.s === "string") ? r.s : d.s,
-      memo: (r && typeof r.memo === "string") ? r.memo : d.memo,
-      shared: (r && typeof r.shared === "string") ? r.shared : d.shared,
-      oFree: (r && typeof r.oFree === "string") ? r.oFree : d.oFree,
-      a: { text: (r && r.a && typeof r.a.text === "string") ? r.a.text : d.a.text },
-      p: { text: (r && r.p && typeof r.p.text === "string") ? r.p.text : d.p.text },
+      // Phase 7: 旧 s/memo/shared/oFree/a/p は known フィールドから撤去。一回限り移行
+      // (one-time-input-model-migration.js) が読み込み後にこれらを formatValues へ移して
+      // delete する。それまでは上の { ...base } 温存で一時的に残る (移行で消える)。
       updatedAt: (r && typeof r.updatedAt === "number") ? r.updatedAt : 0,
       transferredAt: (r && typeof r.transferredAt === "number") ? r.transferredAt : 0,
       transferredTo: (r && typeof r.transferredTo === "string") ? r.transferredTo : "",
@@ -472,6 +470,14 @@ function applyBundleToLive(bundle) {
     recvMemo: (meta && typeof meta.recvMemo === "string") ? meta.recvMemo : "",
     recvShared: (meta && typeof meta.recvShared === "string") ? meta.recvShared : "",
   };
+  // TEMP: remove after onishi data migration — 旧入力モデル (memo/shared/s/oFree/a/p)
+  // を新 formatValues へ移す。settings が確定した状態で呼ぶ前提 (initStore は settings を
+  // 先に解決してからこの関数を呼ぶ / switch* は global settings ロード済み)。移行で患者が
+  // 変わったら disk 収束のため保存予約する。
+  try {
+    const res = migratePatientsInputModel(appState.patients, settings);
+    if (res.changed) scheduleSave(); // 移行で消えていない旧データは保持されるので保存予約のみ
+  } catch (e) { console.error("input-model migration failed (旧データは保持):", e); }
 }
 
 // 受信ボックスの内容を更新して永続化する (caller は UI 同期の責務)。
@@ -517,10 +523,10 @@ export function initStore(opts) {
       try { bundle = await storageLoad(); }
       catch (e) { console.warn("initStore: storage load failed:", e); }
     }
-    // patients / title (ws 固有 + 現ユーザー名) を適用
-    applyBundleToLive(bundle);
     // settings はグローバル。未保存なら現バンドルの settings から 1 度だけ seed する
     // (= 既存ユーザーのアクティブ ws 設定をグローバルへ引き継ぐ移行)。
+    // applyBundleToLive 内の入力モデル移行 (Phase 7) が settings の problem/shared 既定
+    // フォーマット ID を必要とするので、patients 適用より先に settings を確定する。
     let gs = null;
     try { gs = await loadGlobalSettings(); }
     catch (e) { console.warn("initStore: load global settings failed:", e); }
@@ -536,6 +542,8 @@ export function initStore(opts) {
       try { await saveGlobalSettings(settings); }
       catch (e) { console.warn("initStore: seed global settings failed:", e); }
     }
+    // patients / title (ws 固有 + 現ユーザー名) を適用 (+ 入力モデル移行を settings 確定状態で)
+    applyBundleToLive(bundle);
   })();
   return _initPromise;
 }
@@ -793,6 +801,10 @@ export async function exportArchive() {
     try { b = await storageLoad(w.id); } catch (_) { /* skip broken */ }
     const patients = b ? (getSection(b, SECTION.PATIENTS) || []) : [];
     const meta = b ? (getSection(b, SECTION.META) || {}) : {};
+    // TEMP: remove after onishi data migration — 未オープン ws も含め export 前に新形式へ
+    // 移行し、旧 memo/shared/s/oFree/a/p が書き出されないようにする。
+    try { migratePatientsInputModel(patients, settings); }
+    catch (e) { console.error("exportArchive: migration failed:", e); }
     workspaces.push({
       label: w.label || "",
       title: (meta && typeof meta.title === "string") ? meta.title : (w.title || ""),
@@ -814,19 +826,51 @@ export async function exportArchive() {
 export async function importArchive(archive, opts) {
   const includeSettings = !!(opts && opts.includeSettings);
   const wss = Array.isArray(archive && archive.workspaces) ? archive.workspaces : [];
-  let created = 0;
+  // 取込後に実際に使われる設定を先に確定する。移行 (旧 memo/shared → formatValues) は
+  // この設定の problem/shared 既定フォーマット ID で書くので、bundle 作成・global 保存と
+  // 必ず同じ設定で揃える (ズレると formatValues が「最終設定に無い ID」を指して見えなくなる)。
+  const replaceSettings = !!(includeSettings && archive && archive.settings && typeof archive.settings === "object");
+  const targetSettings = replaceSettings ? normalizeSettings(archive.settings) : settings;
+
+  // Pass 1: 永続化の前に全 ws を normalize + 移行し、移行失敗を集める (副作用なし)。
+  // TEMP: remove after onishi data migration — **空判定の前に** 新形式へ移行する。Phase 7 後の
+  // isPatientEmpty は旧 memo/shared を見ないので、移行前に空判定すると「プロブレム/共有だけ」の病棟を
+  // 空扱いで取りこぼす。移行は targetSettings の ID で書く。
+  const prepared = [];
+  let migrationFailed = 0;
   for (const w of wss) {
     const patients = Array.isArray(w && w.patients) ? w.patients : [];
-    // 中身のない (全スロット空) ws はスキップ
-    if (!patients.some(p => !isPatientEmpty(p))) continue;
     const norm = normalizeLoaded({ title: (w && w.title) || t("app.title"), patients });
-    const bundle = projectBundle({ appState: norm, settings, sections: [SECTION.META, SECTION.PATIENTS] });
+    try {
+      const res = migratePatientsInputModel(norm.patients, targetSettings);
+      if (res && Array.isArray(res.failures)) migrationFailed += res.failures.length;
+    } catch (e) { console.error("importArchive: migration failed:", e); migrationFailed++; }
+    prepared.push({ w, norm });
+  }
+  // fail-closed: 移行できなかった旧 memo/shared がある (= 受け皿不足/フォーマット欠落)。何も永続化せず
+  // throw する。保持した memo/shared は isPatientEmpty が見ないので、このまま作ると空扱いで取りこぼし
+  // (= データ消失) になる。caller は成功 toast を出さない。
+  if (migrationFailed > 0) {
+    throw new Error(`importArchive: ${migrationFailed} 件の旧 memo/shared を移行できず取込を中断 (受け皿フォーマットを確認)`);
+  }
+
+  // includeSettings 時は **workspace 作成の前に** 設定を確定保存する (formatValues の参照 ID 確定)。
+  // IDB 不可 (db=null) の no-op 保存も「保存できていない事実」として失敗扱いにする。
+  if (replaceSettings) {
+    if (!(await isStorageAvailable())) {
+      throw new Error("importArchive: storage unavailable (IDB not usable), cannot persist settings");
+    }
+    await saveGlobalSettings(targetSettings);
+    settings = targetSettings;
+  }
+
+  // Pass 2: 病棟を作成する (中身のない ws はスキップ)。
+  let created = 0;
+  for (const { w, norm } of prepared) {
+    if (!norm.patients.some(p => !isPatientEmpty(p))) continue;
+    const bundle = projectBundle({ appState: norm, settings: targetSettings, sections: [SECTION.META, SECTION.PATIENTS] });
     await createWorkspaceRecord(String((w && w.label) || ""), bundle);
     created++;
-  }
-  if (includeSettings && archive && archive.settings && typeof archive.settings === "object") {
-    settings = normalizeSettings(archive.settings);
-    try { await saveGlobalSettings(settings); } catch (e) { console.warn("importArchive: settings save failed:", e); }
   }
   return created;
 }
@@ -854,12 +898,17 @@ export async function exportDeviceArchive() {
   for (const u of users) {
     let s = null;
     try { s = await loadGlobalSettings(u.id); } catch (_) { /* ignore */ }
+    // そのユーザーの確定設定 (problem/shared 既定フォーマット ID は移行の書込先に使う)
+    const us = s ? normalizeSettings(s) : defaultSettings();
     const workspaces = [];
     for (const w of allWs.filter(x => x.userId === u.id)) {
       let b = null;
       try { b = await storageLoad(w.id); } catch (_) { /* skip broken */ }
       const patients = b ? (getSection(b, SECTION.PATIENTS) || []) : [];
       const meta = b ? (getSection(b, SECTION.META) || {}) : {};
+      // TEMP: remove after onishi data migration — そのユーザーの設定で新形式へ移行
+      try { migratePatientsInputModel(patients, us); }
+      catch (e) { console.error("exportDeviceArchive: migration failed:", e); }
       workspaces.push({
         label: w.label || "",
         title: (meta && typeof meta.title === "string") ? meta.title : (w.title || ""),
@@ -868,7 +917,7 @@ export async function exportDeviceArchive() {
     }
     outUsers.push({
       name: u.name || "",
-      settings: s ? normalizeSettings(s) : defaultSettings(),
+      settings: us,
       workspaces,
     });
   }
@@ -891,8 +940,49 @@ export async function importDeviceArchive(archive) {
     const wss = Array.isArray(au && au.workspaces) ? au.workspaces : [];
     // 名前も病棟も無いユーザーはスキップ
     if (!name && !wss.length) continue;
-    // 同名ユーザーは合流、無ければ新規作成
-    let target = registry.find(u => (u.name || "").trim() === name && name);
+    // 同名ユーザーは合流、無ければ新規作成 (uid 確定は移行失敗チェックの後に行う = dangling user を作らない)。
+    const target = registry.find(u => (u.name || "").trim() === name && name);
+
+    // そのユーザーの実効設定 (us) を uid 確定の前に解決する (移行は us を in-memory で使うだけ)。
+    //   - archive に設定あり: それで置換 (= 必ず保存)。
+    //   - archive 設定なし・既存ユーザー: 現設定 (backfill 差分があれば保存)。
+    //   - archive 設定なし・新規ユーザー: defaults を seed (必ず保存)。
+    // 旧 memo/shared の移行は us の problem/shared 既定フォーマット ID で書くので、その us を必ず
+    // global settings として永続化し、formatValues の参照先 ID を確定させる (次回ロードで孤立しない)。
+    let us, needSettingsSave;
+    if (au && au.settings && typeof au.settings === "object") {
+      us = normalizeSettings(au.settings);
+      needSettingsSave = true;
+    } else if (target) {
+      let existing = null;
+      try { existing = await loadGlobalSettings(target.id); } catch (_) {}
+      us = existing ? normalizeSettings(existing) : defaultSettings();
+      needSettingsSave = !existing || hasBackfilledDefaultFormats(existing, us);
+    } else {
+      us = defaultSettings();
+      needSettingsSave = true;
+    }
+
+    // Pass 1: そのユーザーの全 ws を移行し失敗を集める (user 作成・保存・病棟作成の前 = 副作用なし)。
+    const prepared = [];
+    let migrationFailed = 0;
+    for (const w of wss) {
+      const patients = Array.isArray(w && w.patients) ? w.patients : [];
+      const norm = normalizeLoaded({ title: (w && w.title) || t("app.title"), patients });
+      // TEMP: remove after onishi data migration — **空判定の前に** そのユーザーの設定 (us) で移行。
+      try {
+        const res = migratePatientsInputModel(norm.patients, us);
+        if (res && Array.isArray(res.failures)) migrationFailed += res.failures.length;
+      } catch (e) { console.error("importDeviceArchive: migration failed:", e); migrationFailed++; }
+      prepared.push({ w, norm });
+    }
+    // fail-closed: 移行できない旧 memo/shared があれば、user 作成・保存・病棟作成へ進まず throw する
+    // (保持した memo/shared は isPatientEmpty が見ないので、このまま作ると空扱いで取りこぼし=消失になる)。
+    if (migrationFailed > 0) {
+      throw new Error(`importDeviceArchive: ${migrationFailed} 件の旧 memo/shared を移行できず取込を中断 (ユーザー「${name}」の受け皿フォーマットを確認)`);
+    }
+
+    // ここまで来たら永続化する。user 確定 (merge or 新規作成)。
     let uid;
     if (target) {
       uid = target.id;
@@ -901,17 +991,22 @@ export async function importDeviceArchive(archive) {
       registry = await loadUsers();
       createdUsers++;
     }
-    // 設定をそのユーザーへ
-    if (au && au.settings && typeof au.settings === "object") {
-      try { await saveGlobalSettings(normalizeSettings(au.settings), uid); }
-      catch (e) { console.warn("importDeviceArchive: settings save failed:", e); }
+    if (needSettingsSave) {
+      // fail-closed: 設定を保存できないと formatValues 参照 ID が確定せず孤立する。そのユーザーの
+      // 病棟作成へは進めず次のユーザーへ。IDB 不可 (db=null) の no-op 保存も失敗扱い。
+      try {
+        if (!(await isStorageAvailable())) throw new Error("storage unavailable (IDB not usable)");
+        await saveGlobalSettings(us, uid);
+      } catch (e) {
+        console.error("importDeviceArchive: settings save failed, skipping user workspaces:", e);
+        continue;
+      }
     }
-    // 病棟をそのユーザーへ (空 ws はスキップ)
-    for (const w of wss) {
-      const patients = Array.isArray(w && w.patients) ? w.patients : [];
-      if (!patients.some(p => !isPatientEmpty(p))) continue;
-      const norm = normalizeLoaded({ title: (w && w.title) || t("app.title"), patients });
-      const bundle = projectBundle({ appState: norm, settings: defaultSettings(), sections: [SECTION.META, SECTION.PATIENTS] });
+    // Pass 2: 病棟をそのユーザーへ (空 ws はスキップ)
+    for (const { w, norm } of prepared) {
+      if (!norm.patients.some(p => !isPatientEmpty(p))) continue;
+      // bundle は META+PATIENTS のみ投影 (settings section は出さない) が、移行 ID と揃えるため us を渡す。
+      const bundle = projectBundle({ appState: norm, settings: us, sections: [SECTION.META, SECTION.PATIENTS] });
       await createWorkspaceRecord(String((w && w.label) || ""), bundle, uid);
       createdWs++;
     }

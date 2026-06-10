@@ -183,13 +183,5 @@
       color: #b91c1c;
     }
 
-    /* 患者画面のプロブレムリスト/共有 本文も内容に応じて縦に伸ばす (field-sizing)。
-       一覧側 (.memoRow textarea) と同じく改行をそのまま表示し、長文でも内部スクロール
-       させず全文を見せる。一覧と患者画面の表示差を抑える (P5 P0)。inline の min-height
-       (60/90px) は初期の最小高さとして残す。 */
-    #detailMemoText,
-    #detailSharedText {
-      field-sizing: content;
-      max-height: 50vh;
-      line-height: 1.4;
-    }
+    /* Phase 7: 患者画面のプロブレムリスト/共有は展開カード (formatExpandedHost) に統一され、
+       旧 #detailMemoText / #detailSharedText textarea は撤去された。 */

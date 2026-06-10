@@ -25,7 +25,9 @@ import { createQrFlow } from "./qr-flow.js";
 import { formatToWire, formatFromWire, uniqueName } from "./qr-protocol.js";
 import { t } from "../i18n.js";
 
-const WIRE_V = 2;
+// Phase 7: panel enum 拡張 (problem/shared 追加 → PANEL_BY_INDEX) のため WIRE_V を 2→3 に bump。
+// 旧版 QR (v2 以前) は明示エラーで弾く (互換不要)。
+const WIRE_V = 3;
 
 // 共有対象。null なら encodePayload が空ペイロードを返す (= 何も表示しない)
 let _formatToShare = null;

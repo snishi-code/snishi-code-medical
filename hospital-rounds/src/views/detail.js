@@ -1,8 +1,8 @@
 "use strict";
 
 import { appState, settings, selectedNo, markUpdated, scheduleSave, isPatientEmpty } from "../store.js";
-import { renderFormatStrip, renderExpandedFormats } from "../features/formats.js";
-import { beginFieldEdit, commitFieldEdit, captureUndoPoint, refreshUndoButtons } from "../features/patient-undo.js";
+import { renderFormatStrip, renderExpandedFormats, appendTextToProblemFreeNote } from "../features/formats.js";
+import { captureUndoPoint, refreshUndoButtons } from "../features/patient-undo.js";
 import { STATUS } from "../constants.js";
 import { buildTabPayload } from "../payload.js";
 import { utf8ByteLength } from "../payload.js";
@@ -385,12 +385,9 @@ export function renderLifecycleActions(p) {
 // renderDetail
 // ============================
 
-export function renderDetail(syncDetailMemoDisplay) {
+export function renderDetail() {
   qrVisible = false;
   const p = appState.patients[selectedNo - 1];
-  const detailSharedText = document.getElementById("detailSharedText");
-
-  if (syncDetailMemoDisplay) syncDetailMemoDisplay();
 
   // 患者メタボタン (ステータス色/形 + 部屋+氏名 + タグ概要)
   renderPatientMetaBtn();
@@ -400,20 +397,14 @@ export function renderDetail(syncDetailMemoDisplay) {
   // 活性状態を現在患者の履歴で更新する (Phase 6)。
   refreshUndoButtons();
 
-  if (detailSharedText) detailSharedText.value = p.shared || "";
-  // S/O/A/P 自由記述欄は撤去 (修正2)。旧フィールド p.s / p.oFree / p.a.text / p.p.text は
-  // スキーマ温存のためデータとしては残るが、画面にも出さず QR 平文にも出力しない (dormant)。
-  // 不可視データの電子カルテ流出を防ぐため payload.js が出力経路から切り離している。
-
-  // 各パネル: ヘッダーに ☰ ランチャー、本文上に実効グループの展開入力欄
-  renderFormatStrip("S", document.getElementById("sFormatStrip"));
-  renderFormatStrip("O", document.getElementById("oFormatStrip"));
-  renderFormatStrip("A", document.getElementById("aFormatStrip"));
-  renderFormatStrip("P", document.getElementById("pFormatStrip"));
-  renderExpandedFormats("S", document.getElementById("sExpanded"));
-  renderExpandedFormats("O", document.getElementById("oExpanded"));
-  renderExpandedFormats("A", document.getElementById("aExpanded"));
-  renderExpandedFormats("P", document.getElementById("pExpanded"));
+  // Phase 7: 6パネル (problem/S/O/A/P/shared) すべてを同じ展開カード + 入力シート +
+  // ランチャーで描画する。旧 memo/shared textarea・旧自由記述フィールドは撤去。
+  // DOM id は panel の小文字 + "FormatStrip"/"Expanded" (例 S→sFormatStrip / problem→problemFormatStrip)。
+  for (const panel of ["problem", "S", "O", "A", "P", "shared"]) {
+    const base = panel.toLowerCase();
+    renderFormatStrip(panel, document.getElementById(base + "FormatStrip"));
+    renderExpandedFormats(panel, document.getElementById(base + "Expanded"));
+  }
 
   renderQrIfNeeded();
 }
@@ -423,35 +414,8 @@ export function renderDetail(syncDetailMemoDisplay) {
 // ============================
 
 export function initDetailEvents(renderHomeFn) {
-  const detailMemoText = document.getElementById("detailMemoText");
-  const detailSharedText = document.getElementById("detailSharedText");
-
-  // 氏名編集は患者シート (openPatientSheet) に集約 (詳細ヘッダーから個別入力欄を撤去)。
-  // S/O/A/P 自由記述欄も撤去 (修正2)。入力は展開カード + 大入力シート経由で formatValues へ。
-
-  // プロブレムリスト/共有 textarea: focus〜blur を 1 編集セッションとして Undo 1 ステップに
-  // する (連続キー入力ごとには撮らない)。focus で編集前クローンを保持、blur で変化があれば確定。
-  if (detailMemoText) {
-    detailMemoText.addEventListener("focus", () => beginFieldEdit("memo"));
-    detailMemoText.addEventListener("blur", () => commitFieldEdit());
-    detailMemoText.addEventListener("input", () => {
-      const p = appState.patients[selectedNo - 1];
-      p.memo = String(detailMemoText.value ?? "");
-      markUpdated(selectedNo);
-      scheduleSave();
-    });
-  }
-
-  if (detailSharedText) {
-    detailSharedText.addEventListener("focus", () => beginFieldEdit("shared"));
-    detailSharedText.addEventListener("blur", () => commitFieldEdit());
-    detailSharedText.addEventListener("input", () => {
-      const p = appState.patients[selectedNo - 1];
-      p.shared = String(detailSharedText.value ?? "");
-      markUpdated(selectedNo);
-      scheduleSave();
-    });
-  }
+  // Phase 7: 氏名編集は患者シート (openPatientSheet)、臨床入力 (problem/S/O/A/P/shared) は
+  // 全て展開カード + 大入力シート経由で formatValues へ。旧 memo/shared textarea は撤去。
 
   const qrToggleBtn = document.getElementById("qrToggleBtn");
   if (qrToggleBtn) qrToggleBtn.addEventListener("click", () => {
@@ -470,17 +434,17 @@ export function initDetailEvents(renderHomeFn) {
     detailScanBtn.addEventListener("click", async () => {
       const text = await scanQR();
       if (text == null) return;
-      const area = document.getElementById("detailMemoText");
       const p = appState.patients[selectedNo - 1];
-      if (!area || !p) return;
-      const cur = String(area.value || "");
-      const sep = cur && !cur.endsWith("\n") ? "\n" : "";
-      const next = cur + sep + buildTimestampHeader() + "\n" + text;
-      captureUndoPoint("memo"); // 追記の直前に Undo 起点 (1 操作)
-      area.value = next;
-      p.memo = next;
+      if (!p) return;
+      // Phase 7: 受診メモ = problem パネルの自由記述 (末尾 text) 項目へタイムスタンプ付き追記。
+      captureUndoPoint("format"); // 追記の直前に Undo 起点 (1 操作・format スコープ)
+      const ok = appendTextToProblemFreeNote(p, buildTimestampHeader() + "\n" + text);
+      if (!ok) return;
       markUpdated(selectedNo);
       scheduleSave();
+      // problem パネルカードと QR を再描画 + Undo ボタン更新
+      renderExpandedFormats("problem", document.getElementById("problemExpanded"));
+      renderQrIfNeeded();
       refreshUndoButtons();
     });
   }

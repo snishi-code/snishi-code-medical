@@ -20,7 +20,10 @@ import {
   exportArchive, importArchive, isArchive,
   exportDeviceArchive, importDeviceArchive, isDeviceArchive,
 } from "../store.js";
-import { STATUS } from "../constants.js";
+import { STATUS, clone } from "../constants.js";
+import { formatValueHasInput } from "./format-values.js";
+// TEMP: remove after onishi data migration (Phase 7 一回限り入力モデル移行)
+import { migratePatientsInputModel } from "./one-time-input-model-migration.js";
 import {
   parseBundle, getSection, SECTION,
 } from "../bundle.js";
@@ -59,9 +62,20 @@ function vibrate() {
   try { navigator.vibrate?.(80); } catch (_) { }
 }
 
+// Phase 7: 臨床入力本文は formatValues。いずれかの展開フォーマットに入力があれば「中身あり」。
+function hasFormatValueInput(p) {
+  const fv = p && p.formatValues;
+  if (!fv || typeof fv !== "object") return false;
+  for (const k of Object.keys(fv)) {
+    const vals = fv[k];
+    if (vals && typeof vals === "object" && Object.values(vals).some(formatValueHasInput)) return true;
+  }
+  return false;
+}
+
 function isAppStateEmpty() {
   for (const p of appState.patients) {
-    if (p.name || p.room || p.s || p.a?.text || p.p?.text || p.memo || p.shared || p.oFree) return false;
+    if (p.name || p.room || hasFormatValueInput(p)) return false;
     if (Array.isArray(p.tags) && p.tags.length > 0) return false;
   }
   return true;
@@ -69,7 +83,7 @@ function isAppStateEmpty() {
 
 function isImportedPatientEmpty(p) {
   if (!p) return true;
-  if (p.name || p.room || p.s || p.a?.text || p.p?.text || p.memo || p.shared || p.oFree) return false;
+  if (p.name || p.room || hasFormatValueInput(p)) return false;
   if (Array.isArray(p.tags) && p.tags.length > 0) return false;
   return true;
 }
@@ -98,8 +112,7 @@ function appendNewPatients(importedPatients) {
     p.status = STATUS.BLUE;
     p.updatedAt = Date.now();
     p.tags = Array.isArray(src.tags) ? src.tags.slice() : [];
-    p.a = { text: String(src.a?.text ?? "") };
-    p.p = { text: String(src.p?.text ?? "") };
+    // Phase 7: 旧 a/p/vitals/o は撤去。臨床入力本文は src.formatValues (spread 済) が正本。
     delete p.vitals;
     delete p.o;
     appState.patients.push(p);
@@ -284,6 +297,16 @@ export function initImportExport(callbacks) {
     const sPatients = getSection(bundle, SECTION.PATIENTS);
     const sSettings = getSection(bundle, SECTION.SETTINGS);
 
+    // TEMP: remove after onishi data migration — 旧形式を現設定で移行し、受け皿不足等で移行できない
+    // 非空 memo/shared があれば true。fail-closed: その場合は取込を中断する (保持した旧データは
+    // isPatientEmpty が見ないため、このまま取り込むと空扱いで取りこぼし=消失になり得る)。
+    const migrateHasFailure = (patients) => {
+      try {
+        const res = migratePatientsInputModel(patients, settings);
+        return !!(res && Array.isArray(res.failures) && res.failures.length);
+      } catch (e) { console.error("import: migration failed:", e); return true; }
+    };
+
     if (!Array.isArray(sPatients)) {
       if (sSettings) {
         applyImportedSettings(sSettings);
@@ -300,9 +323,16 @@ export function initImportExport(callbacks) {
       // title はヘッダーのユーザー名なので、取り込んだ bundle の meta.title で
       // 上書きしない (患者だけ差し替える)。
       importedState.title = appState.title;
+      const prevSettings = clone(settings); // rollback 用 (失敗時に settings だけ残さない)
+      if (sSettings) applyImportedSettings(sSettings);
+      // 取込先の (= 適用後の) 設定で移行。移行できない旧 memo/shared があれば fail-closed で中断。
+      if (migrateHasFailure(importedState.patients)) {
+        setSettings(prevSettings); // 患者取込を止めるなら settings 変更も取込前へ戻す
+        alert(t("import.read.failed"));
+        return;
+      }
       setAppState(importedState);
       refreshTitleUI();
-      if (sSettings) applyImportedSettings(sSettings);
       saveNow();
       vibrate();
       rerenderCurrentView();
@@ -312,10 +342,17 @@ export function initImportExport(callbacks) {
     const action = await askImportAction();
     if (action === "cancel") return;
 
+    const prevSettings = clone(settings); // rollback 用 (tags union / include-settings 両方を戻す)
     if (action === "patients-only") {
       unionImportedTags(importedState.patients);
     } else if (action === "include-settings" && sSettings) {
       applyImportedSettings(sSettings);
+    }
+    // 追記前に旧形式を (適用後の) 設定で移行。移行できない旧 memo/shared があれば fail-closed で中断。
+    if (migrateHasFailure(importedState.patients)) {
+      setSettings(prevSettings); // 患者取込を止めるなら settings 変更 (tags union 含む) も取込前へ戻す
+      alert(t("import.read.failed"));
+      return;
     }
     // 破壊操作の直前: 現病棟に追記する前に状態を 1 枚スナップショット
     await captureSnapshot(REASON.IMPORT);

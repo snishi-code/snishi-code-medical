@@ -23,7 +23,9 @@ import {
 } from "./qr-protocol.js";
 import { t } from "../i18n.js";
 
-const WIRE_V = 1;
+// Phase 7: panel enum 拡張 (problem/shared 追加 → PANEL_BY_INDEX) のため WIRE_V を 1→2 に bump。
+// 旧版 QR (v1) は明示エラーで弾く (互換不要)。
+const WIRE_V = 2;
 
 // 共有対象セット (formatGroup)。null なら encodePayload が空 (= 何も表示しない)。
 let _setToShare = null;

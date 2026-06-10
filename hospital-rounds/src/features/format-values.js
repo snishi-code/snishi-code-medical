@@ -196,28 +196,9 @@ export function composeFormatFromValues(format, values) {
 }
 
 // ============================
-// パネル本文 (自由記述) の読み書き — S/O は直接フィールド、A/P は {text} オブジェクト。
-// ============================
-const PANEL_FIELD_KEY = { S: "s", O: "oFree", A: "a", P: "p" };
-
-export function getPanelText(p, panel) {
-  if (panel === "O") return String(p.oFree ?? "");
-  if (panel === "S") return String(p.s ?? "");
-  const key = PANEL_FIELD_KEY[panel]; // "a" | "p"
-  return String(p[key]?.text ?? "");
-}
-
-export function setPanelText(p, panel, val) {
-  if (panel === "O") { p.oFree = val; return; }
-  if (panel === "S") { p.s = val; return; }
-  const key = PANEL_FIELD_KEY[panel];
-  if (!p[key] || typeof p[key] !== "object") p[key] = { text: "" };
-  p[key].text = val;
-}
-
-// ============================
 // パネル単位クリア (診察開始) — settings.formats[].panel を正本に formatId を解決する。
-// 自由記述と展開フォーマット値を S/O/A/P で同じ仕組みで一括クリアする。
+// Phase 7: 臨床入力本文は全て formatValues に集約 (旧自由記述フィールドは撤去) なので、
+// 各パネルの展開フォーマット値を panel 単位で一括クリアする。
 // ============================
 
 // settings.formats のうち panel に属する formatId 一覧 (panel が正本)。
@@ -234,11 +215,10 @@ export function clearPanelFormatValues(patient, panel, formats) {
   }
 }
 
-// panel の自由記述 + 同 panel 所属の展開フォーマット値を一括クリアする。
-// 「診察開始」クリアが S/O/A/P で同じ仕組みを使うための単一ソース。
+// panel に所属する展開フォーマット値を一括クリアする (診察開始)。
+// 6パネル (problem/S/O/A/P/shared) すべてが同じ仕組みを使うための単一ソース。
 export function clearPanelClinicalInput(patient, panel, formats) {
   if (!patient) return;
-  setPanelText(patient, panel, "");
   clearPanelFormatValues(patient, panel, formats);
 }
 
