@@ -21,7 +21,7 @@ import { renderMemoScreen, setMemoEditMode } from "./views/memo.js";
 import { renderSharedScreen, setSharedEditMode } from "./views/shared-list.js";
 import { renderSettings, initSettingsView } from "./views/settings-view.js";
 
-import { showView, createNavigators, createDocsOpener } from "./features/navigation.js";
+import { showView, createNavigators, createDocsOpener, setOnViewChange } from "./features/navigation.js";
 import { createRenderers } from "./features/renderers.js";
 // header-menu.js (ハンバーガー) は v8.6 で廃止。import 削除済み。
 import { initAppTitle, refreshAppWsLabel, refreshAppUserName } from "./features/app-title.js";
@@ -31,7 +31,7 @@ import { initEventLog, logEvent, EVENT } from "./features/eventlog.js";
 import { initSnapshots, captureSnapshot, REASON } from "./features/snapshots.js";
 import { DOCS_BUNDLE } from "./docs-bundle.js";
 import { setDataChangeHandler } from "./features/drag.js";
-import { initFormats, setOnTextChanged as setOnFormatTextChanged, setFormatStoreAdapter, setFormatUndoCapture } from "./features/formats.js";
+import { initFormats, setOnTextChanged as setOnFormatTextChanged, setFormatStoreAdapter, setFormatUndoCapture, closeFormatInputModal, notePatientViewEntered } from "./features/formats.js";
 import { undo as patientUndo, redo as patientRedo, captureUndoPoint, refreshUndoButtons, setUndoRefresh } from "./features/patient-undo.js";
 import { initMovePatient } from "./features/move-patient.js";
 import { purgeExpiredPatientLifecycleRecords } from "./features/patient-lifecycle.js";
@@ -134,7 +134,54 @@ setDataChangeHandler(() => {
 // ============================
 history.replaceState({ view: "home" }, "", "");
 
+// ============================
+// ポップアップ ライフサイクル安全化
+// ============================
+// 「閉じられる一時ポップアップ」= active な .popupMenuOverlay のうち data-no-backdrop-close
+// (初期化/免責/確認系の app ゲート) でないもの。formatInputOverlay (患者入力) は内部 state の
+// cleanup が要るので専用 close を通す。
+function closablePopups() {
+  return [...document.querySelectorAll(".popupMenuOverlay.active")]
+    .filter(ov => !ov.hasAttribute("data-no-backdrop-close"));
+}
+function closeOnePopupWithCleanup(ov) {
+  if (!ov) return;
+  if (ov.id === "formatInputOverlay") { closeFormatInputModal(); return; } // _currentSheet も破棄
+  ov.classList.remove("active");
+}
+// 画面遷移時: view 横断の一時ポップアップを全部閉じる (患者入力シートは cleanup 付き)。
+function closeTransientPopups() {
+  for (const ov of closablePopups()) closeOnePopupWithCleanup(ov);
+}
+// 戻る操作用: 最前面の閉じられるポップアップを 1 つ閉じる。閉じたら true。
+function closeTopClosablePopup() {
+  const open = closablePopups();
+  if (!open.length) return false;
+  // 最前面 = z-index 最大 (同値なら DOM 後方)。
+  let top = open[0], topZ = -Infinity;
+  for (const ov of open) {
+    const z = parseInt(getComputedStyle(ov).zIndex, 10);
+    const zz = Number.isFinite(z) ? z : 0;
+    if (zz >= topZ) { topZ = zz; top = ov; }
+  }
+  closeOnePopupWithCleanup(top);
+  return true;
+}
+
+// 画面遷移フックを navigation へ配線: 一時ポップアップを閉じ、detail 入場時は誤タップガードを張る。
+setOnViewChange((which) => {
+  closeTransientPopups();
+  if (which === "detail") notePatientViewEntered();
+});
+
 window.addEventListener("popstate", (e) => {
+  // 戻る: 閉じられるポップアップが開いていたら、まずそれを閉じて画面遷移を消費する
+  // (患者入力ポップアップが画面・患者をまたいで残らない = 臨床安全)。次の戻るで通常遷移。
+  if (closeTopClosablePopup()) {
+    const cur = document.documentElement.dataset.view || "home";
+    history.pushState({ view: cur }, "", ""); // 戻るを消費して現在 view を維持
+    return;
+  }
   const v = (e.state && e.state.view) || "home";
   showView(v, false);
   if (v === "home") doRenderHome();

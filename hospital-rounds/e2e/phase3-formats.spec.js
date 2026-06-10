@@ -8,7 +8,7 @@ import { boot, goToHome, goToSettings, openPatient } from "./helpers.js";
 
 async function openQrPreview(page) {
   await page.locator("#qrToggleBtn").click();
-  await expect(page.locator("#qrWrap")).toHaveClass(/active/);
+  await expect(page.locator("#detailQrOverlay")).toHaveClass(/active/);
 }
 
 test("新規患者で S/O/A/P 各欄に展開フォーマットカードが表示される", async ({ page }) => {

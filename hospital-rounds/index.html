@@ -485,33 +485,14 @@
           <button class="iconBtn" id="detailRedoBtn" type="button" disabled aria-disabled="true" data-i18n-title="redo.aria" data-i18n-aria="redo.aria" title="進む" aria-label="進む">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5 5.5 5.5 0 0 0 9.5 20H13"/></svg>
           </button>
-          <button class="iconBtn" id="qrToggleBtn" type="button" title="QRコード表示" aria-label="QRコード表示" aria-pressed="false">
+          <button class="iconBtn" id="qrToggleBtn" type="button" aria-haspopup="dialog" data-i18n-title="detail.qr.show" data-i18n-aria="detail.qr.show" title="QRコード表示" aria-label="QRコード表示">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
           </button>
         </div>
       </div>
 
-      <div class="card qrWrap" id="qrWrap">
-        <div class="cardHead">
-          <span class="qrHint"><span class="mono" id="qrPageMeta"></span></span>
-          <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
-            <button class="iconBtn" id="qrPrevBtn" type="button" data-i18n-title="qr.prev.tooltip" data-i18n-aria="qr.prev.tooltip" title="前" aria-label="前">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <button class="iconBtn" id="qrNextBtn" type="button" data-i18n-title="qr.next.tooltip" data-i18n-aria="qr.next.tooltip" title="次" aria-label="次">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-            <button class="iconBtn" id="detailScanBtn" type="button" data-i18n-title="detail.scan.append" data-i18n-aria="detail.scan.append" title="カメラでQRを読み取りプロブレムリストに追記" aria-label="カメラでQRを読み取りプロブレムリストに追記">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            </button>
-          </div>
-        </div>
-        <div class="cardBody qrTextPreviewBody">
-          <div class="mono" id="qrTextPreview" style="word-break:break-all;white-space:pre-wrap;font-size:12px"></div>
-          <div id="qrError" class="qrHint dangerText" style="margin-top:6px;display:none"></div>
-        </div>
-        <canvas id="qrCanvas" width="800" height="800"></canvas>
-      </div>
+      <!-- 患者画面QR (電子カルテ転記用) はポップアップで表示する (#detailQrOverlay)。
+           qrToggleBtn が開く。インライン展開は廃止。 -->
 
       <div class="viewScroll">
       <div class="card" id="detailProblemCard">
@@ -820,6 +801,40 @@
             <span class="qrTextRecvStatus" id="qrReceiveStatus" aria-live="polite"></span>
             <button class="primary" id="qrReceiveReadBtn" type="button" data-i18n="qr.recv.text.read">QR として読む</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 患者画面QR (電子カルテ転記用) ポップアップ。qrToggleBtn が開く。本文プレビューは
+         折りたたみ (本体QRを主役に)。背景タップ / × 閉じはグローバルハンドラが担当。 -->
+    <div class="popupMenuOverlay" id="detailQrOverlay">
+      <div class="popupMenu detailQrMenu" role="dialog" data-i18n-aria="detail.qr.dialogAria" aria-label="患者画面QR">
+        <button class="popupCloseX" data-close-popup type="button" data-i18n-aria="common.close" data-i18n-title="common.close" aria-label="閉じる" title="閉じる">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <div class="qrWrap" id="qrWrap">
+          <div class="cardHead">
+            <span class="qrHint"><span class="mono" id="qrPageMeta"></span></span>
+            <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+              <button class="iconBtn" id="qrPrevBtn" type="button" data-i18n-title="qr.prev.tooltip" data-i18n-aria="qr.prev.tooltip" title="前" aria-label="前">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <button class="iconBtn" id="qrNextBtn" type="button" data-i18n-title="qr.next.tooltip" data-i18n-aria="qr.next.tooltip" title="次" aria-label="次">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+              <button class="iconBtn" id="detailScanBtn" type="button" data-i18n-title="detail.scan.append" data-i18n-aria="detail.scan.append" title="カメラでQRを読み取りプロブレムリストに追記" aria-label="カメラでQRを読み取りプロブレムリストに追記">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              </button>
+            </div>
+          </div>
+          <canvas id="qrCanvas" width="800" height="800"></canvas>
+          <details class="qrPreviewDetails">
+            <summary data-i18n="detail.qr.preview.summary">本文を確認</summary>
+            <div class="qrTextPreviewBody">
+              <div class="mono" id="qrTextPreview" style="word-break:break-all;white-space:pre-wrap;font-size:12px"></div>
+            </div>
+          </details>
+          <div id="qrError" class="qrHint dangerText" style="margin-top:6px;display:none"></div>
         </div>
       </div>
     </div>

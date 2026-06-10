@@ -40,6 +40,15 @@ import {
 } from "./format-values.js";
 import { icon } from "../icons.js";
 import { t, applyI18n } from "../i18n.js";
+import { showToast } from "../toast.js";
+
+// 誤タップガード (ゴーストクリック抑止): 患者画面 (detail) に入場した「同じタップ」が遷移直後の
+// フォーマットカードクリックに化けるのを防ぐ。入場時にフラグを倒し、**新しい pointerdown** が
+// 来るまで入力シートを開かない。同一ジェスチャーの bleed-through は pointerdown を伴わないので
+// ブロックされ、ユーザーが画面が落ち着いてから明示タップ (= 新しい pointerdown) すれば開く。
+// 時間ではなく入力イベントを基準にするので E2E (Playwright click は pointerdown を伴う) も壊さない。
+let _freshTapSinceEntry = true;
+export function notePatientViewEntered() { _freshTapSinceEntry = false; }
 
 // strip 右端のハンバーガー (パネルごとの「全フォーマット一覧 = お気に入りトグル popup」を開く)
 const FORMAT_PICKER_HAMBURGER_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`;
@@ -449,6 +458,9 @@ function writeFormatValue(patient, format, itemIndex, value) {
 let _currentSheet = null; // { format, draft }
 
 function openFormatSheet(format, panel, focusIndex) {
+  // 誤タップガード: 患者画面入場後にまだ新しい pointerdown が無い (= 遷移ジェスチャーのゴースト
+  // クリック) なら開かない。明示タップ (新しい pointerdown 後の click) でのみ開く。
+  if (!_freshTapSinceEntry) return;
   const overlay = document.getElementById("formatInputOverlay");
   const title = document.getElementById("formatInputTitle");
   const body = document.getElementById("formatInputBody");
@@ -475,7 +487,8 @@ function openFormatSheet(format, panel, focusIndex) {
   const draft = { ...stored };
   // orig = 編集前の保存値スナップショット。保存時に text item を「変わったものだけ manual 化」
   // するための比較基準 (未タッチの preset を manual に降格させない)。
-  _currentSheet = { format, draft, orig: { ...stored } };
+  // openPid / openNo = 開いた時点の患者識別。保存時に患者が変わっていたら保存しない (fail-closed)。
+  _currentSheet = { format, draft, orig: { ...stored }, openPid: p?.pid ?? null, openNo: selectedNo };
 
   (format.items || []).forEach((item, i) => {
     const kind = item.kind || DEFAULT_ITEM_KIND;
@@ -486,20 +499,21 @@ function openFormatSheet(format, panel, focusIndex) {
   });
 
   overlay.classList.add("active");
-  // タップした item の入力欄へフォーカス (手入力をすぐ始められる)。text-only でも
-  // 「セルをタップして開いた」= 手入力意図なのでフォーカスして良い。
-  setTimeout(() => {
-    const rows = body.querySelectorAll(".formatInputRow");
-    const target = rows[focusIndex] || rows[0];
-    const inp = target && target.querySelector("input, textarea");
-    if (inp) inp.focus();
-  }, 50);
+  // 自動フォーカスはしない (開いただけでキーボード/カーソル選択が出るのを防ぐ)。ユーザーが
+  // 入力欄を明示タップした時だけフォーカスする。focusIndex は後方互換のため残すが未使用。
 }
 
 function applyFormatSheet() {
   if (!_currentSheet) { closeFormatSheet(); return; }
-  const { format, draft, orig } = _currentSheet;
+  const { format, draft, orig, openPid } = _currentSheet;
   const p = appState.patients[selectedNo - 1];
+  // fail-closed: 開いた時点と患者が変わっていたら保存しない (別患者への誤入力を防ぐ)。
+  if (!p || (openPid != null && p.pid !== openPid)) {
+    closeFormatSheet();
+    showToast(t("format.sheet.patientChanged"), { ms: 4000 });
+    if (_onTextChanged) _onTextChanged();
+    return;
+  }
   if (p) {
     if (!p.formatValues || typeof p.formatValues !== "object") p.formatValues = {};
     // 値を確定する直前に Undo 起点を撮る。自動付与タグの delta も履歴へ渡す (Undo で撤回)。
@@ -1124,6 +1138,10 @@ export function deleteFormatById(id) {
 // 共通配線 (DOM ready 後 main.js から initFormats を呼ぶ)
 // ============================
 export function initFormats() {
+  // 誤タップガード: 新しい pointerdown を検知したら「明示タップ」とみなしてフラグを立てる
+  // (capture で早期に。これより前は detail 入場直後のゴーストクリック扱いで入力シートを開かない)。
+  document.addEventListener("pointerdown", () => { _freshTapSinceEntry = true; }, true);
+
   const inputApply = document.getElementById("formatInputApplyBtn");
   const inputCancel = document.getElementById("formatInputCancelBtn");
   const inputClear = document.getElementById("formatInputClearBtn");

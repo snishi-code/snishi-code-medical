@@ -22,7 +22,7 @@ test("患者画面 QR プレビューは平文 (SOAP テキスト、暗号化 pr
   await goToHome(page);
   await openPatient(page, 0);
   await page.locator("#qrToggleBtn").click();
-  await expect(page.locator("#qrWrap")).toHaveClass(/active/);
+  await expect(page.locator("#detailQrOverlay")).toHaveClass(/active/);
   const preview = (await page.locator("#qrTextPreview").textContent()) || "";
   // 平文 = SOAP マーカーがそのまま見える
   expect(preview).toContain("(S)");

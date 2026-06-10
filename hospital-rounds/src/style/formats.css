@@ -879,6 +879,31 @@
       display: block !important;
     }
 
+    /* 患者画面QR (電子カルテ転記用) ポップアップ: QR 本体を大きく主役に表示。
+       本文プレビューは折りたたみで初期非表示。 */
+    .popupMenu.detailQrMenu {
+      width: min(94vw, 520px);
+      max-width: 520px;
+      box-sizing: border-box;
+    }
+    .popupMenu.detailQrMenu .qrWrap {
+      display: block !important;
+      margin: 8px 0 0;
+    }
+    .detailQrMenu .qrPreviewDetails {
+      margin-top: 8px;
+      border-top: 1px solid var(--line);
+      padding-top: 6px;
+    }
+    .detailQrMenu .qrPreviewDetails > summary {
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--muted, #6b7280);
+      padding: 4px 0;
+      min-height: 32px;
+    }
+    .detailQrMenu .qrTextPreviewBody { margin-top: 6px; }
+
     /* フォーマット編集モーダルの QR 共有ボタン (action 行の左端) */
     .formatEditActions {
       align-items: center;
