@@ -31,7 +31,8 @@ import { initEventLog, logEvent, EVENT } from "./features/eventlog.js";
 import { initSnapshots, captureSnapshot, REASON } from "./features/snapshots.js";
 import { DOCS_BUNDLE } from "./docs-bundle.js";
 import { setDataChangeHandler } from "./features/drag.js";
-import { initFormats, setOnTextChanged as setOnFormatTextChanged, setFormatStoreAdapter, setFormatUndoCapture, closeFormatInputModal, notePatientViewEntered } from "./features/formats.js";
+import { initFormats, setOnTextChanged as setOnFormatTextChanged, setFormatStoreAdapter, setFormatUndoCapture, closeFormatInputModal, notePatientViewEntered, cancelInlineFormatEdit } from "./features/formats.js";
+import { focusPopupInput } from "./features/popup-behavior.js";
 import { undo as patientUndo, redo as patientRedo, captureUndoPoint, refreshUndoButtons, setUndoRefresh } from "./features/patient-undo.js";
 import { initMovePatient } from "./features/move-patient.js";
 import { purgeExpiredPatientLifecycleRecords } from "./features/patient-lifecycle.js";
@@ -171,13 +172,16 @@ function closeTopClosablePopup() {
 // 画面遷移フックを navigation へ配線: 一時ポップアップを閉じ、detail 入場時は誤タップガードを張る。
 setOnViewChange((which) => {
   closeTransientPopups();
+  // 展開カードの inline 編集も view 横断で残さない (画面/患者をまたいだ未保存ドラフトを破棄)。
+  // 戻ってくれば detail 全体が再描画されるので silent (個別パネル再描画は不要)。
+  cancelInlineFormatEdit({ silent: true });
   if (which === "detail") notePatientViewEntered();
 });
 
 window.addEventListener("popstate", (e) => {
-  // 戻る: 閉じられるポップアップが開いていたら、まずそれを閉じて画面遷移を消費する
-  // (患者入力ポップアップが画面・患者をまたいで残らない = 臨床安全)。次の戻るで通常遷移。
-  if (closeTopClosablePopup()) {
+  // 戻る: 閉じられるポップアップ / 展開カードの inline 編集が開いていたら、まずそれを閉じて
+  // 画面遷移を消費する (患者入力が画面・患者をまたいで残らない = 臨床安全)。次の戻るで通常遷移。
+  if (closeTopClosablePopup() || cancelInlineFormatEdit()) {
     const cur = document.documentElement.dataset.view || "home";
     history.pushState({ view: cur }, "", ""); // 戻るを消費して現在 view を維持
     return;
@@ -432,7 +436,8 @@ function wireRecvCard({ cardId, areaId, closeBtnId, clearBtnId, openBtnId, state
   openBtn?.addEventListener("click", () => {
     card?.classList.add("active");
     syncOpenBtn();
-    area?.focus();
+    // 明示的な「受信ボックスを開く」クリック = 貼り付ける意図 → 中央ヘルパ経由でフォーカス。
+    focusPopupInput(area);
   });
   // 入力 / 受信(dump) のたびに永続化 + 開くボタン同期
   area?.addEventListener("input", () => {

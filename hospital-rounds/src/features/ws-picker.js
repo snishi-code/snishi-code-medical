@@ -23,6 +23,7 @@ import { switchWorkspace, createWorkspace } from "../store.js";
 import { refreshAppWsLabel } from "./app-title.js";
 import { icon } from "../icons.js";
 import { t } from "../i18n.js";
+import { focusPopupInput } from "./popup-behavior.js";
 
 function vibrate() { try { navigator.vibrate?.(60); } catch (_) {} }
 
@@ -153,7 +154,8 @@ function startRename(row, r, isActive) {
     if (e.key === "Enter") { e.preventDefault(); finalize(true); }
     else if (e.key === "Escape") { e.preventDefault(); finalize(false); }
   });
-  setTimeout(() => { inp.focus(); inp.select(); }, 0);
+  // リネームは既存名を即上書きできるよう focus + 全選択 (明示的な rename クリック後の単一入力)。
+  focusPopupInput(inp, { select: true });
 }
 
 // 「+ 新規」ボタン: クリックで input に展開 → Enter/blur で commit
@@ -205,7 +207,8 @@ function initAddWidget() {
       if (e.key === "Enter") { e.preventDefault(); finalize(true); }
       else if (e.key === "Escape") { e.preventDefault(); finalize(false); }
     });
-    setTimeout(() => inp.focus(), 0);
+    // 明示的な「+ 新規」クリックで現れた単一入力 → 中央ヘルパ経由でフォーカス。
+    focusPopupInput(inp);
   }
 }
 

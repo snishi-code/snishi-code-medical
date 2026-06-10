@@ -26,6 +26,7 @@ import { refreshAppUserName, refreshAppWsLabel } from "./app-title.js";
 import { markDisclaimerShown } from "./splash-disclaimer.js";
 import { icon } from "../icons.js";
 import { t } from "../i18n.js";
+import { openPopup, focusPopupInput } from "./popup-behavior.js";
 
 function vibrate() { try { navigator.vibrate?.(60); } catch (_) {} }
 
@@ -60,7 +61,7 @@ function showOnboarding() {
       const name = String(input?.value || "").trim();
       if (!name) {
         if (err) { err.textContent = t("onboarding.name.required"); err.style.display = ""; }
-        input?.focus();
+        focusPopupInput(input); // 入力エラー → 訂正できるよう入力欄へ戻す (中央ヘルパ経由)
         return;
       }
       const res = await renameCurrentUser(name);
@@ -85,8 +86,9 @@ function showOnboarding() {
     }
     startBtn.addEventListener("click", finish);
     input?.addEventListener("keydown", onKey);
-    overlay.classList.add("active");
-    setTimeout(() => input?.focus(), 0);
+    // 初回オンボーディングは「名前を入力する」単一目的のポップアップ。中央ルールの明示的な
+    // 例外として、開いた時に名前欄へフォーカスする (触っていない他の欄が無い単一入力系)。
+    openPopup(overlay, { autoFocus: true, focusTarget: input });
   });
 }
 
@@ -166,13 +168,13 @@ function showUserSelection(users) {
             console.error("create user (boot-gate) failed:", e);
             done = false;
             alert(t("io.user.create.failed"));
-            inp.focus();
+            focusPopupInput(inp); // 失敗 → 訂正できるよう入力欄へ戻す (中央ヘルパ経由)
             return;
           }
           if (!res.ok) {
             done = false;
             if (res.reason === "duplicate") alert(t("io.user.name.duplicate"));
-            inp.focus();
+            focusPopupInput(inp); // 重複名 → 訂正できるよう入力欄へ戻す (中央ヘルパ経由)
             return;
           }
           vibrate();
@@ -180,7 +182,8 @@ function showUserSelection(users) {
         }
         inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } });
         inp.addEventListener("blur", commit);
-        setTimeout(() => inp.focus(), 0);
+        // 明示的な「+ 追加」クリックで現れた単一入力 → 中央ヘルパ経由でフォーカス。
+        focusPopupInput(inp);
       });
       addHost.appendChild(addBtn);
     }

@@ -7,6 +7,7 @@ import { packPayload, unpackPayload } from "./crypto-payload.js";
 import { registerReceiver } from "./qr-receive.js";
 import { logEvent, EVENT } from "./eventlog.js";
 import { t } from "../i18n.js";
+import { focusPopupInput } from "./popup-behavior.js";
 
 // 表示ボタン id → QR 種別ラベル (研究ログ用)。将来「カルテ記載/共有」の区別に使う。
 function qrKindFromBtnId(btnId) {
@@ -311,7 +312,8 @@ export function createQrFlow(cfg) {
         // 開いたら現在の受信進捗を反映 (カメラと state を共有)
         if (recvBatchId) ctrl.setStatus(t("qr.recv.progress", { got: recvPages.size, total: recvTotal }));
         else ctrl.setStatus("");
-        area.focus();
+        // 明示トグルで受信パネルを開いた = 貼り付ける意図 → 中央ヘルパ経由でフォーカス。
+        focusPopupInput(area);
       }
     });
 
@@ -321,7 +323,7 @@ export function createQrFlow(cfg) {
       const r = receivePage(raw, ctrl);
       if (r.consumed) area.value = "";
       if (r.done) r.apply();
-      else area.focus();
+      else focusPopupInput(area); // 読取後、続きの分割を貼り付けるため入力欄へ戻す (明示アクション)
     }
 
     readBtn.addEventListener("click", readOnce);

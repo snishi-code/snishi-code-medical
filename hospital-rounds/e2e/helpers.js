@@ -166,3 +166,59 @@ export async function waitUserCount(page, count, timeout = 6000) {
     )
     .toBeGreaterThanOrEqual(count);
 }
+
+// ============================
+// 展開カードの inline 編集 (ポップアップ入力シートの代替)
+//
+// 患者画面の展開カードの値セルをタップすると、その行が「その場」で編集状態になる
+// (= .formatCardItem.editing。.formatCardEditInput / .formatInputMemo / .formatCardEditSave /
+//  .formatCardEditCancel)。クイック chip / ☰ ランチャー経由は従来どおりポップアップ
+// (#formatInputOverlay)。
+// ============================
+
+// 値セル cell をタップして inline 編集に入り、編集中の行 locator を返す。
+export async function startInlineEdit(page, cell) {
+  await cell.click();
+  const editing = page.locator(".formatCardItem.editing");
+  await expect(editing.locator(".formatCardEditSave")).toBeVisible();
+  return editing;
+}
+
+// 値セル cell を inline 編集して保存する。
+//   opts.value: 主入力欄 (.formatCardEditInput) に入れる値 (text / number)
+//   opts.note:  注記欄 (.formatInputMemo) に入れる値 (number / fraction)
+export async function inlineEditSave(page, cell, opts = {}) {
+  const editing = await startInlineEdit(page, cell);
+  if (opts.value != null) await editing.locator(".formatCardEditInput").first().fill(opts.value);
+  if (opts.note != null) await editing.locator(".formatInputMemo").first().fill(opts.note);
+  await editing.locator(".formatCardEditSave").click();
+  await expect(page.locator(".formatCardItem.editing")).toHaveCount(0);
+}
+
+// 値セル cell を inline 編集してキャンセルする (元値は保持)。
+export async function inlineEditCancel(page, cell) {
+  const editing = await startInlineEdit(page, cell);
+  await editing.locator(".formatCardEditCancel").click();
+  await expect(page.locator(".formatCardItem.editing")).toHaveCount(0);
+}
+
+// ☰ ランチャー (strip = "#sFormatStrip" 等) から新規フォーマット (text 項目 1 つ) を作る。
+// 既定ではどのパネルも全フォーマットが展開カードなので、ポップアップ入力シートを経由する
+// クイック/ランチャー入力を試すには非展開フォーマットを 1 つ作る必要がある。
+export async function createHamburgerFormat(page, { strip, name, label }) {
+  await page.locator(`${strip} .tagPickerTrigger`).click();
+  await page.locator(`${strip} .tagSettingAdd`).click();
+  await expect(page.locator("#formatEditOverlay")).toHaveClass(/active/);
+  await page.locator("#formatEditName").fill(name);
+  await page.locator("#formatEditAddItemBtn").click();
+  await page.locator("#formatEditItems .formatEditItemLabel").first().fill(label);
+  await page.locator("#formatEditSaveBtn").click();
+  await expect(page.locator("#formatEditOverlay")).not.toHaveClass(/active/);
+}
+
+// ☰ ランチャー (strip) から name のフォーマットを開く (= 入力シート。クイック/ランチャー経路)。
+export async function openFormatSheetViaHamburger(page, { strip, name }) {
+  await page.locator(`${strip} .tagPickerTrigger`).click();
+  await page.locator(`${strip} .tagPickerLauncherOpt`).filter({ hasText: name }).click();
+  await expect(page.locator("#formatInputOverlay")).toHaveClass(/active/);
+}

@@ -87,6 +87,8 @@ apex ↔ medical ↔ personal の絶対 URL は `site-links.js` の1箇所で管
 
 - 背景タップ / × 閉じは `main.js` のグローバルハンドラが担当。**個別 popup で閉じる listener を新規配線しない**（背景タップで閉じたくない popup は overlay に `data-no-backdrop-close`）。閉じる専用 popup は横幅ボタンでなく右上 `.popupCloseX`（× アイコン）。
 - 閉じ方の基準: **単一選択=選んだら即閉じる / 複数選択=開いたまま**（背景タップ・× で閉じる）。
+- **自動フォーカスの可否は中央ルール（正本=`src/features/popup-behavior.js`）**。ポップアップを開いただけでは input/textarea へ focus しない（`openPopup()` 既定）。明示アクション（rename/＋追加クリック等）の単一入力だけ `focusPopupInput()` か `openPopup(overlay,{autoFocus:true})` を経由する。各画面で `setTimeout(()=>el.focus())` を散らさない。
+- 展開フォーマットカードの値はポップアップでなく**その場 inline 編集**（`formats.js` の `_inlineEdit`。値セルタップ→`.formatCardItem.editing`、明示保存/キャンセル）。クイック chip / ☰ ランチャー経由は従来どおり入力シート popup（`openFormatSheet`）。
 - **詳細レシピ（HTML 雛形・例外運用）は [`docs/dev/ui-conventions.md`](docs/dev/ui-conventions.md)**。
 
 ## ステータス色・記号

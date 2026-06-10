@@ -178,6 +178,71 @@
     .formatCardNormalSpacer { width: 44px; height: 1px; }
 
     /* ============================
+       展開カードの inline 編集 (値セルをその場で編集)
+       値列セルを縦スタックの入力欄 + [キャンセル][保存] に置換する。ラベル列・正常列は
+       表示モードと同じ位置を保つ (グリッド整合)。入力ロジック・スタイルは入力シート
+       (.formatInput*) と共有する。 */
+    .formatCardEditCell {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .formatCardEditFields {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+    .formatCardEditValueRow {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .formatCardEditValueRow .formatInputUnit { flex: 0 0 auto; }
+    /* 入力欄: iOS の focus ズーム防止に 16px、44px タップ確保。 */
+    .formatCardEditInput {
+      min-width: 0;
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 16px;
+      box-sizing: border-box;
+      min-height: 44px;
+    }
+    .formatCardEditText {
+      resize: vertical;
+      field-sizing: content;
+      min-height: 44px;
+      max-height: 320px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .formatCardEditCell .formatInputMemo { width: 100%; }
+    .formatCardEditActions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .formatCardEditActions button {
+      width: auto;
+      min-width: 72px;
+      min-height: 40px;
+      margin: 0;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    @media (max-width: 640px) {
+      .formatCardEditActions button { min-height: 44px; font-size: 15px; }
+    }
+
+    /* ============================
        フォーマット入力モーダル
        ============================ */
     .popupMenu.formatInputMenu {

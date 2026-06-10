@@ -41,6 +41,7 @@ import {
 import { icon } from "../icons.js";
 import { t, applyI18n } from "../i18n.js";
 import { showToast } from "../toast.js";
+import { openPopup, focusPopupInput } from "./popup-behavior.js";
 
 // 誤タップガード (ゴーストクリック抑止): 患者画面 (detail) に入場した「同じタップ」が遷移直後の
 // フォーマットカードクリックに化けるのを防ぐ。入場時にフラグを倒し、**新しい pointerdown** が
@@ -282,6 +283,95 @@ const EXPANDED_HOST_ID = {
 // チェック(正常)アイコン (lucide: check)。
 const CHECK_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
+// ============================
+// 展開カードの「その場 (inline) 編集」 — ポップアップ入力シートの代替
+//
+// 患者画面の展開カードは日常入力の中心。値セルをタップするたびに大入力ポップアップを
+// 開くのは重いので、タップした値セルを**その行のまま**編集状態にする (= inline 編集)。
+// クイック chip / ☰ ランチャーから呼ぶフォーマットは従来どおりポップアップ (openFormatSheet)。
+//
+// 設計:
+//   - 1 度に編集できるのは 1 項目だけ (_inlineEdit)。別セルをタップ / 画面遷移 / 患者切替で
+//     破棄 (= 未保存ドラフトは捨てる。明示「保存」でのみ確定 = blur 即保存にしない)。
+//   - 値の確定は既存の単項目書込経路 writeFormatValue を再利用 (ワンタップ正常チェックと
+//     同じ経路)。Undo 起点 captureFormatUndo / 自動付与タグ delta も同様に通す。
+//   - fail-closed: 開いた時点と患者が変わっていたら保存しない (別患者への誤入力防止)。
+//   - 描画はドラフト (_inlineEdit.draft) を正本に行うので、途中で再描画されても入力中の値は
+//     失われない (buildCardItemRow が編集行を draft から組み直す)。
+//   - 自動フォーカス: 値セルをタップ = その項目への明示タップなので、編集に入った入力欄へ
+//     focus してよい (中央ルール「明示タップした時だけ focus」)。ポップアップ open 時の
+//     「触っていない先頭欄へ勝手に focus」とは別カテゴリ。
+//
+// _inlineEdit = { formatId, panel, i, openPid, draft, focusOnRender } | null
+//   draft: text => 文字列 / number・fraction => { value, note }
+let _inlineEdit = null;
+
+function rerenderExpandedPanel(panel) {
+  renderExpandedFormats(panel, document.getElementById(EXPANDED_HOST_ID[panel]));
+}
+
+function isRowEditing(format, i) {
+  return !!(_inlineEdit && _inlineEdit.formatId === format.id
+    && _inlineEdit.panel === format.panel && _inlineEdit.i === i);
+}
+
+// 値セル / 正常チェック(手入力) のタップで inline 編集に入る。stored は現在の
+// formatValues[format.id] (ドラフトの種に使う)。ゴーストクリック中 (患者画面入場直後の
+// 遷移ジェスチャー) は開かない (= openFormatSheet と同じガード)。
+function enterInlineEdit(format, item, i, stored, patient) {
+  if (!_freshTapSinceEntry) return;
+  const kind = item.kind || DEFAULT_ITEM_KIND;
+  const seed = (kind === "text") ? readTextValue(stored?.[i]) : readNumericEntry(stored?.[i]);
+  // 別パネルで編集中だった場合、そのパネルの古いエディタ DOM が残らないよう再描画して表示へ
+  // 戻す (同一パネルなら下の再描画 1 回で旧行も表示へ戻る)。1 度に編集できるのは 1 項目だけ。
+  const prevPanel = _inlineEdit ? _inlineEdit.panel : null;
+  _inlineEdit = {
+    formatId: format.id, panel: format.panel, i,
+    openPid: patient?.pid ?? null,
+    draft: seed,
+    focusOnRender: true,
+  };
+  if (prevPanel && prevPanel !== format.panel) rerenderExpandedPanel(prevPanel);
+  rerenderExpandedPanel(format.panel);
+}
+
+// inline 編集を破棄する (保存しない)。active だったら true。opts.silent=true なら再描画
+// しない (画面遷移で離れる時など、戻ってきたら detail 全体が再描画されるので不要)。
+export function cancelInlineFormatEdit(opts = {}) {
+  if (!_inlineEdit) return false;
+  const panel = _inlineEdit.panel;
+  _inlineEdit = null;
+  if (!opts.silent) rerenderExpandedPanel(panel);
+  return true;
+}
+
+// inline 編集中の値を確定する。単項目だけを writeFormatValue で書く (他項目は触らない)。
+function saveInlineEdit() {
+  if (!_inlineEdit) return;
+  const { formatId, i, openPid, panel } = _inlineEdit;
+  const draft = _inlineEdit.draft;
+  const p = appState.patients[selectedNo - 1];
+  const format = (Array.isArray(settings.formats) ? settings.formats : []).find(f => f.id === formatId);
+  // fail-closed: 患者が変わった / フォーマットが消えた等は保存せず中断。
+  if (!p || !format || !format.items?.[i] || (openPid != null && p.pid !== openPid)) {
+    _inlineEdit = null;
+    showToast(t("format.sheet.patientChanged"), { ms: 4000 });
+    if (_onTextChanged) _onTextChanged();
+    return;
+  }
+  const kind = format.items[i].kind || DEFAULT_ITEM_KIND;
+  const stored = (p.formatValues?.[formatId] && typeof p.formatValues[formatId] === "object")
+    ? p.formatValues[formatId] : {};
+  // text は手入力由来 (manual) として確定 (空は "")。number/fraction は { value, note } そのまま。
+  const value = (kind === "text") ? commitDraftTextEntry(stored[i], draft) : draft;
+  // 値が変わるので Undo 起点を撮り、自動付与タグの delta も履歴へ渡す (Undo で撤回)。
+  captureFormatUndo(p, { tagsAdded: formatTagsToAdd(format) });
+  writeFormatValue(p, format, i, value); // markUpdated + scheduleSave
+  applyFormatTags(format);
+  _inlineEdit = null;
+  if (_onTextChanged) _onTextChanged(); // 再描画 (カード値更新 + 新カード反映 + QR)
+}
+
 // 患者画面にカードとして並ぶフォーマットを順序付きで返す: 常時出す展開カード
 // (実効グループ + デフォルトフォールバック) + 値が入っている非展開フォーマット
 // (クイック/ランチャーで入力 → 「展開」されたもの)。renderExpandedFormats と ☰ ランチャー
@@ -302,6 +392,8 @@ export function renderExpandedFormats(panel, hostEl) {
   hostEl.textContent = "";
   const p = appState.patients[selectedNo - 1];
   if (!p) return;
+  // 患者が変わったら inline 編集は破棄 (別患者のカードに前患者のドラフトを出さない = fail-safe)。
+  if (_inlineEdit && _inlineEdit.openPid !== (p.pid ?? null)) _inlineEdit = null;
   if (!p.formatValues || typeof p.formatValues !== "object") p.formatValues = {};
   for (const format of shownCardFormatsForPanel(panel, p)) hostEl.appendChild(buildExpandedWidget(format, p));
 }
@@ -368,10 +460,19 @@ function buildExpandedWidget(format, patient) {
 // row は display:contents なので、子は親 (.formatCardBody) の grid セルになる。列を全行で
 // 揃えるため、カードが持つ列 (hasLabelCol / hasNormalCol) に対し、この行に該当要素が無い
 // ときも空のプレースホルダセルを置いて列位置を保つ。
+function makeNormalSpacer() {
+  // 正常列を持つカードで、この行に正常チェックが無いとき (number 等) は空セルで列を維持。
+  const spacer = document.createElement("div");
+  spacer.className = "formatCardNormalSpacer";
+  spacer.setAttribute("aria-hidden", "true");
+  return spacer;
+}
+
 function buildCardItemRow(format, item, i, stored, patient, hasLabelCol, hasNormalCol) {
   const kind = item.kind || DEFAULT_ITEM_KIND;
+  const editing = isRowEditing(format, i);
   const row = document.createElement("div");
-  row.className = "formatCardItem";
+  row.className = "formatCardItem" + (editing ? " editing" : "");
 
   const labelText = String(item.label ?? "").trim();
   if (hasLabelCol) {
@@ -382,6 +483,21 @@ function buildCardItemRow(format, item, i, stored, patient, hasLabelCol, hasNorm
     row.appendChild(lab);
   }
 
+  // --- inline 編集モード: 値セルを入力欄に置換。正常列は「正常文を流し込む」トグルへ ---
+  if (editing) {
+    const edit = buildInlineEditCell(format, item, i);
+    if (kind === "text" && item.normal) row.appendChild(buildInlineNormalFillBtn(item, edit));
+    else if (hasNormalCol) row.appendChild(makeNormalSpacer());
+    row.appendChild(edit.el);
+    // 値セルへの明示タップで入った項目なので、入力欄へ focus してよい (中央ルールの明示経路)。
+    if (_inlineEdit && _inlineEdit.focusOnRender && edit.primaryInput) {
+      _inlineEdit.focusOnRender = false;
+      focusPopupInput(edit.primaryInput);
+    }
+    return row;
+  }
+
+  // --- 表示モード ---
   // text item で normal があればワンタップの正常チェック (キーボードを出さない)。
   if (kind === "text" && item.normal) {
     const normalBtn = document.createElement("button");
@@ -403,8 +519,8 @@ function buildCardItemRow(format, item, i, stored, patient, hasLabelCol, hasNorm
       // 現在の正常文 (item.normal = settings.formats 由来) を基準に provenance で分岐。
       const decision = decidePresetToggle(stored[i], item.normal);
       if (decision.action === "openEditor") {
-        // 手入力済み (source=manual) → 上書きせず入力ポップアップを開く。保存値は変えない。
-        openFormatSheet(format, format.panel, i);
+        // 手入力済み (source=manual) → 上書きせず inline 編集に入る。保存値は変えない。
+        enterInlineEdit(format, item, i, stored, patient);
         return;
       }
       // write (空欄→正常文 preset) / clear (preset→空欄)。値が変わるので Undo 起点を撮る。
@@ -417,14 +533,10 @@ function buildCardItemRow(format, item, i, stored, patient, hasLabelCol, hasNorm
     });
     row.appendChild(normalBtn);
   } else if (hasNormalCol) {
-    // 正常列を持つカードで、この行に正常チェックが無いとき (number 等) は空セルで列を維持。
-    const spacer = document.createElement("div");
-    spacer.className = "formatCardNormalSpacer";
-    spacer.setAttribute("aria-hidden", "true");
-    row.appendChild(spacer);
+    row.appendChild(makeNormalSpacer());
   }
 
-  // 値表示は大きいタップ領域。タップで該当 item にフォーカスした大入力シートを開く (修正3)。
+  // 値表示は大きいタップ領域。タップでその場 (inline) 編集に入る (ポップアップを開かない)。
   const valueBtn = document.createElement("button");
   valueBtn.type = "button";
   valueBtn.className = "formatCardValue";
@@ -432,9 +544,136 @@ function buildCardItemRow(format, item, i, stored, patient, hasLabelCol, hasNorm
   if (disp.empty) valueBtn.classList.add("empty");
   valueBtn.textContent = disp.text;
   valueBtn.setAttribute("aria-label", t("format.cell.edit.aria", { label: labelText || format.name }));
-  valueBtn.addEventListener("click", () => openFormatSheet(format, format.panel, i));
+  valueBtn.addEventListener("click", () => enterInlineEdit(format, item, i, stored, patient));
   row.appendChild(valueBtn);
   return row;
+}
+
+// inline 編集の入力欄セル (値列に入る)。kind 別の入力 + (number/fraction は) 注記 +
+// [キャンセル][保存]。入力ロジックは入力シート (buildNumberRow 等) と同じ低レベルヘルパ
+// (setupNumericInput / setupTextInput / readNumericEntry / buildNoteInput) を共有する。
+// 戻り値: { el, primaryInput } primaryInput = 明示フォーカス対象 (タップした項目の主入力欄)。
+function buildInlineEditCell(format, item, i) {
+  const kind = item.kind || DEFAULT_ITEM_KIND;
+  const cell = document.createElement("div");
+  cell.className = "formatCardEditCell";
+  const fields = document.createElement("div");
+  fields.className = "formatCardEditFields";
+  let primaryInput = null;
+
+  if (kind === "number") {
+    const { value, note } = readNumericEntry(_inlineEdit.draft);
+    const valRow = document.createElement("div");
+    valRow.className = "formatCardEditValueRow";
+    const val = document.createElement("input");
+    val.className = "formatInputValue formatCardEditInput";
+    setupNumericInput(val, "decimal");
+    val.value = value;
+    valRow.appendChild(val);
+    if (item.unit) {
+      const unit = document.createElement("span");
+      unit.className = "formatInputUnit";
+      unit.textContent = item.unit;
+      valRow.appendChild(unit);
+    }
+    fields.appendChild(valRow);
+    const noteInp = buildNoteInput(note);
+    fields.appendChild(noteInp);
+    const emit = () => { _inlineEdit.draft = { value: val.value, note: noteInp.value }; };
+    val.addEventListener("input", emit);
+    noteInp.addEventListener("input", emit);
+    primaryInput = val;
+  } else if (kind === "fraction") {
+    const { value, note } = readNumericEntry(_inlineEdit.draft);
+    const fracNumeric = item.fracMode === "numeric";
+    const setupFrac = (inp) => fracNumeric ? setupNumericInput(inp, "numeric") : setupTextInput(inp);
+    const valRow = document.createElement("div");
+    valRow.className = "formatCardEditValueRow";
+    const fracGroup = document.createElement("div");
+    fracGroup.className = "formatInputFracGroup";
+    const numer = document.createElement("input");
+    numer.type = "text";
+    numer.className = "formatInputValue formatInputFracNumer formatCardEditInput";
+    setupFrac(numer);
+    const slash = document.createElement("span");
+    slash.className = "formatInputFracSlash";
+    slash.textContent = "/";
+    const denom = document.createElement("input");
+    denom.type = "text";
+    denom.className = "formatInputValue formatInputFracDenom formatCardEditInput";
+    setupFrac(denom);
+    const si = value.indexOf("/");
+    if (si >= 0) { numer.value = value.slice(0, si); denom.value = value.slice(si + 1); }
+    else numer.value = value;
+    fracGroup.appendChild(numer);
+    fracGroup.appendChild(slash);
+    fracGroup.appendChild(denom);
+    valRow.appendChild(fracGroup);
+    if (item.unit) {
+      const unit = document.createElement("span");
+      unit.className = "formatInputUnit";
+      unit.textContent = item.unit;
+      valRow.appendChild(unit);
+    }
+    fields.appendChild(valRow);
+    const noteInp = buildNoteInput(note);
+    fields.appendChild(noteInp);
+    const emit = () => { _inlineEdit.draft = { value: `${numer.value}/${denom.value}`, note: noteInp.value }; };
+    numer.addEventListener("input", emit);
+    denom.addEventListener("input", emit);
+    noteInp.addEventListener("input", emit);
+    primaryInput = numer;
+  } else {
+    // text
+    const ta = document.createElement("textarea");
+    ta.className = "formatInputValue formatInputText formatCardEditInput formatCardEditText";
+    ta.rows = 1;
+    setupTextInput(ta);
+    ta.value = readTextValue(_inlineEdit.draft);
+    ta.addEventListener("input", () => { _inlineEdit.draft = ta.value; });
+    fields.appendChild(ta);
+    primaryInput = ta;
+  }
+  cell.appendChild(fields);
+
+  // アクション: [キャンセル][保存]。blur 即保存にせず明示ボタンで確定/破棄 (誤入力を戻しやすく)。
+  const actions = document.createElement("div");
+  actions.className = "formatCardEditActions";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "secondary formatCardEditCancel";
+  cancelBtn.textContent = t("common.cancel");
+  cancelBtn.addEventListener("click", (e) => { e.stopPropagation(); cancelInlineFormatEdit(); });
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "primary formatCardEditSave";
+  saveBtn.textContent = t("common.save");
+  saveBtn.addEventListener("click", (e) => { e.stopPropagation(); saveInlineEdit(); });
+  actions.appendChild(cancelBtn);
+  actions.appendChild(saveBtn);
+  cell.appendChild(actions);
+
+  return { el: cell, primaryInput };
+}
+
+// inline 編集中の正常列ボタン: タップで編集中テキスト欄へ正常文を流し込む (再タップで空に)。
+// 入力シート (buildTextRow) のチェックボタンと同じ「フィールドに正常文をトグル」挙動。
+function buildInlineNormalFillBtn(item, edit) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "formatCardNormalBtn";
+  btn.title = t("format.normal.tooltip.has", { value: item.normal });
+  btn.setAttribute("aria-label", t("common.normal"));
+  btn.innerHTML = CHECK_SVG;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const ta = edit.primaryInput;
+    if (!ta) return;
+    const normal = item.normal || "";
+    ta.value = (ta.value === normal) ? "" : normal;
+    if (_inlineEdit) _inlineEdit.draft = ta.value;
+  });
+  return btn;
 }
 
 // formatValues[format.id][itemIndex] へ値を書く小さなヘルパ (保存予約まで)。
@@ -849,9 +1088,9 @@ function openFormatEditModal(target, panel, onSaved) {
   // パネル表記をモーダルタイトル横に表示 (固定: ユーザーは変更不可)
   // タイトル表示なし (UIを簡潔に保つため)
   renderFormatEditForm();
-  overlay.classList.add("active");
-  const nameInp = document.getElementById("formatEditName");
-  if (nameInp) setTimeout(() => nameInp.focus(), 50);
+  // 中央ルール: 編集モーダルは複数欄 (名前/区切り/項目/タグ) を持つので、開いた瞬間に
+  // 先頭の名前欄へ自動フォーカスしない (触っていない欄にキーボードが飛び出すのを防ぐ)。
+  openPopup(overlay);
 }
 
 function renderTagsHost() {

@@ -36,6 +36,7 @@
 import { settings, appState, saveSettings, scheduleSave, markUpdated } from "../store.js";
 import { STATUS, STATUS_TAG_PREFIX, TAG_FILTER_MODE_AND, TAG_FILTER_MODE_OR, DEFAULT_TAG_FILTER_MODE } from "../constants.js";
 import { t } from "../i18n.js";
+import { focusPopupInput } from "./popup-behavior.js";
 
 // ============================================================================
 // §1. CONSTANTS
@@ -406,7 +407,8 @@ export function makeAddTagWidget({ onAdded } = {}) {
     inp.addEventListener("click", (e) => e.stopPropagation());
     inp.addEventListener("mousedown", (e) => e.stopPropagation());
     wrap.appendChild(inp);
-    setTimeout(() => inp.focus(), 0);
+    // 明示的な「+ 追加」クリックで現れた単一入力 → 中央ヘルパ経由でフォーカス。
+    focusPopupInput(inp);
   }
 
   showButton();
