@@ -25,8 +25,6 @@ import { icon } from "../icons.js";
 // statusClass (status-ui.js) / bindTapOrLongPress (touch.js) は共通ヘルパへ移設し、
 // detail.js ↔ home.js の循環 import を解消した。
 
-let qrVisible = false;
-
 // ============================
 // QR generation helpers
 // ============================
@@ -139,22 +137,20 @@ function renderTransferredBanner(p) {
   host.appendChild(banner);
 }
 
-function syncQrToggleButtons() {
-  const b = document.getElementById("qrToggleBtn");
-  if (!b) return;
-  b.classList.toggle("editActive", qrVisible);
-  b.setAttribute("aria-pressed", qrVisible ? "true" : "false");
+// 患者画面QR (電子カルテ転記用) はポップアップ #detailQrOverlay で表示する。
+// 「開いているか」= overlay の .active を単一ソースにする (qrVisible の独立フラグは廃止)。
+// これにより、× / 背景タップ (グローバルハンドラが .active を外す) と表示状態が常に一致し、
+// 閉じる専用 listener を増やさずに済む。
+function isDetailQrOpen() {
+  return !!document.getElementById("detailQrOverlay")?.classList.contains("active");
 }
 
+// QR ポップアップが開いている時だけ、現在患者の内容で QR を (再)描画する。
+// renderDetail / 入力変更 (_onTextChanged→refreshPatientUI) から呼ばれ、開いている QR を最新化する。
 export function renderQrIfNeeded() {
-  const qrWrap = document.getElementById("qrWrap");
-  if (!qrWrap) return;
-  qrWrap.classList.toggle("active", qrVisible);
-  syncQrToggleButtons();
-  if (!qrVisible) return;
+  if (!isDetailQrOpen()) return;
 
   const qrTextPreview = document.getElementById("qrTextPreview");
-  const qrCanvas = document.getElementById("qrCanvas");
   if (qrTextPreview) qrTextPreview.textContent = buildTabPayload(selectedNo);
   clearQrError();
 
@@ -386,7 +382,8 @@ export function renderLifecycleActions(p) {
 // ============================
 
 export function renderDetail() {
-  qrVisible = false;
+  // QR ポップアップは renderDetail で閉じない (入力変更中も開いたまま最新化する)。
+  // 患者切替・画面遷移時の close は navigation.showView が担当する。
   const p = appState.patients[selectedNo - 1];
 
   // 患者メタボタン (ステータス色/形 + 部屋+氏名 + タグ概要)
@@ -417,9 +414,14 @@ export function initDetailEvents(renderHomeFn) {
   // Phase 7: 氏名編集は患者シート (openPatientSheet)、臨床入力 (problem/S/O/A/P/shared) は
   // 全て展開カード + 大入力シート経由で formatValues へ。旧 memo/shared textarea は撤去。
 
+  // QR ボタン: 患者画面QRポップアップを開く (開いている時はボタンが overlay 背景に隠れるので
+  // 実質「開く」操作。閉じるは × / 背景タップ = グローバルハンドラ)。開いてから現在患者で描画。
   const qrToggleBtn = document.getElementById("qrToggleBtn");
   if (qrToggleBtn) qrToggleBtn.addEventListener("click", () => {
-    qrVisible = !qrVisible;
+    const overlay = document.getElementById("detailQrOverlay");
+    if (!overlay) return;
+    qrPageIndex = 0; // 開くたびに先頭ページから
+    overlay.classList.add("active");
     renderQrIfNeeded();
   });
 

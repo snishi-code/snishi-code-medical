@@ -24,6 +24,6 @@ test("既定 BP の分数入力は数字キーボード (inputmode=numeric)", as
   await frac.locator(".formatInputFracDenom").fill("80");
   await page.locator("#formatInputApplyBtn").click();
   await page.locator("#qrToggleBtn").click();
-  await expect(page.locator("#qrWrap")).toHaveClass(/active/);
+  await expect(page.locator("#detailQrOverlay")).toHaveClass(/active/);
   expect(await page.locator("#qrTextPreview").textContent()).toContain("BP 120/80mmHg");
 });

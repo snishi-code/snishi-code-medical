@@ -4,6 +4,11 @@ import { saveSettings } from "../store.js";
 import { exitAllEdits } from "./edit-toggle.js";
 import { captureSnapshot, REASON } from "./snapshots.js";
 
+// 画面遷移フック。main.js が「view 横断の一時ポップアップを閉じる + detail 入場ガード」を配線する。
+// (navigation.js を formats.js 等に直接依存させないための callback)。
+let _onViewChange = null;
+export function setOnViewChange(fn) { _onViewChange = fn; }
+
 export function showView(which, pushState = true) {
   // 画面遷移時は入力欄のフォーカスを外す。前画面 (別患者の SOAP/メモ等) の
   // textarea/input にフォーカスが残ったまま遷移すると、遷移先でキーボードが勝手に
@@ -15,6 +20,9 @@ export function showView(which, pushState = true) {
   }
   // ビューを切り替える前に、どこかで開いていた編集モードを必ず閉じる
   exitAllEdits();
+  // view 横断の一時ポップアップを閉じる (患者入力シートは cleanup 付き) + detail 入場ガード。
+  // 患者入力ポップアップが画面・患者をまたいで残らないようにする (臨床安全 fail-closed)。
+  if (_onViewChange) { try { _onViewChange(which); } catch (_) { /* noop */ } }
   // 画面遷移直前の浅いアンドゥ用スナップショット (変化が無ければ snapshots 側で
   // スキップ。直近 2 枚だけ保持)。fire-and-forget。
   captureSnapshot(REASON.NAV);
@@ -43,6 +51,9 @@ export function showView(which, pushState = true) {
     const sharedQrWrap = document.getElementById("sharedQrWrap");
     if (sharedQrWrap) sharedQrWrap.classList.remove("active");
   }
+  // 患者画面QRポップアップ (detailQrOverlay) 等の一時ポップアップは上の _onViewChange
+  // (closeTransientPopups) が閉じる。入力変更 (refreshPatientUI) は showView を通らないので
+  // 開いたまま最新化される。
 
   window.scrollTo(0, 0);
 }

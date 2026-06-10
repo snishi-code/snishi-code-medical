@@ -10,7 +10,7 @@ const MOBILE = { width: 390, height: 844 };
 
 async function openQrPreview(page) {
   await page.locator("#qrToggleBtn").click();
-  await expect(page.locator("#qrWrap")).toHaveClass(/active/);
+  await expect(page.locator("#detailQrOverlay")).toHaveClass(/active/);
 }
 
 // problem カードの先頭 # 番号セルをタップ → 入力シートで value/note を入れて保存。
