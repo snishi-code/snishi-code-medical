@@ -69,6 +69,7 @@ import {
 //     k  = kind index (KIND_BY_INDEX への 0-based 参照)
 //     u  = unit         (空は省略)
 //     nm = normal       (空は省略)
+//     fm = fraction 入力方式 (1=numeric。default text は省略。新規フィールド=bump 不要)
 //
 //   フォーマットセット = formatGroup (ST の fg[i] / FS の g):
 //     n  = name
@@ -243,6 +244,9 @@ function itemToWire(it) {
   const o = { l: String(it?.label ?? ""), k: kindToIdx(it?.kind) };
   if (typeof it?.unit === "string" && it.unit) o.u = it.unit;
   if (typeof it?.normal === "string" && it.normal) o.nm = it.normal;
+  // fraction の入力方式。default(text) は省略し numeric の時だけ載せる (原則②)。新規フィールド
+  // 追加なので WIRE_V bump 不要 (旧版は未知キーとして無視 = forward/backward compat)。
+  if (it?.kind === "fraction" && it?.fracMode === "numeric") o.fm = 1;
   return o;
 }
 
@@ -251,6 +255,8 @@ function itemFromWire(w) {
   const o = { label: String(w?.l || ""), kind };
   if (typeof w?.u === "string") o.unit = w.u;
   if (typeof w?.nm === "string") o.normal = w.nm;
+  // fraction の入力方式を復元 (fm=1 → numeric、無し → 安全側 text)。
+  if (kind === "fraction") o.fracMode = (w?.fm === 1) ? "numeric" : "text";
   return o;
 }
 

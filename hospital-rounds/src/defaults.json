@@ -37,7 +37,7 @@
       "titleWrap": "（）",
       "tags": [],
       "items": [
-        { "label": "BP",   "kind": "fraction", "unit": "mmHg" },
+        { "label": "BP",   "kind": "fraction", "unit": "mmHg", "fracMode": "numeric" },
         { "label": "P",    "kind": "number",   "unit": "bpm"  },
         { "label": "SpO2", "kind": "number",   "unit": "%"    },
         { "label": "RR",   "kind": "number",   "unit": ""     },

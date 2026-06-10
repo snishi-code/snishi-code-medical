@@ -116,7 +116,7 @@ export function defaultSettings() {
 //   text     : { label, kind:"text",     normal }
 //   number   : { label, kind:"number",   unit   }
 //   fraction : { label, kind:"fraction", unit   }   // 日付 "5/20" もこれで入力
-function normalizeFormatItem(item) {
+function normalizeFormatItem(item, panel, formatName) {
   if (!item || typeof item !== "object") return null;
   const label = String(item.label ?? "").trim();
   const rawKind = typeof item.kind === "string" ? item.kind : "";
@@ -129,6 +129,16 @@ function normalizeFormatItem(item) {
   const out = { label, kind };
   if (kind === "number" || kind === "fraction") {
     out.unit = String(item.unit ?? "");
+    if (kind === "fraction") {
+      // 分数の入力方式: "numeric"(数字キーボード・血圧 120/80) / "text"(英数字混在・抗菌薬 1g/1)。
+      // 明示指定は尊重。未指定 (旧データ) は安全側 "text" に倒すが、**既定バイタルの BP 形状だけ**
+      // (panel=O / 名前=バイタル / label=BP / unit=mmHg) は numeric に補正する (実ユーザーの既存
+      // BP を text キーボードのままにしないための narrow 補正。保存後は fracMode が永続化される)。
+      if (item.fracMode === "numeric") out.fracMode = "numeric";
+      else if (item.fracMode === "text") out.fracMode = "text";
+      else out.fracMode = (panel === "O" && formatName === "バイタル" && label === "BP" && out.unit === "mmHg")
+        ? "numeric" : "text";
+    }
   } else {
     // text / date は normal を持つ
     out.normal = String(item.normal ?? "");
@@ -148,8 +158,9 @@ function normalizeFormat(raw) {
   if (!name) return null;
   const panel = FORMAT_PANELS.includes(raw.panel) ? raw.panel : "O";
   const id = (typeof raw.id === "string" && raw.id) ? raw.id : newFormatId();
+  // panel/name を渡すのは fraction の既定 BP 補正 (normalizeFormatItem の narrow heuristic) のため。
   const items = Array.isArray(raw.items)
-    ? raw.items.map(normalizeFormatItem).filter(Boolean)
+    ? raw.items.map(it => normalizeFormatItem(it, panel, name)).filter(Boolean)
     : [];
   const joiner = typeof raw.joiner === "string" ? raw.joiner : ", ";
   // labelSep: 明示指定優先、なければ items から推定

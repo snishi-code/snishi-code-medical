@@ -1034,7 +1034,66 @@ await test("DEFAULT_FORMATS comes from defaults.json", async () => {
   const pb = c.DEFAULT_FORMATS.find(f => f.panel === "problem");
   assert.equal(pb.items.filter(it => it.kind === "number").length, 5);
   assert.ok(pb.items.some(it => it.kind === "text"));
+  // 既定バイタルの BP (fraction) は数字入力 (fracMode=numeric) を明示。
+  const vital = c.DEFAULT_FORMATS.find(f => f.panel === "O" && f.name === "バイタル");
+  const bp = vital.items.find(it => it.label === "BP" && it.kind === "fraction");
+  assert.equal(bp.fracMode, "numeric", "既定 BP は数字入力");
   assert.equal(c.DEFAULT_PATIENT_COUNT, 50);
+});
+
+await test("normalizeFormat: fraction の fracMode を保持 / 未指定は安全側 text", async () => {
+  const store = await import(storeUrl);
+  const raw = {
+    formats: [{
+      name: "テスト分数", panel: "O", joiner: ", ", labelSep: " ",
+      items: [
+        { label: "BP", kind: "fraction", unit: "mmHg", fracMode: "numeric" },
+        { label: "薬", kind: "fraction", unit: "" }, // fracMode 未指定 → text
+        { label: "P", kind: "number", unit: "bpm" },  // number には fracMode を付けない
+      ],
+    }],
+  };
+  const norm = store.normalizeSettings(raw);
+  const fmt = norm.formats.find(f => f.name === "テスト分数");
+  assert.equal(fmt.items[0].fracMode, "numeric", "明示 numeric は保持");
+  assert.equal(fmt.items[1].fracMode, "text", "未指定の fraction は text に倒れる");
+  assert.equal("fracMode" in fmt.items[2], false, "number 項目には fracMode を付けない");
+});
+
+await test("normalizeFormat: 既存の既定バイタル BP (fracMode 未指定) は numeric に補正 / 明示 text は尊重", async () => {
+  const store = await import(storeUrl);
+  // 既存ユーザー相当: 既定バイタルの BP に fracMode が無い (この変更より前のデータ)。
+  const raw = {
+    formats: [
+      { name: "バイタル", panel: "O", joiner: ", ", labelSep: " ", items: [
+        { label: "BP", kind: "fraction", unit: "mmHg" },        // 未指定 → 補正で numeric
+        { label: "BP", kind: "fraction", unit: "mmHg", fracMode: "text" }, // 明示 text は尊重
+      ] },
+      { name: "別フォーマット", panel: "O", joiner: ", ", labelSep: " ", items: [
+        { label: "BP", kind: "fraction", unit: "mmHg" },        // バイタル以外なので補正されず text
+      ] },
+    ],
+  };
+  const norm = store.normalizeSettings(raw);
+  const vital = norm.formats.find(f => f.name === "バイタル");
+  assert.equal(vital.items[0].fracMode, "numeric", "既定バイタル BP は numeric へ補正");
+  assert.equal(vital.items[1].fracMode, "text", "明示 text は補正で上書きしない");
+  const other = norm.formats.find(f => f.name === "別フォーマット");
+  assert.equal(other.items[0].fracMode, "text", "バイタル以外の BP/mmHg は補正対象外 (text)");
+});
+
+await test("formatToWire / formatFromWire: fraction の fracMode (numeric) が round-trip で保持される", async () => {
+  const p = await import("../src/features/qr-protocol.js");
+  const fmt = { name: "バイタル", panel: "O", joiner: ", ", labelSep: " ", tags: [], items: [
+    { label: "BP", kind: "fraction", unit: "mmHg", fracMode: "numeric" },
+    { label: "薬", kind: "fraction", unit: "", fracMode: "text" },
+  ] };
+  const wire = p.formatToWire(fmt, null);
+  assert.equal(wire.i[0].fm, 1, "numeric は fm=1 を載せる");
+  assert.equal("fm" in wire.i[1], false, "text(default) は省略");
+  const restored = p.formatFromWire(wire, null);
+  assert.equal(restored.items[0].fracMode, "numeric", "numeric が復元される (QR で text に戻らない)");
+  assert.equal(restored.items[1].fracMode, "text", "text は text");
 });
 
 // ============================

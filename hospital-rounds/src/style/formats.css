@@ -585,6 +585,24 @@
       box-sizing: border-box;
     }
 
+    /* fraction の補助欄: grid 4列目セル内に [単位 | 入力方式] を横並び (grid 列は増やさない) */
+    .formatEditItemFracCell {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .formatEditItemFracCell .formatEditItemUnit { flex: 1 1 auto; }
+    .formatEditItemFracMode {
+      flex: 0 0 auto;
+      padding: 6px 4px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 12px;
+      background: #fff;
+      box-sizing: border-box;
+    }
+
     .formatEditItemDel {
       width: 32px;
       height: 32px;
