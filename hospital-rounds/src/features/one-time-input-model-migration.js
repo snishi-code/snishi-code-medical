@@ -1,7 +1,7 @@
 "use strict";
 
 // ============================================================================
-// TEMP: remove after onishi data migration
+// TEMP: remove after initial-user data migration
 //
 // Phase 7 一回限り入力モデル移行。旧 patient.{memo,shared,s,oFree,a,p} を新
 // formatValues (problem / shared panel) へ移し、旧フィールドを delete する。
@@ -14,8 +14,8 @@
 //   - dormant な旧自由記述 (s/oFree/a.text/p.text) は非空なら console.warn (PII 無し)
 //     してから削除 (サイレントに捨てない)。
 //
-// 削除手順: オンシさんが新形式で JSON を書き出して内容を確認したら、このファイルと
-//   呼出箇所 (リポジトリを `TEMP: remove after onishi data migration` で grep) を
+// 削除手順: 初期ユーザーが新形式で JSON を書き出して内容を確認したら、このファイルと
+//   呼出箇所 (リポジトリを `TEMP: remove after initial-user data migration` で grep) を
 //   まとめて削除できる。
 // ============================================================================
 

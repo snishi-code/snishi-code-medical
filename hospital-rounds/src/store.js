@@ -10,8 +10,8 @@ import {
   clone,
 } from "./constants.js";
 import { projectBundle, parseBundle, getSection, SECTION } from "./bundle.js";
-import { formatValueHasInput, repairGroupExpandInvariant } from "./features/format-values.js";
-// TEMP: remove after onishi data migration (Phase 7 一回限り入力モデル移行)
+import { formatValueHasInput, collectFormatItemIndicesWithData, repairGroupExpandInvariant } from "./features/format-values.js";
+// TEMP: remove after initial-user data migration (Phase 7 一回限り入力モデル移行)
 import { migratePatientsInputModel } from "./features/one-time-input-model-migration.js";
 import { t } from "./i18n.js";
 import { showToast } from "./toast.js";
@@ -470,7 +470,7 @@ function applyBundleToLive(bundle) {
     recvMemo: (meta && typeof meta.recvMemo === "string") ? meta.recvMemo : "",
     recvShared: (meta && typeof meta.recvShared === "string") ? meta.recvShared : "",
   };
-  // TEMP: remove after onishi data migration — 旧入力モデル (memo/shared/s/oFree/a/p)
+  // TEMP: remove after initial-user data migration — 旧入力モデル (memo/shared/s/oFree/a/p)
   // を新 formatValues へ移す。settings が確定した状態で呼ぶ前提 (initStore は settings を
   // 先に解決してからこの関数を呼ぶ / switch* は global settings ロード済み)。移行で患者が
   // 変わったら disk 収束のため保存予約する。
@@ -801,7 +801,7 @@ export async function exportArchive() {
     try { b = await storageLoad(w.id); } catch (_) { /* skip broken */ }
     const patients = b ? (getSection(b, SECTION.PATIENTS) || []) : [];
     const meta = b ? (getSection(b, SECTION.META) || {}) : {};
-    // TEMP: remove after onishi data migration — 未オープン ws も含め export 前に新形式へ
+    // TEMP: remove after initial-user data migration — 未オープン ws も含め export 前に新形式へ
     // 移行し、旧 memo/shared/s/oFree/a/p が書き出されないようにする。
     try { migratePatientsInputModel(patients, settings); }
     catch (e) { console.error("exportArchive: migration failed:", e); }
@@ -833,7 +833,7 @@ export async function importArchive(archive, opts) {
   const targetSettings = replaceSettings ? normalizeSettings(archive.settings) : settings;
 
   // Pass 1: 永続化の前に全 ws を normalize + 移行し、移行失敗を集める (副作用なし)。
-  // TEMP: remove after onishi data migration — **空判定の前に** 新形式へ移行する。Phase 7 後の
+  // TEMP: remove after initial-user data migration — **空判定の前に** 新形式へ移行する。Phase 7 後の
   // isPatientEmpty は旧 memo/shared を見ないので、移行前に空判定すると「プロブレム/共有だけ」の病棟を
   // 空扱いで取りこぼす。移行は targetSettings の ID で書く。
   const prepared = [];
@@ -906,7 +906,7 @@ export async function exportDeviceArchive() {
       try { b = await storageLoad(w.id); } catch (_) { /* skip broken */ }
       const patients = b ? (getSection(b, SECTION.PATIENTS) || []) : [];
       const meta = b ? (getSection(b, SECTION.META) || {}) : {};
-      // TEMP: remove after onishi data migration — そのユーザーの設定で新形式へ移行
+      // TEMP: remove after initial-user data migration — そのユーザーの設定で新形式へ移行
       try { migratePatientsInputModel(patients, us); }
       catch (e) { console.error("exportDeviceArchive: migration failed:", e); }
       workspaces.push({
@@ -969,7 +969,7 @@ export async function importDeviceArchive(archive) {
     for (const w of wss) {
       const patients = Array.isArray(w && w.patients) ? w.patients : [];
       const norm = normalizeLoaded({ title: (w && w.title) || t("app.title"), patients });
-      // TEMP: remove after onishi data migration — **空判定の前に** そのユーザーの設定 (us) で移行。
+      // TEMP: remove after initial-user data migration — **空判定の前に** そのユーザーの設定 (us) で移行。
       try {
         const res = migratePatientsInputModel(norm.patients, us);
         if (res && Array.isArray(res.failures)) migrationFailed += res.failures.length;
@@ -1057,4 +1057,32 @@ export function markUpdated(no) {
   if (!p) return;
   p.updatedAt = Date.now();
   if (_onMarkUpdated) _onMarkUpdated(no);
+}
+
+// ============================
+// フォーマット item 編集の破壊防止: 入力済み item index の横断収集
+//
+// settings.formats は現ユーザーの全病棟 (ワークスペース) 共通なので、ある format の
+// item 削除/並び替えは「アクティブ病棟以外」の患者データもずらし得る。現ユーザーの
+// 全病棟を横断して、入力がある item index の集合を返す。
+//   - アクティブ病棟は live の appState.patients (debounce 中の未保存入力も含む)
+//   - 非アクティブ病棟は保存済みバンドル
+// 失敗時 (列挙やロードの失敗 = データの有無を確認できない) は null を返し、呼び出し側が
+// fail-closed (全ブロック扱い) にする。
+// ============================
+export async function collectFormatDataIndices(formatId) {
+  try {
+    const out = collectFormatItemIndicesWithData(appState.patients, formatId);
+    const activeId = getActiveWorkspaceId();
+    for (const b of await listBundles()) {
+      if (b.id === activeId) continue;
+      const bundle = await storageLoad(b.id);
+      if (!bundle) return null; // ロード不可 = 有無を確認できない → fail-closed
+      collectFormatItemIndicesWithData(getSection(bundle, SECTION.PATIENTS) || [], formatId, out);
+    }
+    return out;
+  } catch (e) {
+    console.warn("collectFormatDataIndices failed:", e);
+    return null;
+  }
 }

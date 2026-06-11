@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { boot, goToHome, goToMemo, goToShared, openPatient, inlineEditSave } from "./helpers.js";
+import { boot, goToHome, goToMemo, goToShared, openPatient, inlineEditSet } from "./helpers.js";
 
 // Phase 7: 患者入力モデル6パネル化。プロブレムリスト (problem) と共有 (shared) も
 // settings.formats + formatValues に集約。患者画面QR は problem/S/O/A/P を出し shared は出さない。
@@ -16,13 +16,13 @@ async function openQrPreview(page) {
 // problem カードの先頭 # 番号セルをタップ → その場 (inline) で value/note を入れて保存。
 async function enterProblem(page, value, note) {
   const card = page.locator("#problemExpanded .formatExpanded").first();
-  await inlineEditSave(page, card.locator(".formatCardValue").first(), { value, note });
+  await inlineEditSet(page, card.locator(".formatCardValue").first(), { value, note });
 }
 
 // shared カードのテキストセルをタップ → その場 (inline) で本文を入れて保存。
 async function enterShared(page, text) {
   const card = page.locator("#sharedExpanded .formatExpanded").first();
-  await inlineEditSave(page, card.locator(".formatCardValue").first(), { value: text });
+  await inlineEditSet(page, card.locator(".formatCardValue").first(), { value: text });
 }
 
 test("患者画面に problem/S/O/A/P/shared の6パネルカードが出る", async ({ page }) => {

@@ -141,6 +141,52 @@ export function formatValueHasInput(v) {
   return !!String(v ?? "").replace("/", "").trim();
 }
 
+// ============================
+// 設定編集 (フォーマット item の削除/並び替え/種類変更) の破壊防止判定
+//
+// 患者の formatValues は item index に紐づくため、入力済みデータがある format の
+// item を削除・並び替えすると、既存入力の意味ずれ (別項目へのずれ) や消失が起きる。
+// ここは「どの index に入力があるか」の収集と、操作可否の純判定を置く (DOM/store 非依存)。
+// dataIndices = Set<number> | null。null は「不明 (収集中 / 収集失敗)」= fail-closed で
+// 全ブロック扱い (壊れる可能性がある間は破壊操作を通さない)。
+// ============================
+
+// patients[].formatValues[formatId] のうち入力がある item index の集合を into に集める。
+// (note のみ入力も formatValueHasInput が「入力あり」と判定する)
+export function collectFormatItemIndicesWithData(patients, formatId, into = new Set()) {
+  for (const p of (Array.isArray(patients) ? patients : [])) {
+    const vals = p?.formatValues?.[formatId];
+    if (!vals || typeof vals !== "object") continue;
+    for (const k of Object.keys(vals)) {
+      const idx = Number(k);
+      if (!Number.isInteger(idx) || idx < 0) continue;
+      if (formatValueHasInput(vals[k])) into.add(idx);
+    }
+  }
+  return into;
+}
+
+// item i の削除可否: "data" = その index に入力あり / "shift" = それより後の index に
+// 入力があり、削除すると並びがずれる / null = 削除可。
+export function formatItemDeleteBlocked(dataIndices, i) {
+  if (!(dataIndices instanceof Set)) return "data"; // 不明は fail-closed
+  if (dataIndices.has(i)) return "data";
+  for (const idx of dataIndices) { if (idx > i) return "shift"; }
+  return null;
+}
+
+// 並び替え可否: その format に 1 つでも入力があれば不可 (緊急修正では override 無し)。
+export function formatItemReorderBlocked(dataIndices) {
+  if (!(dataIndices instanceof Set)) return true; // 不明は fail-closed
+  return dataIndices.size > 0;
+}
+
+// kind (種類) 変更可否: その index に入力があれば不可 (保存形が kind に依存するため)。
+export function formatItemKindChangeBlocked(dataIndices, i) {
+  if (!(dataIndices instanceof Set)) return true; // 不明は fail-closed
+  return dataIndices.has(i);
+}
+
 // 値 + memo(注記) を組み合わせて「ラベル <labelSep> 値」を作る。
 // 注記がある場合だけ末尾に半角スペース + 注記を付ける (例: "SpO2 96% O2 2L")。
 export function combineLabelValueMemo(label, labelSep, value, memo) {

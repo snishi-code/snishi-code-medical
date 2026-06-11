@@ -24,7 +24,10 @@
 //   4) 反映時に対象 textarea の末尾に追記 + format.tags を患者タグへ merge
 // ============================
 
-import { appState, settings, selectedNo, saveSettings, scheduleSave, markUpdated } from "../store.js";
+import {
+  appState, settings, selectedNo, saveSettings, scheduleSave, markUpdated,
+  collectFormatDataIndices,
+} from "../store.js";
 import {
   FORMAT_ITEM_KINDS, DEFAULT_ITEM_KIND,
   DEFAULT_LABEL_SEP_TEXT, DEFAULT_LABEL_SEP_OTHER,
@@ -37,6 +40,7 @@ import {
   readNumericEntry, composeFormatFromValues,
   readTextValue, normalizeTextEntry, decidePresetToggle, commitDraftTextEntry,
   computeFormatTagsToAdd,
+  formatItemDeleteBlocked, formatItemReorderBlocked, formatItemKindChangeBlocked,
 } from "./format-values.js";
 import { icon } from "../icons.js";
 import { t, applyI18n } from "../i18n.js";
@@ -290,20 +294,28 @@ const CHECK_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" s
 // 開くのは重いので、タップした値セルを**その行のまま**編集状態にする (= inline 編集)。
 // クイック chip / ☰ ランチャーから呼ぶフォーマットは従来どおりポップアップ (openFormatSheet)。
 //
-// 設計:
-//   - 1 度に編集できるのは 1 項目だけ (_inlineEdit)。別セルをタップ / 画面遷移 / 患者切替で
-//     破棄 (= 未保存ドラフトは捨てる。明示「保存」でのみ確定 = blur 即保存にしない)。
-//   - 値の確定は既存の単項目書込経路 writeFormatValue を再利用 (ワンタップ正常チェックと
-//     同じ経路)。Undo 起点 captureFormatUndo / 自動付与タグ delta も同様に通す。
-//   - fail-closed: 開いた時点と患者が変わっていたら保存しない (別患者への誤入力防止)。
+// 設計 (自動保存 = write-through):
+//   - 1 度に編集できるのは 1 項目だけ (_inlineEdit)。
+//   - 保存/キャンセルボタンは持たない。input イベントごとに commitInlineDraft() が
+//     formatValues へ書き込み (writeFormatValue = markUpdated + scheduleSave)、画面遷移・
+//     戻る・リロードでも入力済み内容は失われない (リロードは beforeunload/visibilitychange
+//     の flushSavePending が debounce 中の保存を確定する)。
+//   - 入力ごとに全体再描画はしない (カーソルが飛ぶ)。QR・他表示の更新は編集終了時
+//     (別セルタップ / 外側タップ / 戻る / 画面遷移) にまとめて行う (_onTextChanged)。
+//   - Undo 起点 captureFormatUndo は「編集セッション中の最初の実変更」で 1 回だけ撮る
+//     (1 文字ごとに履歴を増やさない)。自動付与タグ delta も同時に渡す。
+//   - fail-closed: 患者が変わった / フォーマット・item が消えた場合は書き込まず編集終了
+//     (別患者へ保存しない)。
 //   - 描画はドラフト (_inlineEdit.draft) を正本に行うので、途中で再描画されても入力中の値は
 //     失われない (buildCardItemRow が編集行を draft から組み直す)。
 //   - 自動フォーカス: 値セルをタップ = その項目への明示タップなので、編集に入った入力欄へ
 //     focus してよい (中央ルール「明示タップした時だけ focus」)。ポップアップ open 時の
 //     「触っていない先頭欄へ勝手に focus」とは別カテゴリ。
 //
-// _inlineEdit = { formatId, panel, i, openPid, draft, focusOnRender } | null
+// _inlineEdit = { formatId, panel, i, openPid, draft, orig, captured, dirty, focusOnRender } | null
 //   draft: text => 文字列 / number・fraction => { value, note }
+//   orig:  編集開始時点の保存値 (text の provenance 比較基準 = commitDraftTextEntry に渡す)
+//   captured: このセッションで Undo 起点を撮ったか / dirty: 実変更を書き込んだか
 let _inlineEdit = null;
 
 function rerenderExpandedPanel(panel) {
@@ -322,37 +334,58 @@ function enterInlineEdit(format, item, i, stored, patient) {
   if (!_freshTapSinceEntry) return;
   const kind = item.kind || DEFAULT_ITEM_KIND;
   const seed = (kind === "text") ? readTextValue(stored?.[i]) : readNumericEntry(stored?.[i]);
-  // 別パネルで編集中だった場合、そのパネルの古いエディタ DOM が残らないよう再描画して表示へ
-  // 戻す (同一パネルなら下の再描画 1 回で旧行も表示へ戻る)。1 度に編集できるのは 1 項目だけ。
-  const prevPanel = _inlineEdit ? _inlineEdit.panel : null;
+  // 直前の編集セッションは write-through 済みなので「閉じる」だけ。1 度に編集できるのは 1 項目。
+  const prev = _inlineEdit;
   _inlineEdit = {
     formatId: format.id, panel: format.panel, i,
     openPid: patient?.pid ?? null,
     draft: seed,
+    orig: stored?.[i],
+    captured: false,
+    dirty: false,
     focusOnRender: true,
   };
-  if (prevPanel && prevPanel !== format.panel) rerenderExpandedPanel(prevPanel);
+  // 前セッションで実変更があれば QR 等も含めて全体更新 (編集終了時の反映)。新しい編集行は
+  // _inlineEdit を正本に組み直されるので focus も維持される。
+  if (prev && prev.dirty && _onTextChanged) { _onTextChanged(); return; }
+  if (prev && prev.panel !== format.panel) rerenderExpandedPanel(prev.panel);
   rerenderExpandedPanel(format.panel);
 }
 
-// inline 編集を破棄する (保存しない)。active だったら true。opts.silent=true なら再描画
+// inline 編集を終了する (= 編集 UI を閉じる)。active だったら true。
+// 自動保存 (write-through) 後なので、ここで入力済みの値が失われることはない
+// (Back・画面遷移から呼ばれても保存済み入力はそのまま)。opts.silent=true なら再描画
 // しない (画面遷移で離れる時など、戻ってきたら detail 全体が再描画されるので不要)。
 export function cancelInlineFormatEdit(opts = {}) {
   if (!_inlineEdit) return false;
-  const panel = _inlineEdit.panel;
+  const { panel, dirty } = _inlineEdit;
   _inlineEdit = null;
-  if (!opts.silent) rerenderExpandedPanel(panel);
+  if (!opts.silent) {
+    // 実変更があったセッションの終了 = QR・他 view 反映もここでまとめて行う
+    // (入力中は再描画しない方針の「編集終了時」反映)。
+    if (dirty && _onTextChanged) _onTextChanged();
+    else rerenderExpandedPanel(panel);
+  }
   return true;
 }
 
-// inline 編集中の値を確定する。単項目だけを writeFormatValue で書く (他項目は触らない)。
-function saveInlineEdit() {
+// kind 別に「保存値が同じか」を判定 (実変更の検出。text は値文字列、number/fraction は
+// value+note で比較。provenance (source) は commitDraftTextEntry 側が温存する)。
+function inlineValueUnchanged(kind, next, orig) {
+  if (kind === "text") return readTextValue(next) === readTextValue(orig);
+  const a = readNumericEntry(next), b = readNumericEntry(orig);
+  return a.value === b.value && a.note === b.note;
+}
+
+// inline 編集の write-through 本体: input イベントごとに現在のドラフトを患者の
+// formatValues へ書き込む (markUpdated + scheduleSave)。再描画はしない (カーソル維持)。
+// Undo 起点はセッション最初の実変更時に 1 回だけ撮り、自動付与タグもその時だけ適用する。
+function commitInlineDraft() {
   if (!_inlineEdit) return;
-  const { formatId, i, openPid, panel } = _inlineEdit;
-  const draft = _inlineEdit.draft;
+  const { formatId, i, openPid } = _inlineEdit;
   const p = appState.patients[selectedNo - 1];
   const format = (Array.isArray(settings.formats) ? settings.formats : []).find(f => f.id === formatId);
-  // fail-closed: 患者が変わった / フォーマットが消えた等は保存せず中断。
+  // fail-closed: 患者が変わった / フォーマット・item が消えた → 書き込まず編集終了。
   if (!p || !format || !format.items?.[i] || (openPid != null && p.pid !== openPid)) {
     _inlineEdit = null;
     showToast(t("format.sheet.patientChanged"), { ms: 4000 });
@@ -360,16 +393,21 @@ function saveInlineEdit() {
     return;
   }
   const kind = format.items[i].kind || DEFAULT_ITEM_KIND;
-  const stored = (p.formatValues?.[formatId] && typeof p.formatValues[formatId] === "object")
-    ? p.formatValues[formatId] : {};
-  // text は手入力由来 (manual) として確定 (空は "")。number/fraction は { value, note } そのまま。
-  const value = (kind === "text") ? commitDraftTextEntry(stored[i], draft) : draft;
-  // 値が変わるので Undo 起点を撮り、自動付与タグの delta も履歴へ渡す (Undo で撤回)。
-  captureFormatUndo(p, { tagsAdded: formatTagsToAdd(format) });
-  writeFormatValue(p, format, i, value); // markUpdated + scheduleSave
-  applyFormatTags(format);
-  _inlineEdit = null;
-  if (_onTextChanged) _onTextChanged(); // 再描画 (カード値更新 + 新カード反映 + QR)
+  // text は orig (編集開始時の保存値) を基準に manual 化判定 (未変更なら出所を温存)。
+  const value = (kind === "text") ? commitDraftTextEntry(_inlineEdit.orig, _inlineEdit.draft) : _inlineEdit.draft;
+  if (!_inlineEdit.captured) {
+    // まだ実変更が無い入力 (IME 合成等で値が変わらないイベント) は何も書かない。
+    if (inlineValueUnchanged(kind, value, _inlineEdit.orig)) return;
+    // 最初の実変更: Undo 起点を 1 回だけ撮り、自動付与タグの delta も履歴へ渡す。
+    captureFormatUndo(p, { tagsAdded: formatTagsToAdd(format) });
+    _inlineEdit.captured = true;
+    writeFormatValue(p, format, i, value); // markUpdated + scheduleSave
+    applyFormatTags(format);
+    _inlineEdit.dirty = true;
+    return;
+  }
+  writeFormatValue(p, format, i, value);
+  _inlineEdit.dirty = true;
 }
 
 // 患者画面にカードとして並ぶフォーマットを順序付きで返す: 常時出す展開カード
@@ -549,8 +587,9 @@ function buildCardItemRow(format, item, i, stored, patient, hasLabelCol, hasNorm
   return row;
 }
 
-// inline 編集の入力欄セル (値列に入る)。kind 別の入力 + (number/fraction は) 注記 +
-// [キャンセル][保存]。入力ロジックは入力シート (buildNumberRow 等) と同じ低レベルヘルパ
+// inline 編集の入力欄セル (値列に入る)。kind 別の入力 + (number/fraction は) 注記。
+// 保存/キャンセルボタンは無い (input ごとに commitInlineDraft が自動保存する)。
+// 入力ロジックは入力シート (buildNumberRow 等) と同じ低レベルヘルパ
 // (setupNumericInput / setupTextInput / readNumericEntry / buildNoteInput) を共有する。
 // 戻り値: { el, primaryInput } primaryInput = 明示フォーカス対象 (タップした項目の主入力欄)。
 function buildInlineEditCell(format, item, i) {
@@ -560,6 +599,11 @@ function buildInlineEditCell(format, item, i) {
   const fields = document.createElement("div");
   fields.className = "formatCardEditFields";
   let primaryInput = null;
+
+  // この行の編集セッションがまだ生きているか (fail-closed 終了後の stale DOM からの
+  // 入力イベントを書き込ませない)。
+  const sessionAlive = () =>
+    !!(_inlineEdit && _inlineEdit.formatId === format.id && _inlineEdit.i === i);
 
   if (kind === "number") {
     const { value, note } = readNumericEntry(_inlineEdit.draft);
@@ -579,7 +623,11 @@ function buildInlineEditCell(format, item, i) {
     fields.appendChild(valRow);
     const noteInp = buildNoteInput(note);
     fields.appendChild(noteInp);
-    const emit = () => { _inlineEdit.draft = { value: val.value, note: noteInp.value }; };
+    const emit = () => {
+      if (!sessionAlive()) return;
+      _inlineEdit.draft = { value: val.value, note: noteInp.value };
+      commitInlineDraft();
+    };
     val.addEventListener("input", emit);
     noteInp.addEventListener("input", emit);
     primaryInput = val;
@@ -618,7 +666,11 @@ function buildInlineEditCell(format, item, i) {
     fields.appendChild(valRow);
     const noteInp = buildNoteInput(note);
     fields.appendChild(noteInp);
-    const emit = () => { _inlineEdit.draft = { value: `${numer.value}/${denom.value}`, note: noteInp.value }; };
+    const emit = () => {
+      if (!sessionAlive()) return;
+      _inlineEdit.draft = { value: `${numer.value}/${denom.value}`, note: noteInp.value };
+      commitInlineDraft();
+    };
     numer.addEventListener("input", emit);
     denom.addEventListener("input", emit);
     noteInp.addEventListener("input", emit);
@@ -630,34 +682,22 @@ function buildInlineEditCell(format, item, i) {
     ta.rows = 1;
     setupTextInput(ta);
     ta.value = readTextValue(_inlineEdit.draft);
-    ta.addEventListener("input", () => { _inlineEdit.draft = ta.value; });
+    ta.addEventListener("input", () => {
+      if (!sessionAlive()) return;
+      _inlineEdit.draft = ta.value;
+      commitInlineDraft();
+    });
     fields.appendChild(ta);
     primaryInput = ta;
   }
   cell.appendChild(fields);
 
-  // アクション: [キャンセル][保存]。blur 即保存にせず明示ボタンで確定/破棄 (誤入力を戻しやすく)。
-  const actions = document.createElement("div");
-  actions.className = "formatCardEditActions";
-  const cancelBtn = document.createElement("button");
-  cancelBtn.type = "button";
-  cancelBtn.className = "secondary formatCardEditCancel";
-  cancelBtn.textContent = t("common.cancel");
-  cancelBtn.addEventListener("click", (e) => { e.stopPropagation(); cancelInlineFormatEdit(); });
-  const saveBtn = document.createElement("button");
-  saveBtn.type = "button";
-  saveBtn.className = "primary formatCardEditSave";
-  saveBtn.textContent = t("common.save");
-  saveBtn.addEventListener("click", (e) => { e.stopPropagation(); saveInlineEdit(); });
-  actions.appendChild(cancelBtn);
-  actions.appendChild(saveBtn);
-  cell.appendChild(actions);
-
   return { el: cell, primaryInput };
 }
 
 // inline 編集中の正常列ボタン: タップで編集中テキスト欄へ正常文を流し込む (再タップで空に)。
-// 入力シート (buildTextRow) のチェックボタンと同じ「フィールドに正常文をトグル」挙動。
+// 入力シート (buildTextRow) のチェックボタンと同じ「フィールドに正常文をトグル」挙動だが、
+// 自動保存経路 (commitInlineDraft) にも乗せる (入力欄に入れるだけで終わらせない)。
 function buildInlineNormalFillBtn(item, edit) {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -668,10 +708,11 @@ function buildInlineNormalFillBtn(item, edit) {
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     const ta = edit.primaryInput;
-    if (!ta) return;
+    if (!ta || !_inlineEdit) return;
     const normal = item.normal || "";
     ta.value = (ta.value === normal) ? "" : normal;
-    if (_inlineEdit) _inlineEdit.draft = ta.value;
+    _inlineEdit.draft = ta.value;
+    commitInlineDraft();
   });
   return btn;
 }
@@ -1057,6 +1098,15 @@ function applyFormatTags(format) {
 // ============================
 let _currentEdit = null; // { isNew, target, panel, onSaved, lastKind }
 
+// 編集中フォーマットの「入力済み item index 集合」(Set | null | undefined)。
+//   Set       = 収集済み (現ユーザー全病棟横断)
+//   undefined = 収集中 / null = 収集失敗 — どちらも不明なので fail-closed (全ブロック扱い)
+// 患者データを index ずれ・消失から守る判定 (削除/並び替え/種類変更/保存時 filter) が参照する。
+function editDataIndices() {
+  const d = _currentEdit ? _currentEdit.dataIndices : null;
+  return (d instanceof Set) ? d : null;
+}
+
 function openFormatEditModal(target, panel, onSaved) {
   const overlay = document.getElementById("formatEditOverlay");
   if (!overlay) return;
@@ -1084,6 +1134,15 @@ function openFormatEditModal(target, panel, onSaved) {
   if (_currentEdit.target.items.length) {
     const last = _currentEdit.target.items[_currentEdit.target.items.length - 1];
     if (last && FORMAT_ITEM_KINDS.includes(last.kind)) _currentEdit.lastKind = last.kind;
+  }
+  // 入力済み item index を現ユーザー全病棟横断で収集する (患者データの index ずれ防止判定用)。
+  // 新規フォーマットはデータが存在し得ないので空集合。収集完了まで undefined = fail-closed。
+  _currentEdit.dataIndices = _currentEdit.isNew ? new Set() : undefined;
+  if (!_currentEdit.isNew) {
+    const edit = _currentEdit;
+    collectFormatDataIndices(edit.target.id)
+      .then((set) => { if (_currentEdit === edit) _currentEdit.dataIndices = set; })
+      .catch(() => { if (_currentEdit === edit) _currentEdit.dataIndices = null; });
   }
   // パネル表記をモーダルタイトル横に表示 (固定: ユーザーは変更不可)
   // タイトル表示なし (UIを簡潔に保つため)
@@ -1150,6 +1209,12 @@ function onFormatItemDrop(fromIdx, toIdx) {
   const items = _currentEdit.target.items;
   if (fromIdx < 0 || fromIdx >= items.length) return;
   if (toIdx < 0 || toIdx >= items.length || fromIdx === toIdx) return;
+  // 患者の formatValues は item index に紐づく。入力済みデータがある format の並び替えは
+  // 既存入力の意味ずれになるのでブロックする (緊急修正: destructive override は持たない)。
+  if (formatItemReorderBlocked(editDataIndices())) {
+    showToast(t("format.itemReorder.blocked"), { ms: 4000 });
+    return;
+  }
   const [moved] = items.splice(fromIdx, 1);
   items.splice(toIdx, 0, moved);
   const host = document.getElementById("formatEditItems");
@@ -1199,6 +1264,13 @@ function renderFormatEditItems(host) {
     }
     kindSel.value = item.kind || DEFAULT_ITEM_KIND;
     kindSel.addEventListener("change", () => {
+      // 入力済みデータがある item の kind 変更は保存形の解釈が壊れるのでブロック (select を戻す)。
+      if (kindSel.value !== (item.kind || DEFAULT_ITEM_KIND)
+        && formatItemKindChangeBlocked(editDataIndices(), i)) {
+        kindSel.value = item.kind || DEFAULT_ITEM_KIND;
+        showToast(t("format.itemKind.blocked"), { ms: 4000 });
+        return;
+      }
       const next = morphItemKind(item, kindSel.value);
       target.items[i] = next;
       _currentEdit.lastKind = next.kind;
@@ -1258,6 +1330,13 @@ function renderFormatEditItems(host) {
     del.setAttribute("aria-label", t("format.deleteItem.aria"));
     del.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
     del.addEventListener("click", () => {
+      // その index に入力がある (= 消失) / それより後に入力がある (= splice で index ずれ)
+      // 場合は削除をブロックする。患者データを無警告で消したり別項目へずらしたりしない。
+      const blocked = formatItemDeleteBlocked(editDataIndices(), i);
+      if (blocked) {
+        showToast(t(blocked === "shift" ? "format.itemDelete.blockedShift" : "format.itemDelete.blocked"), { ms: 4000 });
+        return;
+      }
       target.items.splice(i, 1);
       renderFormatEditItems(host);
     });
@@ -1321,21 +1400,32 @@ function saveFormatEdit() {
   //   text:               label / normal どちらか入力があれば保持
   //   date:               ラベル無しでも保持 (日付だけ展開する用途。例 抗菌薬の "5/20-")
   //   number / fraction:  label が空なら除外 (値だけでは意味を成さない)
-  target.items = target.items
-    .map(it => {
-      // kind が壊れていたら text にフォールバック
-      if (!FORMAT_ITEM_KINDS.includes(it.kind)) return morphItemKind(it, DEFAULT_ITEM_KIND);
-      return it;
-    })
-    .filter(it => {
-      const label = String(it.label || "").trim();
-      if (it.kind === "text") {
-        const normal = String(it.normal || "").trim();
-        return !!label || !!normal;
-      }
-      if (it.kind === "fraction") return true; // 分数はラベル任意 (日付 "5/20" 等)
-      return !!label; // number はラベル必須
-    });
+  const cleanedItems = target.items.map(it => {
+    // kind が壊れていたら text にフォールバック
+    if (!FORMAT_ITEM_KINDS.includes(it.kind)) return morphItemKind(it, DEFAULT_ITEM_KIND);
+    return it;
+  });
+  const keepItem = (it) => {
+    const label = String(it.label || "").trim();
+    if (it.kind === "text") {
+      const normal = String(it.normal || "").trim();
+      return !!label || !!normal;
+    }
+    if (it.kind === "fraction") return true; // 分数はラベル任意 (日付 "5/20" 等)
+    return !!label; // number はラベル必須
+  };
+  // 保存時の自動除外も「項目削除」と同じ index ずれ要因 (例: 入力済み number item の
+  // ラベルを空にして保存)。入力済みデータを壊す除外は保存ごと中断する (モーダルは
+  // 開いたまま = ラベルを戻せば再保存できる)。
+  for (let idx = 0; idx < cleanedItems.length; idx++) {
+    if (keepItem(cleanedItems[idx])) continue;
+    const blocked = formatItemDeleteBlocked(editDataIndices(), idx);
+    if (blocked) {
+      showToast(t(blocked === "shift" ? "format.itemDelete.blockedShift" : "format.itemDelete.blocked"), { ms: 4000 });
+      return;
+    }
+  }
+  target.items = cleanedItems.filter(keepItem);
 
   adapterSaveFormat(target, _currentEdit.isNew);
   const cb = _currentEdit.onSaved;
@@ -1380,6 +1470,19 @@ export function initFormats() {
   // 誤タップガード: 新しい pointerdown を検知したら「明示タップ」とみなしてフラグを立てる
   // (capture で早期に。これより前は detail 入場直後のゴーストクリック扱いで入力シートを開かない)。
   document.addEventListener("pointerdown", () => { _freshTapSinceEntry = true; }, true);
+
+  // 編集行の外側タップで inline 編集を終了する (値は write-through 済みなので失われない。
+  // 編集終了時に QR 等もまとめて反映)。先行ハンドラの再描画で DOM から外れた要素への
+  // click (別セルへの編集移動・表示モード正常チェック等) は対象外 (isConnected 判定) —
+  // それらは自分の経路で編集状態を管理する。
+  document.addEventListener("click", (e) => {
+    if (!_inlineEdit) return;
+    const target = e.target;
+    if (!(target instanceof Node) || !target.isConnected) return;
+    const row = document.querySelector(".formatCardItem.editing");
+    if (row && row.contains(target)) return;
+    cancelInlineFormatEdit();
+  });
 
   const inputApply = document.getElementById("formatInputApplyBtn");
   const inputCancel = document.getElementById("formatInputCancelBtn");

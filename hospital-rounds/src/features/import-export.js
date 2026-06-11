@@ -22,7 +22,7 @@ import {
 } from "../store.js";
 import { STATUS, clone } from "../constants.js";
 import { formatValueHasInput } from "./format-values.js";
-// TEMP: remove after onishi data migration (Phase 7 一回限り入力モデル移行)
+// TEMP: remove after initial-user data migration (Phase 7 一回限り入力モデル移行)
 import { migratePatientsInputModel } from "./one-time-input-model-migration.js";
 import {
   parseBundle, getSection, SECTION,
@@ -297,7 +297,7 @@ export function initImportExport(callbacks) {
     const sPatients = getSection(bundle, SECTION.PATIENTS);
     const sSettings = getSection(bundle, SECTION.SETTINGS);
 
-    // TEMP: remove after onishi data migration — 旧形式を現設定で移行し、受け皿不足等で移行できない
+    // TEMP: remove after initial-user data migration — 旧形式を現設定で移行し、受け皿不足等で移行できない
     // 非空 memo/shared があれば true。fail-closed: その場合は取込を中断する (保持した旧データは
     // isPatientEmpty が見ないため、このまま取り込むと空扱いで取りこぼし=消失になり得る)。
     const migrateHasFailure = (patients) => {

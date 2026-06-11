@@ -33,10 +33,21 @@
       background: #fff;
       border-radius: 14px;
       padding: 16px;
-      width: 260px;
+      /* box-sizing 共通化 (border-box)。旧 content-box 時代の実寸 (260+16*2) を
+         維持するため width は 292px (個別 menu の width/box-sizing 指定はそのまま勝つ)。 */
+      box-sizing: border-box;
+      width: 292px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
       animation: popScale 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
       position: relative; /* .popupCloseX の絶対配置のため */
+      /* viewport より高い popup を作らない (overlay は中央寄せ flex なので、はみ出すと
+         上下が画面外になり下部の保存等へ到達できない)。内容は内部スクロールで読む。
+         dvh = iOS/Android の URL バー伸縮に追従する動的 viewport。非対応環境は vh fallback。 */
+      max-height: calc(100vh - 24px);
+      max-height: calc(100dvh - 24px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
     }
 
     /* ============================

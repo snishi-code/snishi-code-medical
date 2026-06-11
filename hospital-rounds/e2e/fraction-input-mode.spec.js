@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { boot, goToHome, openPatient } from "./helpers.js";
+import { boot, goToHome, openPatient, endInlineEdit } from "./helpers.js";
 
 // 分数(fraction)入力モード: item ごとに数字/文字キーボードを選べる。
 // 既定バイタルの BP は数字入力(fracMode=numeric)、抗菌薬等の英字混在は文字入力。
@@ -21,10 +21,10 @@ test("既定 BP の分数入力は数字キーボード (inline 編集でも inp
   // 分数の左右 input が数字キーボード (setupNumericInput → inputmode=numeric)
   await expect(editing.locator(".formatInputFracNumer")).toHaveAttribute("inputmode", "numeric");
   await expect(editing.locator(".formatInputFracDenom")).toHaveAttribute("inputmode", "numeric");
-  // 数値を入れて保存 → 従来どおり "左/右 単位" 形式で QR に出る (出力は不変)
+  // 数値を入れて編集終了 (自動保存) → 従来どおり "左/右 単位" 形式で QR に出る (出力は不変)
   await editing.locator(".formatInputFracNumer").fill("120");
   await editing.locator(".formatInputFracDenom").fill("80");
-  await editing.locator(".formatCardEditSave").click();
+  await endInlineEdit(page);
   await page.locator("#qrToggleBtn").click();
   await expect(page.locator("#detailQrOverlay")).toHaveClass(/active/);
   expect(await page.locator("#qrTextPreview").textContent()).toContain("BP 120/80mmHg");
