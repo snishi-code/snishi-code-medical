@@ -112,14 +112,19 @@
       gap: 6px 8px;
       align-items: center;
     }
+    /* ラベル列は内容幅 (fit-content)。"#"・"BP" 等の短ラベルで入力欄を圧迫しない。
+       長いラベルは min(8rem, 30vw) で頭打ちにして折り返す (word-break: break-word) =
+       狭い画面でも値列 (1fr) が極端に潰れない。1 行目は min() 非対応環境向けフォールバック。 */
     .formatCardBody.hasLabel {
-      grid-template-columns: minmax(64px, 8rem) minmax(0, 1fr);
+      grid-template-columns: fit-content(8rem) minmax(0, 1fr);
+      grid-template-columns: fit-content(min(8rem, 30vw)) minmax(0, 1fr);
     }
     .formatCardBody.hasNormal {
       grid-template-columns: 44px minmax(0, 1fr);
     }
     .formatCardBody.hasLabel.hasNormal {
-      grid-template-columns: minmax(64px, 8rem) 44px minmax(0, 1fr);
+      grid-template-columns: fit-content(8rem) 44px minmax(0, 1fr);
+      grid-template-columns: fit-content(min(8rem, 30vw)) 44px minmax(0, 1fr);
     }
     .formatCardItem { display: contents; }
     .formatCardItemLabel {
@@ -178,10 +183,10 @@
     .formatCardNormalSpacer { width: 44px; height: 1px; }
 
     /* ============================
-       展開カードの inline 編集 (値セルをその場で編集)
-       値列セルを縦スタックの入力欄 + [キャンセル][保存] に置換する。ラベル列・正常列は
-       表示モードと同じ位置を保つ (グリッド整合)。入力ロジック・スタイルは入力シート
-       (.formatInput*) と共有する。 */
+       展開カードの inline 編集 (値セルをその場で編集・自動保存)
+       値列セルを縦スタックの入力欄に置換する (保存/キャンセルボタンは無し =
+       input ごとに自動保存)。ラベル列・正常列は表示モードと同じ位置を保つ
+       (グリッド整合)。入力ロジック・スタイルは入力シート (.formatInput*) と共有する。 */
     .formatCardEditCell {
       min-width: 0;
       display: flex;
@@ -222,25 +227,6 @@
       word-break: break-word;
     }
     .formatCardEditCell .formatInputMemo { width: 100%; }
-    .formatCardEditActions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-    .formatCardEditActions button {
-      width: auto;
-      min-width: 72px;
-      min-height: 40px;
-      margin: 0;
-      padding: 8px 14px;
-      border-radius: 8px;
-      font-weight: 700;
-      font-size: 14px;
-      cursor: pointer;
-    }
-    @media (max-width: 640px) {
-      .formatCardEditActions button { min-height: 44px; font-size: 15px; }
-    }
 
     /* ============================
        フォーマット入力モーダル

@@ -168,38 +168,37 @@ export async function waitUserCount(page, count, timeout = 6000) {
 }
 
 // ============================
-// 展開カードの inline 編集 (ポップアップ入力シートの代替)
+// 展開カードの inline 編集 (ポップアップ入力シートの代替・自動保存)
 //
 // 患者画面の展開カードの値セルをタップすると、その行が「その場」で編集状態になる
-// (= .formatCardItem.editing。.formatCardEditInput / .formatInputMemo / .formatCardEditSave /
-//  .formatCardEditCancel)。クイック chip / ☰ ランチャー経由は従来どおりポップアップ
-// (#formatInputOverlay)。
+// (= .formatCardItem.editing。.formatCardEditInput / .formatInputMemo)。保存/キャンセル
+// ボタンは無く、input ごとに患者データへ自動保存される。編集終了は編集行の外側タップ /
+// 別セルタップ / 戻る。クイック chip / ☰ ランチャー経由は従来どおりポップアップ
+// (#formatInputOverlay、明示保存/キャンセル)。
 // ============================
 
 // 値セル cell をタップして inline 編集に入り、編集中の行 locator を返す。
 export async function startInlineEdit(page, cell) {
   await cell.click();
   const editing = page.locator(".formatCardItem.editing");
-  await expect(editing.locator(".formatCardEditSave")).toBeVisible();
+  await expect(editing.locator(".formatCardEditInput").first()).toBeVisible();
   return editing;
 }
 
-// 値セル cell を inline 編集して保存する。
-//   opts.value: 主入力欄 (.formatCardEditInput) に入れる値 (text / number)
-//   opts.note:  注記欄 (.formatInputMemo) に入れる値 (number / fraction)
-export async function inlineEditSave(page, cell, opts = {}) {
-  const editing = await startInlineEdit(page, cell);
-  if (opts.value != null) await editing.locator(".formatCardEditInput").first().fill(opts.value);
-  if (opts.note != null) await editing.locator(".formatInputMemo").first().fill(opts.note);
-  await editing.locator(".formatCardEditSave").click();
+// inline 編集を終了する (編集行の外側タップ相当)。値は input ごとに自動保存済み。
+export async function endInlineEdit(page) {
+  await page.evaluate(() => document.body.click());
   await expect(page.locator(".formatCardItem.editing")).toHaveCount(0);
 }
 
-// 値セル cell を inline 編集してキャンセルする (元値は保持)。
-export async function inlineEditCancel(page, cell) {
+// 値セル cell を inline 編集して値を入れ、編集を終了する (自動保存)。
+//   opts.value: 主入力欄 (.formatCardEditInput) に入れる値 (text / number)
+//   opts.note:  注記欄 (.formatInputMemo) に入れる値 (number / fraction)
+export async function inlineEditSet(page, cell, opts = {}) {
   const editing = await startInlineEdit(page, cell);
-  await editing.locator(".formatCardEditCancel").click();
-  await expect(page.locator(".formatCardItem.editing")).toHaveCount(0);
+  if (opts.value != null) await editing.locator(".formatCardEditInput").first().fill(opts.value);
+  if (opts.note != null) await editing.locator(".formatInputMemo").first().fill(opts.note);
+  await endInlineEdit(page);
 }
 
 // ☰ ランチャー (strip = "#sFormatStrip" 等) から新規フォーマット (text 項目 1 つ) を作る。

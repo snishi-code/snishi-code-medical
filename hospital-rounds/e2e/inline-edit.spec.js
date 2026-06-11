@@ -1,13 +1,15 @@
 import { test, expect } from "@playwright/test";
 import {
   boot, goToHome, openPatient,
-  startInlineEdit, inlineEditSave,
+  startInlineEdit, inlineEditSet, endInlineEdit,
   createHamburgerFormat, openFormatSheetViaHamburger,
 } from "./helpers.js";
 
-// 展開カードの inline 編集 (ポップアップ入力シートの代替):
+// 展開カードの inline 編集 (ポップアップ入力シートの代替・自動保存):
 //  - 値セルをタップすると、その行が「その場」で編集状態になる (#formatInputOverlay は開かない)。
-//  - キャンセルで元値保持。クイック/ハンバーガー経由のフォーマット入力は従来どおりポップアップ。
+//  - 保存/キャンセルボタンは無く、input ごとに患者データへ自動保存される。
+//    戻る・外側タップ・リロードでも入力済みの内容は失われない。
+//  - クイック/ハンバーガー経由のフォーマット入力は従来どおりポップアップ (明示保存/キャンセル)。
 
 const MOBILE = { width: 390, height: 844 };
 
@@ -16,7 +18,7 @@ async function openQrPreview(page) {
   await expect(page.locator("#detailQrOverlay")).toHaveClass(/active/);
 }
 
-test("展開フォーマットの値セルをタップしても #formatInputOverlay が開かない (inline)", async ({ page }) => {
+test("展開フォーマットの値セルをタップしても #formatInputOverlay が開かない (inline・ボタン無し)", async ({ page }) => {
   await page.setViewportSize(MOBILE);
   await boot(page);
   await goToHome(page);
@@ -26,37 +28,58 @@ test("展開フォーマットの値セルをタップしても #formatInputOver
   // ポップアップ入力シートは開かず、その行が編集状態になる
   await expect(page.locator("#formatInputOverlay")).not.toHaveClass(/active/);
   await expect(page.locator("#sExpanded .formatCardItem.editing")).toHaveCount(1);
-  await expect(page.locator("#sExpanded .formatCardItem.editing .formatCardEditSave")).toBeVisible();
+  await expect(page.locator("#sExpanded .formatCardItem.editing .formatCardEditInput").first()).toBeVisible();
+  // 自動保存なので保存/キャンセルボタンは出ない
+  await expect(page.locator(".formatCardEditSave, .formatCardEditCancel")).toHaveCount(0);
 });
 
-test("inline 編集で保存すると患者画面表示と QR 本文に反映される", async ({ page }) => {
+test("inline 編集の入力は自動保存され、患者画面表示と QR 本文に反映される", async ({ page }) => {
   await page.setViewportSize(MOBILE);
   await boot(page);
   await goToHome(page);
   await openPatient(page, 0);
-  // S「自覚症状」の本文を inline 編集
+  // S「自覚症状」の本文を inline 編集 (保存ボタンは押さない = 外側タップで終了)
   const cell = page.locator("#sExpanded .formatExpanded .formatCardValue").first();
-  await inlineEditSave(page, cell, { value: "咳嗽が改善" });
+  await inlineEditSet(page, cell, { value: "咳嗽が改善" });
   await expect(cell).toHaveText("咳嗽が改善");
   // 患者画面QR 平文にも反映
   await openQrPreview(page);
   expect(await page.locator("#qrTextPreview").textContent()).toContain("咳嗽が改善");
 });
 
-test("inline 編集をキャンセルすると元の値が保持される", async ({ page }) => {
+test("inline 編集中に戻る操作をしても入力済みの値が残る (自動保存)", async ({ page }) => {
   await page.setViewportSize(MOBILE);
   await boot(page);
   await goToHome(page);
   await openPatient(page, 0);
   const cell = page.locator("#sExpanded .formatExpanded .formatCardValue").first();
-  await inlineEditSave(page, cell, { value: "申し送り A" });
+  await inlineEditSet(page, cell, { value: "申し送り A" });
   await expect(cell).toHaveText("申し送り A");
-  // もう一度開いて書き換え → キャンセル → 元の値が残る
+  // もう一度開いて書き換え → 戻る → 編集だけ閉じ、書き換えた値が残る (破棄されない)
   const editing = await startInlineEdit(page, cell);
   await editing.locator(".formatCardEditInput").first().fill("書き換えた");
-  await editing.locator(".formatCardEditCancel").click();
+  await page.goBack();
   await expect(page.locator(".formatCardItem.editing")).toHaveCount(0);
-  await expect(cell).toHaveText("申し送り A");
+  await expect(page.locator("#detailView")).toHaveClass(/active/);
+  await expect(cell).toHaveText("書き換えた");
+});
+
+test("inline 編集中にリロードしても入力済みの値が残る (自動保存 + 永続化)", async ({ page }) => {
+  await page.setViewportSize(MOBILE);
+  await boot(page);
+  await goToHome(page);
+  await openPatient(page, 0);
+  const cell = page.locator("#sExpanded .formatExpanded .formatCardValue").first();
+  const editing = await startInlineEdit(page, cell);
+  await editing.locator(".formatCardEditInput").first().fill("リロード前の入力");
+  // 編集を閉じずにリロード (debounce 180ms の保存完了を待ってから)
+  await page.waitForTimeout(400);
+  await page.reload();
+  await boot(page);
+  await goToHome(page);
+  await openPatient(page, 0);
+  await expect(page.locator("#sExpanded .formatExpanded .formatCardValue").first())
+    .toHaveText("リロード前の入力");
 });
 
 test("別カードの値セルをタップすると編集は 1 箇所だけに移る (古いエディタが残らない)", async ({ page }) => {

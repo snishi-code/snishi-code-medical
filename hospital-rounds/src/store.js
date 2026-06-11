@@ -10,7 +10,7 @@ import {
   clone,
 } from "./constants.js";
 import { projectBundle, parseBundle, getSection, SECTION } from "./bundle.js";
-import { formatValueHasInput, repairGroupExpandInvariant } from "./features/format-values.js";
+import { formatValueHasInput, collectFormatItemIndicesWithData, repairGroupExpandInvariant } from "./features/format-values.js";
 // TEMP: remove after onishi data migration (Phase 7 一回限り入力モデル移行)
 import { migratePatientsInputModel } from "./features/one-time-input-model-migration.js";
 import { t } from "./i18n.js";
@@ -1057,4 +1057,32 @@ export function markUpdated(no) {
   if (!p) return;
   p.updatedAt = Date.now();
   if (_onMarkUpdated) _onMarkUpdated(no);
+}
+
+// ============================
+// フォーマット item 編集の破壊防止: 入力済み item index の横断収集
+//
+// settings.formats は現ユーザーの全病棟 (ワークスペース) 共通なので、ある format の
+// item 削除/並び替えは「アクティブ病棟以外」の患者データもずらし得る。現ユーザーの
+// 全病棟を横断して、入力がある item index の集合を返す。
+//   - アクティブ病棟は live の appState.patients (debounce 中の未保存入力も含む)
+//   - 非アクティブ病棟は保存済みバンドル
+// 失敗時 (列挙やロードの失敗 = データの有無を確認できない) は null を返し、呼び出し側が
+// fail-closed (全ブロック扱い) にする。
+// ============================
+export async function collectFormatDataIndices(formatId) {
+  try {
+    const out = collectFormatItemIndicesWithData(appState.patients, formatId);
+    const activeId = getActiveWorkspaceId();
+    for (const b of await listBundles()) {
+      if (b.id === activeId) continue;
+      const bundle = await storageLoad(b.id);
+      if (!bundle) return null; // ロード不可 = 有無を確認できない → fail-closed
+      collectFormatItemIndicesWithData(getSection(bundle, SECTION.PATIENTS) || [], formatId, out);
+    }
+    return out;
+  } catch (e) {
+    console.warn("collectFormatDataIndices failed:", e);
+    return null;
+  }
 }

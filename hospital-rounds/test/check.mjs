@@ -396,6 +396,39 @@ await test("formatValueHasInput: 文字列/オブジェクト/空を正しく判
   assert.equal(fv.formatValueHasInput({ value: "", note: "O2" }), true); // 注記だけでも入力あり
 });
 
+await test("collectFormatItemIndicesWithData: 入力がある item index を患者横断で収集", () => {
+  const patients = [
+    { formatValues: { fmt_v: { 0: { value: "96", note: "" }, 2: "" } } }, // 2 は空 = 入力なし
+    { formatValues: { fmt_v: { 1: { value: "", note: "右上肢" } } } },     // 注記のみも入力あり
+    { formatValues: { fmt_x: { 5: "別フォーマットは無関係" } } },
+    { formatValues: null },
+    {},
+  ];
+  const set = fv.collectFormatItemIndicesWithData(patients, "fmt_v");
+  assert.deepEqual([...set].sort(), [0, 1]);
+  assert.equal(fv.collectFormatItemIndicesWithData(patients, "fmt_none").size, 0);
+});
+
+await test("formatItemDeleteBlocked: 該当 index は data / 後方に入力があれば shift / 以降は削除可", () => {
+  const data = new Set([1, 2]);
+  assert.equal(fv.formatItemDeleteBlocked(data, 1), "data");   // その index に入力
+  assert.equal(fv.formatItemDeleteBlocked(data, 0), "shift");  // 後方に入力 → splice でずれる
+  assert.equal(fv.formatItemDeleteBlocked(data, 3), null);     // 入力範囲より後ろは安全
+  assert.equal(fv.formatItemDeleteBlocked(new Set(), 0), null);
+  // 不明 (収集中/失敗 = Set でない) は fail-closed で全ブロック
+  assert.equal(fv.formatItemDeleteBlocked(null, 0), "data");
+  assert.equal(fv.formatItemDeleteBlocked(undefined, 5), "data");
+});
+
+await test("formatItemReorderBlocked / formatItemKindChangeBlocked: 入力ありはブロック・不明は fail-closed", () => {
+  assert.equal(fv.formatItemReorderBlocked(new Set([0])), true);
+  assert.equal(fv.formatItemReorderBlocked(new Set()), false);
+  assert.equal(fv.formatItemReorderBlocked(null), true);
+  assert.equal(fv.formatItemKindChangeBlocked(new Set([1]), 1), true);
+  assert.equal(fv.formatItemKindChangeBlocked(new Set([1]), 0), false);
+  assert.equal(fv.formatItemKindChangeBlocked(undefined, 0), true);
+});
+
 await test("composeFormatFromValues: number の注記が末尾に付く (SpO2 96% O2 2L)", () => {
   const { text, hasValue } = fv.composeFormatFromValues(vitalFormat(), {
     0: { value: "96", note: "O2 2L" },
