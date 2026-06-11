@@ -670,13 +670,23 @@
       flex: 0 0 32px;
     }
 
+    /* sticky footer: スクロール容器 (.popupMenu) の下端に張り付き、フォーマット編集・
+       セット編集とも本文 (項目/登録フォーマット一覧) が長くなっても QR共有/キャンセル/保存
+       へ常に到達できる。負マージンで menu の padding (14px 16px) をはみ出して全幅化し、
+       下に潜る本文は背景で隠す (patientSheetStatusBar と同じ手法)。 */
     .formatEditActions {
       display: flex;
       justify-content: flex-end;
       gap: 8px;
-      margin-top: 12px;
-      padding-top: 10px;
       border-top: 1px solid var(--line);
+      position: sticky;
+      /* sticky の固定基準は margin box。bottom マージンが -14px なので、その分だけ
+         下げて border box を menu 下端に密着させる (0 だと 14px 浮いて下に本文が透ける)。 */
+      bottom: -14px;
+      z-index: 1;
+      background: #fff;
+      margin: 12px -16px -14px;
+      padding: 10px 16px 14px;
     }
 
     .popupMenu.formatEditMenu .formatEditActions button {
